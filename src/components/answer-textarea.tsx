@@ -14,6 +14,25 @@
  * (SME: `.Editor_collapsed .tiptap { min-height:0 }`; options live in
  * `.Editor_menu`, focus outline rides the container via :focus-within).
  *
+ * Wave 3c — the EXPANDED toolbar look, matched to the component bundle:
+ * SME's question-player chunk pins the menu anatomy verbatim (Editor_menu +
+ * MenuButton/Symbols CSS modules): a white flex-wrap strip with gap .25rem,
+ * padding .5rem (.25rem under a 768px viewport) and bottom-only radius,
+ * holding an icon-only 2rem square group on the left and labeled pill
+ * buttons on the right (radius 50rem, padding-inline .5rem .75rem, labels
+ * hidden under a @container (max-width: 540px) query), plus an
+ * "Insert symbol" dropdown whose popover carries xs-bold legends over a
+ * 7-column grid of square symbol buttons. The strip swallows mousedown on
+ * its dead space so toggling tools never steals the caret (SME does the
+ * same). The symbols groups "Mathematical" and "Greek letters" are SME's
+ * verbatim lists; the wave-3 chemistry glyphs SME lacks keep their own
+ * group.
+ *
+ * Honest-absent (plain-text contract, NOT faked with lookalikes): SME's
+ * Italic/Subscript/Superscript are rich-text toggles over markdown
+ * storage and "Insert equation" is the MathLive LaTeX editor — all three
+ * are deferred pending the answer-format contract decision.
+ *
  * This component mirrors that anatomy on the plain-text textarea:
  *   - collapsed = one line tall; ACTIVE (focused, has content, or a tool
  *     open) = the marks-proportional floor (rows = clamp(4, 2×marks, 10))
@@ -45,10 +64,9 @@
  * text; core submitStructuredAttempt and the legacy /api/ai/mark read the
  * same string they always have.
  */
-import { useId, useRef, useState } from "react";
-import type { ReactNode } from "react";
-import { ChevronDown, ChevronUp, PenLine, Type } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import type { ChangeEvent, ReactNode } from "react";
+import { Omega, PenLine, Upload } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { AnswerInkPad, useHasLearnerSession } from "@/components/answer-ink-pad";
@@ -60,17 +78,46 @@ import { AnswerInkPad, useHasLearnerSession } from "@/components/answer-ink-pad"
 const SYMBOLS_PREF_KEY = "syllabai-hub:answer-symbols-open";
 
 /**
- * Notation typed IGCSE answers actually need: sub/superscripts, charges,
- * the equilibrium/direction arrows, degree, delta, multiplication sign —
- * plus the wave-3 maths group (roots, inequalities, integrals, sums) so
- * equations no longer force students onto ASCII approximations. Inserted
- * as plain text — the answer stays a plain-text contract end-to-end
- * (core submitStructuredAttempt and the legacy /api/ai/mark).
+ * Toolbar symbol groups, in the pinned SME order. "Mathematical" and
+ * "Greek letters" are SaveMyExams' VERBATIM bundle lists (question-player
+ * chunk 3273, the eD constant feeding their Insert-symbol dropdown) — the
+ * exact glyphs their expanded toolbar offers. "Chemistry & notation"
+ * carries the wave-3 IGCSE set SME's lists lack (sub/superscripts,
+ * charges, root/integral/sum), deduped against the SME groups so no glyph
+ * ships twice. Everything inserts as plain text — the answer stays a
+ * plain-text contract end-to-end (core submitStructuredAttempt and the
+ * legacy /api/ai/mark read the same string they always have).
  */
-const ANSWER_SYMBOLS = [
-  "₂", "₃", "₄", "⁺", "⁻", "²", "³", "→", "⇌", "°", "Δ", "×",
-  "√", "π", "≤", "≥", "≠", "≈", "±", "÷", "∫", "Σ", "∞", "⁄",
-] as const;
+const SYMBOL_GROUPS: { label: string; symbols: string[] }[] = [
+  {
+    label: "Mathematical",
+    symbols: ["+", "−", "±", "×", "·", "=", "≠", "≈", "<", ">", "≤", "≥", "→", "⇌", "°", "%", "∝", "⊥", "∥"],
+  },
+  {
+    label: "Greek letters",
+    symbols: ["α", "β", "γ", "Δ", "δ", "ε", "η", "θ", "λ", "μ", "ν", "π", "ρ", "∑", "σ", "τ", "Φ", "φ", "ψ", "Ω", "ω"],
+  },
+  {
+    label: "Chemistry & notation",
+    symbols: ["₂", "₃", "₄", "⁺", "⁻", "²", "³", "√", "÷", "∫", "Σ", "∞", "⁄"],
+  },
+];
+
+/** SME MenuButton geometry, verbatim: 2rem transparent square, .25rem
+ *  radius, neutral hover/active fill, 4px brand halo on keyboard focus. */
+const MENU_BUTTON_SQUARE =
+  "flex size-8 items-center justify-center rounded-[4px] text-foreground/90 hover:bg-muted aria-expanded:bg-muted focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/25";
+
+/** SME MenuButton withLabel geometry, verbatim: auto width pill,
+ *  padding-inline .5rem .75rem, label hidden when the box is narrow
+ *  (their @container (max-width: 540px) rule). */
+const MENU_BUTTON_PILL =
+  "flex h-8 items-center gap-1 rounded-full pl-2 pr-3 text-[13px] font-medium text-foreground/90 hover:bg-muted aria-expanded:bg-muted focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/25";
+
+/** SME Symbols_menu popover: padding .25rem, border, their exact ambient
+ *  shadow (0 4px 30px rgba(59,68,89,.16)). */
+const SYMBOLS_PANEL =
+  "m-1 mt-0 rounded-md border bg-muted/40 p-1 shadow-[0_4px_30px_0_rgba(59,68,89,0.16)]";
 
 /**
  * Answer-shape-aware placeholder derived ONLY from the stem's imperative
@@ -128,16 +175,29 @@ export function AnswerTextarea({
   hintSlot?: ReactNode;
   className?: string;
 }) {
-  const [symOpen, setSymOpen] = useState(() => {
-    if (typeof window === "undefined") return false;
-    try {
-      return window.localStorage.getItem(SYMBOLS_PREF_KEY) === "1";
-    } catch {
-      return false;
-    }
-  });
+  // palette pref is read POST-hydration (latent wave-3b defect, fixed in
+  // 3c): initializing state from localStorage during the first render made
+  // SSR and a returning user's client disagree (React #418 hydration
+  // mismatch on every load with the pref set). SSR and client now agree on
+  // "closed"; the pref applies one tick after mount from a timer callback
+  // (not synchronously in the effect body — react-hooks/set-state-in-effect).
+  // Private-mode behavior is unchanged: a failed write keeps the palette
+  // session-only and still working.
+  const [symOpen, setSymOpen] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try {
+        setSymOpen(window.localStorage.getItem(SYMBOLS_PREF_KEY) === "1");
+      } catch {
+        // private mode — session-only default
+      }
+    }, 0);
+    return () => clearTimeout(t);
+  }, []);
   const [padOpen, setPadOpen] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [focused, setFocused] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const hasSession = useHasLearnerSession();
   const autoId = useId();
   const inputId = id ?? autoId;
@@ -160,6 +220,20 @@ export function AnswerTextarea({
     });
   };
 
+  /** SME's "Upload" pill → our EXISTING wave-3 photo→core-transcribe
+   *  flow: the file rides into the ink pad as pendingFile and goes through
+   *  the same convert → editable-preview → insert-at-caret path (never a
+   *  silent rewrite; the image is never stored). */
+  const onUploadPicked = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-picking the same file
+    if (!file) return;
+    setPendingFile(file);
+    setPadOpen(true);
+  };
+
+  const onFileConsumed = useCallback(() => setPendingFile(null), []);
+
   const toggleSymbols = () => {
     const next = !symOpen;
     setSymOpen(next);
@@ -171,31 +245,37 @@ export function AnswerTextarea({
   };
 
   return (
-    <div className={cn("min-w-0", className)}>
+    <div className={cn("@container", "min-w-0", className)}>
       {label && (
         <label htmlFor={inputId} className="mb-2 block text-sm font-bold text-foreground">
           {label}
         </label>
       )}
-      {/* the box — mirrors SME's writtenMode (border + radius on the
-          container, focus outline rides the container, editor is chromeless
-          inside with 1rem padding) */}
+      {/* the composite box — mirrors SME's writtenMode: ONE bordered
+          container holding the editor area and (when active) the menu strip
+          attached below it; the focus outline rides the container via
+          :focus-within exactly like SME's
+          .Editor_writtenMode:focus-within, so tabbing into the tools keeps
+          the ring just as it does on the real editor */}
       <div
-        className={cn(
-          "rounded-lg border border-input bg-background transition-colors",
-          focused && "border-primary/50 ring-1 ring-primary/20",
-        )}
+        className="overflow-hidden rounded-lg border border-input bg-background transition-colors focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/20"
+        // activation tracks the COMPOSITE (SME verbatim: their blur handler
+        // drops focus state only when relatedTarget leaves the wrapper —
+        // focus moving into the toolbar must not tear the strip down, or
+        // the click never lands on the button it was meant for)
+        onFocus={() => setFocused(true)}
+        onBlur={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+            setFocused(false);
+            onBlur?.(); // surface autosave flush — the learner left the box
+          }
+        }}
       >
         <Textarea
           ref={taRef}
           id={inputId}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          onBlur={() => {
-            setFocused(false);
-            onBlur?.();
-          }}
-          onFocus={() => setFocused(true)}
           onKeyDown={(e) => {
             if (onSubmitShortcut && (e.metaKey || e.ctrlKey) && e.key === "Enter") {
               e.preventDefault();
@@ -213,84 +293,132 @@ export function AnswerTextarea({
           style={{ minHeight: active ? `${Math.min(10, Math.max(4, marks * 2)) * 1.5}rem` : undefined }}
           aria-label={label ? undefined : ariaLabel}
           placeholder={placeholder}
-          className="max-h-96 min-h-0 w-full resize-none overflow-y-auto rounded-lg border-0 bg-transparent px-4 py-4 shadow-none outline-none placeholder:text-muted-foreground focus-visible:border-0 focus-visible:ring-0 aria-invalid:border-0 text-[13px] dark:bg-transparent md:text-sm"
+          className="max-h-96 min-h-0 w-full resize-none overflow-y-auto border-0 bg-transparent px-4 py-4 shadow-none outline-none placeholder:text-muted-foreground focus-visible:border-0 focus-visible:ring-0 aria-invalid:border-0 text-[13px] dark:bg-transparent md:text-sm"
         />
-      </div>
-      {/* the active strip — mirrors SME's Editor_menu: attaches directly
-          below the box, bottom corners rounded, top square against it */}
-      {active && (
-        <div className="rounded-b-lg border border-t-0 bg-background">
-          <div className="flex flex-wrap items-center gap-1.5 px-2 py-1.5">
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={toggleSymbols}
-              aria-expanded={symOpen}
-              className="h-7 gap-1.5 px-2 text-[11px] text-muted-foreground"
-            >
-              <Type className="size-3.5" aria-hidden /> symbols
-              {symOpen ? (
-                <ChevronUp className="size-3" aria-hidden />
-              ) : (
-                <ChevronDown className="size-3" aria-hidden />
-              )}
-            </Button>
-            {/* wave 3: ink pad / photo → core transcription → plain text at
-                the caret (SaveMyExams-parity "Write", free/no-card route).
-                Hidden without a learner session — the spend is authenticated
-                and per-learner. */}
-            {hasSession && (
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => setPadOpen((v) => !v)}
-                aria-expanded={padOpen}
-                className="h-7 gap-1.5 px-2 text-[11px] text-muted-foreground"
-              >
-                <PenLine className="size-3.5" aria-hidden /> write
-                {padOpen ? (
-                  <ChevronUp className="size-3" aria-hidden />
-                ) : (
-                  <ChevronDown className="size-3" aria-hidden />
-                )}
-              </Button>
-            )}
-            <div className="ml-auto flex flex-wrap items-center gap-2">
-              {statusSlot}
-              {wordCount > 0 && (
-                <span className="text-[11px] tabular-nums text-muted-foreground">
-                  {wordCount} word{wordCount === 1 ? "" : "s"}
-                </span>
-              )}
-            </div>
-          </div>
-          {symOpen && (
+        {/* the active strip — mirrors SME's Editor_menu, verbatim anatomy:
+            flex-wrap, gap .25rem, space-between (left icon group vs right
+            pill group), white surface, .5rem padding (.25rem under 768px),
+            attached below the box with bottom-only radius. Mousedown on
+            dead space is swallowed exactly like SME's menu so the caret
+            never moves when a tool is toggled. */}
+        {active && (
+          <div className="border-t border-border/60">
             <div
-              className="flex flex-wrap gap-1 border-t border-border/60 px-2 py-2"
-              role="group"
-              aria-label="Insert chemistry and maths symbols"
+              className="flex flex-wrap items-center gap-1 p-2 max-md:p-1"
+              onMouseDown={(e) => {
+                const t = e.target as HTMLElement;
+                if (!t.closest("button, input")) e.preventDefault();
+              }}
             >
-              {ANSWER_SYMBOLS.map((ch) => (
+              {/* SME's left group: icon-only square toggles. Ours carries
+                  the Insert-symbol dropdown; SME's Italic/Sub/Sup are
+                  rich-text toggles and stay honestly absent (plain text). */}
+              <div className="flex items-center gap-1">
                 <button
-                  key={ch}
                   type="button"
-                  onClick={() => insertAtCaret(ch)}
-                  className="h-7 min-w-8 rounded-md border bg-background px-1.5 font-mono text-[13px] leading-none text-foreground/90 hover:bg-muted"
-                  aria-label={`Insert ${ch}`}
+                  onClick={toggleSymbols}
+                  aria-expanded={symOpen}
+                  aria-label="Insert symbol"
+                  title="Insert symbol"
+                  className={MENU_BUTTON_SQUARE}
                 >
-                  {ch}
+                  <Omega className="size-4" aria-hidden />
                 </button>
-              ))}
+              </div>
+              {/* SME's right group: labeled pills (Write / Upload), pushed
+                  to the strip's far edge by the space-between rhythm. */}
+              <div className="ms-auto flex flex-wrap items-center gap-1">
+                {/* wave 3: ink pad / photo → core transcription → plain
+                    text at the caret (SaveMyExams-parity "Write", free/
+                    no-card route). Hidden without a learner session — the
+                    spend is authenticated and per-learner. */}
+                {hasSession && (
+                  <button
+                    type="button"
+                    onClick={() => setPadOpen((v) => !v)}
+                    aria-expanded={padOpen}
+                    aria-label="Write"
+                    title="Write"
+                    className={MENU_BUTTON_PILL}
+                  >
+                    <PenLine className="size-4 shrink-0" aria-hidden />
+                    <span className="@max-[540px]:hidden">Write</span>
+                  </button>
+                )}
+                {hasSession && (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    aria-label="Upload"
+                    title="Upload"
+                    className={MENU_BUTTON_PILL}
+                  >
+                    <Upload className="size-4 shrink-0" aria-hidden />
+                    <span className="@max-[540px]:hidden">Upload</span>
+                  </button>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={onUploadPicked}
+                  className="hidden"
+                  tabIndex={-1}
+                  aria-hidden="true"
+                />
+                {/* wave-1/3 honesty chrome — surface-owned status rides the
+                    strip's right edge, visually subordinate to the tools */}
+                <div className="ms-2 flex flex-wrap items-center gap-2">
+                  {statusSlot}
+                  {wordCount > 0 && (
+                    <span className="text-[11px] tabular-nums text-muted-foreground">
+                      {wordCount} word{wordCount === 1 ? "" : "s"}
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
-          )}
-        </div>
-      )}
+            {symOpen && (
+              <div className={SYMBOLS_PANEL}>
+                {SYMBOL_GROUPS.map((group) => (
+                  <fieldset key={group.label}>
+                    <legend className="px-2 pt-1.5 text-xs font-bold text-foreground">
+                      {group.label}
+                    </legend>
+                    <div
+                      role="group"
+                      aria-label={`Insert ${group.label.toLowerCase()} symbols`}
+                      className="grid grid-cols-7 gap-1 p-1 pb-2"
+                    >
+                      {group.symbols.map((ch) => (
+                        <button
+                          key={ch}
+                          type="button"
+                          onClick={() => insertAtCaret(ch)}
+                          aria-label={`Insert ${ch}`}
+                          className={MENU_BUTTON_SQUARE}
+                        >
+                          <span aria-hidden="true" className="font-mono text-sm">{ch}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </fieldset>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
       {active && hintSlot && (
         <p className="mt-1.5 text-[11px] text-muted-foreground">{hintSlot}</p>
       )}
-      {padOpen && hasSession && <AnswerInkPad onInsert={insertAtCaret} />}
+      {padOpen && hasSession && (
+        <AnswerInkPad
+          onInsert={insertAtCaret}
+          pendingFile={pendingFile}
+          onFileConsumed={onFileConsumed}
+        />
+      )}
     </div>
   );
 }

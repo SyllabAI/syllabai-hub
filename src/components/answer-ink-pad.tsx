@@ -48,13 +48,53 @@ type Stroke = { points: { x: number; y: number }[] };
 
 type PanelStatus = "drawing" | "converting" | "preview";
 
+/** Downscale any photo to ≤MAX_IMAGE_DIM and return base64 JPEG. Pure — no
+ *  component state, so it lives at module scope and serves BOTH entry
+ *  points: the pad's own camera button and the toolbar's Upload pill
+ *  (whose file arrives via the pendingFile prop). */
+const fileToJpegBase64 = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("could not read that file"));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("that file is not an image we can read"));
+      img.onload = () => {
+        const scale = Math.min(1, MAX_IMAGE_DIM / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const out = document.createElement("canvas");
+        out.width = w;
+        out.height = h;
+        const ctx = out.getContext("2d");
+        if (!ctx) return reject(new Error("could not process that image"));
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(out.toDataURL("image/jpeg", 0.9).split(",")[1] ?? "");
+      };
+      img.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
+
 export function AnswerInkPad({
   onInsert,
+  pendingFile,
+  onFileConsumed,
   className,
 }: {
   /** Called with the (possibly learner-edited) transcribed text; the parent
    *  inserts at the textarea caret and restores focus. */
   onInsert: (text: string) => void;
+  /** A photo picked from the toolbar's Upload pill (HUB-ANSWER-BOX wave 3c).
+   *  It goes through the IDENTICAL convert → editable-preview → insert flow
+   *  as the pad's own camera button — one honesty path, two entry points.
+   *  Consumed exactly once (ref-guarded so a parent re-render can never
+   *  re-trigger the rate-limited per-learner transcription spend). */
+  pendingFile?: File | null;
+  /** Clears the parent's pendingFile right after consumption. */
+  onFileConsumed?: () => void;
   className?: string;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -144,43 +184,9 @@ export function AnswerInkPad({
     return canvas.toDataURL("image/png").split(",")[1] ?? null;
   };
 
-  /** Downscale any photo to ≤MAX_IMAGE_DIM and return base64 JPEG. */
-  const fileToJpegBase64 = (file: File): Promise<string> =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(new Error("could not read that file"));
-      reader.onload = () => {
-        const img = new Image();
-        img.onerror = () => reject(new Error("that file is not an image we can read"));
-        img.onload = () => {
-          const scale = Math.min(1, MAX_IMAGE_DIM / Math.max(img.width, img.height));
-          const w = Math.max(1, Math.round(img.width * scale));
-          const h = Math.max(1, Math.round(img.height * scale));
-          const out = document.createElement("canvas");
-          out.width = w;
-          out.height = h;
-          const ctx = out.getContext("2d");
-          if (!ctx) return reject(new Error("could not process that image"));
-          ctx.fillStyle = "#ffffff";
-          ctx.fillRect(0, 0, w, h);
-          ctx.drawImage(img, 0, 0, w, h);
-          resolve(out.toDataURL("image/jpeg", 0.9).split(",")[1] ?? "");
-        };
-        img.src = String(reader.result);
-      };
-      reader.readAsDataURL(file);
-    });
-
-  const onPhotoPicked = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = ""; // allow re-picking the same file
-    if (!file) return;
-    setError(null);
-    setStatus("drawing"); // photo replaces ink at convert time, not before
-    await convertPhoto(file);
-  };
-
-  const convertPhoto = async (file: File) => {
+  /** Downscale handled by the module-scope helper; this wraps the API call
+   *  and status machine. Stable identity — it feeds the pendingFile effect. */
+  const convertPhoto = useCallback(async (file: File) => {
     setStatus("converting");
     setError(null);
     try {
@@ -192,6 +198,34 @@ export function AnswerInkPad({
       setStatus("drawing");
       setError(transcriptionErrorMessage(err));
     }
+  }, []);
+
+  /** Toolbar Upload pill handoff: convert exactly once per picked file,
+   *  then tell the parent to drop it. If the pad is not mounted yet (pad
+   *  opens in the same tick), this fires on mount — the user's explicit
+   *  pick is still the trigger, nothing auto-transcribes on its own.
+   *  The start is deferred one tick so the mount pass settles first and
+   *  the status flips from a timer callback, not synchronously inside
+   *  the effect (react-hooks/set-state-in-effect). */
+  const consumedRef = useRef<File | null>(null);
+  useEffect(() => {
+    if (!pendingFile || consumedRef.current === pendingFile) return;
+    consumedRef.current = pendingFile;
+    const file = pendingFile;
+    onFileConsumed?.();
+    const t = setTimeout(() => void convertPhoto(file), 0);
+    return () => clearTimeout(t);
+  }, [pendingFile, convertPhoto, onFileConsumed]);
+
+  /** The pad's own camera button (the toolbar's Upload pill arrives via
+   *  pendingFile instead — same convert path either way). */
+  const onPhotoPicked = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-picking the same file
+    if (!file) return;
+    setError(null);
+    setStatus("drawing"); // photo replaces ink at convert time, not before
+    await convertPhoto(file);
   };
 
   const convertInk = async () => {
