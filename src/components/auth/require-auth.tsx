@@ -13,7 +13,7 @@
  */
 import { useSyncExternalStore } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { LogIn, Loader2, ShieldAlert, GraduationCap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useIdentity } from "@/lib/identity";
@@ -64,10 +64,18 @@ export function RequireAuth({
 
 function SignInPrompt({ role }: { role?: "teacher" }) {
   const params = useSearchParams();
+  const pathname = usePathname();
   const loginParams = new URLSearchParams();
   if (role === "teacher") loginParams.set("mode", "teacher");
+  // P2-4 (hub UI audit): preserve the full location (path + query). The old
+  // query-only "next" never started with "/", so nextDestination() always
+  // fell back to the dashboard and the docstring's "preserves where they
+  // were heading" promise was dead code. nextDestination() decodes and
+  // re-validates the value (must start with "/", not "//"), so encoding is
+  // safe. SignInPrompt renders client-only (behind useSettled), so
+  // usePathname is always the real location here.
   const qs = params.toString();
-  if (qs) loginParams.set("next", qs);
+  loginParams.set("next", `${pathname}${qs ? `?${qs}` : ""}`);
   const suffix = loginParams.toString();
   const href = `/login${suffix ? `?${suffix}` : ""}`;
   return (

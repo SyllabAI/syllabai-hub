@@ -187,6 +187,25 @@ export function LoginClient() {
             : "A student account gets you the tutor, assistant and progress tracking."}
         </p>
 
+        {/* P3-7 (hub UI audit): say so explicitly — the pre-filled email and
+            the header identity chip were the only signals that a session
+            already exists. Renders after hydration (useIdentity's server
+            snapshot is null), so there is no mismatch. */}
+        {identity && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-lg border bg-muted/40 px-3 py-2 text-sm">
+            <p className="min-w-0 text-muted-foreground">
+              Signed in as{" "}
+              <span className="font-medium text-foreground">{identity.email}</span>.
+            </p>
+            <Link
+              href={identity.role === "teacher" ? "/teacher" : "/dashboard"}
+              className="text-xs font-medium underline underline-offset-2"
+            >
+              {identity.role === "teacher" ? "Open the teacher workspace" : "Go to my dashboard"}
+            </Link>
+          </div>
+        )}
+
         {/* role story split (student / teacher views) */}
         <div
           role="group"
@@ -249,7 +268,12 @@ export function LoginClient() {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="login-password">Password</Label>
-              <span className="cursor-not-allowed text-xs text-muted-foreground/60" aria-disabled>
+              <span
+                className="cursor-not-allowed text-xs text-muted-foreground/60"
+                aria-disabled="true"
+                tabIndex={0}
+                title="Self-service password reset isn't available in the pilot — ask your teacher or administrator to reset it."
+              >
                 Forgot password?
               </span>
             </div>
@@ -297,7 +321,10 @@ export function LoginClient() {
 
         <p className="mt-4 text-sm text-muted-foreground">
           Just exploring?{" "}
-          <Link href="/dashboard" className="font-medium text-foreground underline underline-offset-2">
+          <Link
+            href="/dashboard"
+            className="inline-block whitespace-nowrap font-medium text-foreground underline underline-offset-2"
+          >
             Browse without an account →
           </Link>
         </p>

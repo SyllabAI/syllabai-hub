@@ -261,7 +261,7 @@ export function ClassIntelligenceClient() {
             )}
           </div>
           {overview && (
-            <Button variant="outline" size="sm" onClick={() => rootId && void load(rootId)}>
+            <Button variant="outline" size="sm" className="h-9" onClick={() => rootId && void load(rootId)}>
               <Activity className="size-4" aria-hidden="true" />
               Refresh
             </Button>
@@ -274,7 +274,20 @@ export function ClassIntelligenceClient() {
         </CardContent>
       </Card>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && (
+        <Alert variant="destructive">
+          <AlertTitle>Could not load class analytics</AlertTitle>
+          <AlertDescription>
+            {error}
+            {rootId && (
+              <Button variant="outline" size="sm" className="h-9" onClick={() => void load(rootId)}>
+                <Activity className="size-4" aria-hidden="true" />
+                Retry
+              </Button>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
 
       {loading && (
         <div className="grid gap-3 sm:grid-cols-3">
@@ -420,8 +433,9 @@ export function ClassIntelligenceClient() {
                 </Badge>
               </CardTitle>
               <CardDescription>
-                Class mastery and evidence per curriculum node. Click a topic to drill into
-                affected learners, representative evidence and remediation.
+                Class mastery and evidence per curriculum node. Open a topic — click its name, or
+                focus it and press Enter — to drill into affected learners, evidence and
+                remediation.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
@@ -430,6 +444,7 @@ export function ClassIntelligenceClient() {
                 <Button
                   variant={weakestFirst ? "outline" : "secondary"}
                   size="sm"
+                  className="h-9"
                   onClick={() => setWeakestFirst(false)}
                 >
                   Curriculum
@@ -437,11 +452,18 @@ export function ClassIntelligenceClient() {
                 <Button
                   variant={weakestFirst ? "secondary" : "outline"}
                   size="sm"
+                  className="h-9"
                   onClick={() => setWeakestFirst(true)}
                 >
                   Weakest first
                 </Button>
               </div>
+              {topicRows.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No curriculum topics are mapped to this subject yet — the heatmap appears once
+                  the curriculum and its evidence exist.
+                </p>
+              ) : (
               <div className="overflow-x-auto rounded-md border">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50 text-left">
@@ -459,17 +481,32 @@ export function ClassIntelligenceClient() {
                     {topicRows.map((t) => (
                       <tr
                         key={t.nodeId}
-                        className={`cursor-pointer border-t hover:bg-muted/40 ${
+                        className={`group cursor-pointer border-t hover:bg-muted/40 ${
                           drillTopic?.nodeId === t.nodeId ? "bg-muted/60" : ""
                         }`}
-                        onClick={() => void openDrillDown(t)}
+                        onClick={(e) => {
+                          // P2-2: keyboard access lives in the topic-name button
+                          // below — skip it here so a button click doesn't
+                          // double-fire the drill-down (same guard shape as the
+                          // course drawer's closest("a")).
+                          if ((e.target as HTMLElement).closest("button")) return;
+                          void openDrillDown(t);
+                        }}
                       >
                         <td className="px-3 py-2">
-                          <span className="font-mono text-xs text-muted-foreground">
-                            {t.parentCode ? `${t.parentCode} › ` : ""}
-                            {t.code}
-                          </span>
-                          <div className="font-medium">{t.title}</div>
+                          <button
+                            type="button"
+                            onClick={() => void openDrillDown(t)}
+                            className="rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            <span className="block font-mono text-xs text-muted-foreground">
+                              {t.parentCode ? `${t.parentCode} › ` : ""}
+                              {t.code}
+                            </span>
+                            <span className="block font-medium underline-offset-2 group-hover:underline">
+                              {t.title}
+                            </span>
+                          </button>
                         </td>
                         <td className="px-3 py-2">
                           <MasteryBadge band={t.masteryBand} mastery={t.meanMastery} />
@@ -499,6 +536,7 @@ export function ClassIntelligenceClient() {
                   </tbody>
                 </table>
               </div>
+              )}
             </CardContent>
           </Card>
 
@@ -516,7 +554,25 @@ export function ClassIntelligenceClient() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {drillError && <p className="text-sm text-destructive">{drillError}</p>}
+                {drillError && (
+                  <Alert variant="destructive">
+                    <AlertTitle>Could not load the drill-down</AlertTitle>
+                    <AlertDescription>
+                      {drillError}
+                      {drillTopic && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-9"
+                          onClick={() => void openDrillDown(drillTopic)}
+                        >
+                          <Eye className="size-4" aria-hidden="true" />
+                          Retry
+                        </Button>
+                      )}
+                    </AlertDescription>
+                  </Alert>
+                )}
                 {drillLoading && <Skeleton className="h-32 w-full" />}
 
                 {drill && (
@@ -665,6 +721,7 @@ export function ClassIntelligenceClient() {
                         <div className="space-y-2">
                           <Button
                             size="sm"
+                            className="h-9"
                             onClick={() => void assembleRemediation()}
                             disabled={remediationBusy}
                           >
@@ -674,7 +731,21 @@ export function ClassIntelligenceClient() {
                               : "Assemble remediation test for this topic"}
                           </Button>
                           {remediationError && (
-                            <p className="text-sm text-destructive">{remediationError}</p>
+                            <Alert variant="destructive">
+                              <AlertTitle>Could not assemble the test</AlertTitle>
+                              <AlertDescription>
+                                {remediationError}
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-9"
+                                  onClick={() => void assembleRemediation()}
+                                >
+                                  <ClipboardCheck className="size-4" aria-hidden="true" />
+                                  Retry
+                                </Button>
+                              </AlertDescription>
+                            </Alert>
                           )}
                           {remediation && (
                             <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">

@@ -285,7 +285,15 @@ async function doRequest<T>(path: string, url: string, init?: RequestInit): Prom
     throw new ApiError(401, "Session expired — please sign in again.");
   }
   if (!response.ok) {
-    let message = `Request failed (${response.status})`;
+    // P3-1 (hub UI audit): the old bare "Request failed (404)" rendered on
+    // teacher panels with no context and no next step. Status-aware fallback;
+    // the server's own body.message still wins when it provides one.
+    let message =
+      response.status === 404
+        ? "Request failed — the server returned 404 (not found). This data may not exist yet, or the backend was still waking up; please retry."
+        : response.status >= 500
+          ? `The server hit an error (HTTP ${response.status}) — please try again in a moment.`
+          : `The request failed (HTTP ${response.status}) — please try again.`;
     try {
       const body = await response.json();
       if (body?.message) message = body.message;

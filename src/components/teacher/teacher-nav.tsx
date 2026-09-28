@@ -7,6 +7,7 @@
  * syllabai-web (Marking review, Class intelligence — real core data, RBAC on
  * every call) come first; the corpus-local tools follow, honestly labeled.
  */
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -33,13 +34,36 @@ const TABS = [
 export function TeacherNav() {
   const pathname = usePathname();
   const identity = useIdentity();
+  const navRef = useRef<HTMLElement | null>(null);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  // P3-9 (hub UI audit): the strip scrolls horizontally on narrow screens and
+  // used to truncate mid-word ("Clas…") with no hint. The trailing fade
+  // renders only while there is actually more to scroll — re-checked on
+  // scroll and on resize (ResizeObserver covers viewport changes).
+  useEffect(() => {
+    const el = navRef.current;
+    if (!el) return;
+    const update = () =>
+      setCanScrollRight(el.scrollWidth - el.clientWidth - el.scrollLeft > 4);
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => {
+      el.removeEventListener("scroll", update);
+      observer.disconnect();
+    };
+  }, []);
 
   return (
     <div className="space-y-3">
-      <nav
-        aria-label="Teacher workspace"
-        className="flex gap-1 overflow-x-auto rounded-lg border bg-card p-1 print:hidden"
-      >
+      <div className="relative">
+        <nav
+          ref={navRef}
+          aria-label="Teacher workspace"
+          className="flex gap-1 overflow-x-auto rounded-lg border bg-card p-1 print:hidden"
+        >
         {TABS.map((tab) => {
           const active = pathname === tab.href;
           return (
@@ -72,7 +96,16 @@ export function TeacherNav() {
             </Link>
           )}
         </span>
-      </nav>
+        </nav>
+        {/* trailing scroll affordance (P3-9): invisible once fully scrolled */}
+        <div
+          aria-hidden
+          className={cn(
+            "pointer-events-none absolute inset-y-1 right-1 w-8 rounded-md bg-gradient-to-l from-card to-transparent transition-opacity duration-200",
+            canScrollRight ? "opacity-100" : "opacity-0",
+          )}
+        />
+      </div>
       {identity && identity.role !== "teacher" && (
         <p className="text-xs text-muted-foreground">
           You are signed in as a <strong>{identity.role}</strong> — these surfaces are the teacher

@@ -104,6 +104,8 @@ export function MarkingConsoleClient() {
 
   // marking throughput metrics (counts of what happened)
   const [throughput, setThroughput] = useState<MarkingThroughputView | null>(null);
+  // P2-1: a failed fetch must not render as a forever-skeleton — surface it
+  const [throughputError, setThroughputError] = useState<string | null>(null);
 
   // selected answer detail + actions
   const [detail, setDetail] = useState<AnswerMarkingView | null>(null);
@@ -141,6 +143,10 @@ export function MarkingConsoleClient() {
   // wrong-mark hazard, not a cosmetic glitch).
   const queueSeq = useRef(0);
   const detailSeq = useRef(0);
+  // P3-5: bring the detail panel into view when a NEW answer is selected —
+  // on mobile the queue sits above it and a tap otherwise looks like a no-op
+  const detailRef = useRef<HTMLDivElement | null>(null);
+  const lastScrolledAnswerId = useRef<string | null>(null);
 
   const loadQueue = useCallback(async (state: string, page: number) => {
     const seq = ++queueSeq.current;
@@ -163,11 +169,17 @@ export function MarkingConsoleClient() {
   }, []);
 
   const loadThroughput = useCallback(async () => {
+    setThroughputError(null);
     try {
       setThroughput(await api.markingThroughput());
-    } catch {
-      // the throughput panel is a convenience — its failure never blocks marking
+    } catch (e) {
+      // the throughput panel is a convenience — its failure never blocks
+      // marking, but swallowing it into null rendered an eternal Skeleton
+      // (P2-1). Fail honestly with a retry instead.
       setThroughput(null);
+      setThroughputError(
+        e instanceof ApiError ? e.message : "Could not load the throughput counts.",
+      );
     }
   }, []);
 
@@ -235,6 +247,15 @@ export function MarkingConsoleClient() {
     },
     [],
   );
+
+  // P3-5: scroll on new selections only — same-answer refreshes (e.g. after
+  // a Smart Mark run) must not yank the page while the teacher is reading
+  useEffect(() => {
+    const id = detail?.answerId;
+    if (!id || id === lastScrolledAnswerId.current) return;
+    lastScrolledAnswerId.current = id;
+    detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [detail]);
 
   const refreshDetailAndQueue = useCallback(
     async (answerId: string) => {
@@ -458,7 +479,16 @@ export function MarkingConsoleClient() {
         </CardHeader>
         <CardContent>
           {learnersError ? (
-            <p className="text-sm text-destructive">{learnersError}</p>
+            <Alert variant="destructive">
+              <AlertTitle>Could not load the class list</AlertTitle>
+              <AlertDescription>
+                {learnersError}
+                <Button variant="outline" size="sm" className="h-9" onClick={loadLearners}>
+                  <RotateCw className="size-4" aria-hidden="true" />
+                  Retry
+                </Button>
+              </AlertDescription>
+            </Alert>
           ) : !learners ? (
             <Skeleton className="h-24 w-full" />
           ) : learners.length === 0 ? (
@@ -511,7 +541,7 @@ export function MarkingConsoleClient() {
               Scope
             </Label>
             <Select value={kappaPaperId} onValueChange={(v) => setKappaPaperId(v)}>
-              <SelectTrigger id="kappa-scope" className="h-8 w-[280px]">
+              <SelectTrigger id="kappa-scope" className="h-9 w-[280px]">
                 <SelectValue placeholder="All papers" />
               </SelectTrigger>
               <SelectContent>
@@ -549,6 +579,7 @@ export function MarkingConsoleClient() {
               <Button
                 variant="outline"
                 size="sm"
+                className="h-9"
                 onClick={recomputeKappa}
                 disabled={actionBusy === "kappa"}
               >
@@ -568,6 +599,7 @@ export function MarkingConsoleClient() {
               <Button
                 variant="outline"
                 size="sm"
+                className="h-9"
                 onClick={recomputeKappa}
                 disabled={actionBusy === "kappa"}
               >
@@ -594,7 +626,18 @@ export function MarkingConsoleClient() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {!throughput ? (
+          {throughputError ? (
+            <Alert variant="destructive">
+              <AlertTitle>Could not load the throughput counts</AlertTitle>
+              <AlertDescription>
+                {throughputError}
+                <Button variant="outline" size="sm" className="h-9" onClick={loadThroughput}>
+                  <RotateCw className="size-4" aria-hidden="true" />
+                  Retry
+                </Button>
+              </AlertDescription>
+            </Alert>
+          ) : !throughput ? (
             <Skeleton className="h-9 w-full max-w-xl" />
           ) : (
             <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -662,7 +705,7 @@ export function MarkingConsoleClient() {
           >
             <TabsList className="grid h-auto w-full max-w-xl grid-cols-2 sm:grid-cols-4">
               {QUEUE_STATES.map((s) => (
-                <TabsTrigger key={s.value} value={s.value} className="text-xs">
+                <TabsTrigger key={s.value} value={s.value} className="py-2.5 text-xs">
                   {s.label}
                 </TabsTrigger>
               ))}
@@ -680,6 +723,7 @@ export function MarkingConsoleClient() {
                 <Button
                   variant="outline"
                   size="sm"
+                  className="h-9"
                   disabled={queuePage === 0 || queueLoading}
                   onClick={() => setQueuePage((p) => Math.max(0, p - 1))}
                 >
@@ -688,6 +732,7 @@ export function MarkingConsoleClient() {
                 <Button
                   variant="outline"
                   size="sm"
+                  className="h-9"
                   disabled={queuePage + 1 >= queueTotalPages || queueLoading}
                   onClick={() => setQueuePage((p) => p + 1)}
                 >
@@ -698,7 +743,21 @@ export function MarkingConsoleClient() {
           )}
 
           {queueError ? (
-            <p className="text-sm text-destructive">{queueError}</p>
+            <Alert variant="destructive">
+              <AlertTitle>Could not load the marking queue</AlertTitle>
+              <AlertDescription>
+                {queueError}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9"
+                  onClick={() => void loadQueue(queueState, queuePage)}
+                >
+                  <RotateCw className="size-4" aria-hidden="true" />
+                  Retry
+                </Button>
+              </AlertDescription>
+            </Alert>
           ) : !queue || (queueLoading && !detail) ? (
             <Skeleton className="h-32 w-full" />
           ) : queue.items.length === 0 ? (
@@ -736,6 +795,7 @@ export function MarkingConsoleClient() {
                         <Button
                           variant="outline"
                           size="sm"
+                          className="h-9"
                           onClick={() => runBatchForGroup(group.paperId)}
                           disabled={actionBusy !== null}
                         >
@@ -799,23 +859,39 @@ export function MarkingConsoleClient() {
             </div>
           )}
 
-          {detailError && <p className="text-sm text-destructive">{detailError}</p>}
-
-          {actionError && (
+          {detailError && (
             <Alert variant="destructive">
-              <AlertTitle>Could not complete</AlertTitle>
-              <AlertDescription>{actionError}</AlertDescription>
+              <AlertTitle>Could not load the answer</AlertTitle>
+              <AlertDescription>
+                {detailError} — pick it from the queue again to retry.
+              </AlertDescription>
             </Alert>
           )}
-          {actionNotice && (
-            <Alert>
-              <AlertTitle>Done</AlertTitle>
-              <AlertDescription>{actionNotice}</AlertDescription>
-            </Alert>
-          )}
+
+          {/* P3-4: persistent live regions — the queue list announces changes
+              politely, and mark results must announce too. The Alerts mount
+              and unmount, and an aria-live region has to exist BEFORE the
+              content change to be spoken reliably; sr-only keeps the empty
+              wrappers out of sight but in the accessibility tree. */}
+          <div aria-live="assertive" className={actionError ? undefined : "sr-only"}>
+            {actionError && (
+              <Alert variant="destructive">
+                <AlertTitle>Could not complete</AlertTitle>
+                <AlertDescription>{actionError}</AlertDescription>
+              </Alert>
+            )}
+          </div>
+          <div aria-live="polite" className={actionNotice ? undefined : "sr-only"}>
+            {actionNotice && (
+              <Alert>
+                <AlertTitle>Done</AlertTitle>
+                <AlertDescription>{actionNotice}</AlertDescription>
+              </Alert>
+            )}
+          </div>
 
           {detail && (
-            <div className="rounded-lg border p-4 space-y-4">
+            <div ref={detailRef} className="rounded-lg border p-4 space-y-4">
               <div>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-sm font-semibold">
@@ -864,6 +940,7 @@ export function MarkingConsoleClient() {
                   <Button
                     variant="outline"
                     size="sm"
+                    className="h-9"
                     onClick={() => runSmartMark(detail.answerId)}
                     disabled={actionBusy !== null}
                   >
@@ -925,7 +1002,7 @@ export function MarkingConsoleClient() {
                               }))
                             }
                           >
-                            <SelectTrigger className="h-7 w-28 text-xs" aria-label="Human decision">
+                            <SelectTrigger className="h-9 w-28 text-xs" aria-label="Human decision">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -956,7 +1033,7 @@ export function MarkingConsoleClient() {
                     <Input
                       id="marks"
                       inputMode="numeric"
-                      className="h-8 w-24"
+                      className="h-9 w-24"
                       value={marksInput}
                       onChange={(e) => setMarksInput(e.target.value)}
                       placeholder="0"
@@ -977,6 +1054,7 @@ export function MarkingConsoleClient() {
                   </div>
                   <Button
                     size="sm"
+                    className="h-9"
                     onClick={() =>
                       submitHumanMarkAndNext(detail.answerId, detail.partMarks)
                     }
