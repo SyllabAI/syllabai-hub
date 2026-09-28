@@ -14,9 +14,14 @@ export const maxDuration = 120;
 const Body = z.object({
   question: z.string().min(1).max(2000),
   history: z
-    .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(4000) }))
-    .max(16)
+    .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(2000) }))
+    .max(12)
     .default([]),
+  /** §22 session to persist the exchange to (web s140 parity) — optional;
+   *  core fails fast with 404 when the id is foreign/unknown, before any
+   *  LLM spend. The per-turn 2000-char bound mirrors core's HistoryTurn
+   *  validation (the old 4000 cap would 400 any long answer's next ask). */
+  sessionId: z.string().uuid().optional(),
 });
 
 /** Core TutorAnswerView (lib/types.ts mirror — kept local so this route
@@ -69,8 +74,12 @@ const CHAT_LIMITS: RateLimitRule[] = [
  * - core dies mid-stream → its `error` event passes through and the chat
  *   renders the honest error state on the partial answer.
  *
- * Thread transcripts stay client-local (demo threads); bridging them onto
- * core's §22 session store is a recorded follow-up tranche.
+ * Thread transcripts persist to core's §22 session store when the client
+ * binds one (HUB-TUTOR-SESSIONS): the sessionId rides the ask, core appends
+ * the completed exchange (stream: on the Completed event only; legacy
+ * fallback: server-side inside /ask), and the conversations pane reads the
+ * same store back. A thread without a binding asks unpersisted, exactly as
+ * before.
  */
 export async function POST(req: NextRequest) {
   const token =
@@ -102,6 +111,7 @@ export async function POST(req: NextRequest) {
   const coreBody = {
     question: parsed.question,
     history: parsed.history.map((h) => ({ role: h.role, text: h.content })),
+    ...(parsed.sessionId ? { sessionId: parsed.sessionId } : {}),
   };
 
   let result: Awaited<ReturnType<typeof coreStreamAuthorized>>;
@@ -235,7 +245,10 @@ function pipeSse(upstream: Response): Response {
 
 /** Blocking `/ask` + re-chunk — the pre-stream adaptation, kept verbatim so
  *  hub deploys never outpace core deploys. */
-async function legacyBlockingFallback(token: string, coreBody: { question: string; history: { role: string; text: string }[] }): Promise<Response> {
+async function legacyBlockingFallback(
+  token: string,
+  coreBody: { question: string; history: { role: string; text: string }[]; sessionId?: string },
+): Promise<Response> {
   try {
     const result = await coreFetchAuthorized<CoreTutorAnswer>("/api/v1/tutor/ask", {
       method: "POST",

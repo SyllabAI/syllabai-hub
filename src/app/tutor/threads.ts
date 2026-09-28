@@ -33,6 +33,10 @@ export interface Thread {
   createdAt: number;
   updatedAt: number;
   messages: Turn[];
+  /** §22 server session this thread appends to (web s140 parity) — lazily
+   *  bound on the first ask of a signed-in chat; null = local-only thread
+   *  (signed-out history, or a create that failed and degraded honestly). */
+  sessionId?: string | null;
 }
 
 const KEY = "syllabai.tutor.threads.v1";
@@ -223,12 +227,40 @@ export function insertThread(thread: Thread, activeId: string | null) {
   commit({ threads, activeId });
 }
 
-/** Map stored turns to the wire history format (client-side cap). */
-export function historyFor(turns: Turn[], cap = 16) {
+/** Map stored turns to the wire history format (client-side cap).
+ *
+ *  The caps mirror core's validation EXACTLY (web s139 parity): 12 turns
+ *  (`ConversationTurn.MAX_HISTORY_TURNS`) of 2000 chars each
+ *  (`MAX_TURN_CHARS`, the same bound the server's sanitizer enforces —
+ *  truncating client-side lets the request pass @Size validation as-is;
+ *  the hub's pre-session cap of 16 × 4000 would 400 any long chat). */
+export function historyFor(turns: Turn[], cap = 12) {
   return turns
     .filter((m) => m.content.trim().length > 0 && !m.error)
     .slice(-cap)
-    .map((m) => ({ role: m.role, content: m.content }));
+    .map((m) => ({ role: m.role, content: truncateTurn(m.content) }));
+}
+
+/** Core's per-turn validation bound (ConversationTurn.MAX_TURN_CHARS). */
+const MAX_TURN_CHARS = 2000;
+
+function truncateTurn(content: string): string {
+  return content.length <= MAX_TURN_CHARS
+    ? content
+    : content.slice(0, MAX_TURN_CHARS - 1) + "…";
+}
+
+// ── §22 server-session binding (web s140 parity) ─────────────────────
+
+/** Bind a thread to its §22 server session (first completed create). */
+export function bindSession(threadId: string, sessionId: string) {
+  updateThread(threadId, (t) => ({ ...t, sessionId }));
+}
+
+/** Drop a thread's §22 binding — a foreign/deleted session id 404'd
+ *  server-side, so the next ask lazily creates a fresh one (web s140). */
+export function unbindSession(threadId: string) {
+  updateThread(threadId, (t) => ({ ...t, sessionId: null }));
 }
 
 // ── grouping + export helpers ────────────────────────────────────────

@@ -22,6 +22,16 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -32,13 +42,16 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { getToken } from "@/lib/api";
+import { api, getToken } from "@/lib/api";
+import { useIdentity } from "@/lib/identity";
+import type { TutorSessionSummary, TutorSessionTurnView } from "@/lib/types";
 import { Composer, QUESTION_CAP } from "./composer";
 import { MessageItem } from "./message-item";
 import { SidebarBrand, ThreadSidebar } from "./thread-sidebar";
-import type { Turn } from "./threads";
+import type { Thread, Turn } from "./threads";
 import {
   appendMessages,
+  bindSession,
   createThread,
   downloadThread,
   ensureActiveThread,
@@ -46,6 +59,7 @@ import {
   historyFor,
   patchLastMessage,
   setActiveThread,
+  unbindSession,
   updateThread,
   useThreadsSnapshot,
 } from "./threads";
@@ -92,6 +106,24 @@ const NEAR_BOTTOM_PX = 96;
 const SIDEBAR_KEY = "syllabai.tutor.sidebar";
 
 /**
+ * Map a stored §22 transcript turn back to the thread's Turn shape (web s140
+ * hydration parity). Restored assistant turns keep the honest provider and
+ * refusal flags; citations are NOT reconstructed — the stored prose is the
+ * learner-visible answer (the citation archive of record is core's research
+ * telemetry), and a locally-bound thread is preferred over re-hydration for
+ * exactly that reason.
+ */
+function restoredTurn(turn: TutorSessionTurnView): Turn {
+  return {
+    role: turn.role === "assistant" ? "assistant" : "user",
+    content: turn.content,
+    at: Date.parse(turn.at) || Date.now(),
+    provider: turn.provider ?? undefined,
+    refused: turn.refused || undefined,
+  };
+}
+
+/**
  * Sidebar preference, hydration-safe: server snapshot is "open", client
  * snapshot reads the stored pref; same-tab toggles go through an override so
  * no effect ever needs to sync state.
@@ -112,6 +144,7 @@ export function TutorChat() {
   const { threads, activeId } = useThreadsSnapshot();
   const activeThread = threads.find((t) => t.id === activeId) ?? null;
   const messages = activeThread?.messages ?? [];
+  const identity = useIdentity();
 
   const [input, setInput] = useState("");
   const [streamingId, setStreamingId] = useState<string | null>(null);
@@ -122,6 +155,16 @@ export function TutorChat() {
   const [sidebarOverride, setSidebarOverride] = useState<boolean | null>(null);
   const sidebarOpen = sidebarOverride ?? sidebarPref;
   const [mobileNav, setMobileNav] = useState(false);
+
+  // §22 server conversations (web s143 parity): the synced pane's data. null
+  // = still loading; a failed load shows an honest inline error, never a
+  // blank pane — the chat itself keeps working either way.
+  const [conversations, setConversations] = useState<TutorSessionSummary[] | null>(null);
+  const [conversationsError, setConversationsError] = useState<string | null>(null);
+  const [openingId, setOpeningId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<TutorSessionSummary | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const hydratedServerRef = useRef(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortsRef = useRef<Map<string, AbortController>>(new Map());
@@ -160,6 +203,21 @@ export function TutorChat() {
     setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX);
   };
 
+  // ── §22 server conversations (web s143 parity) ─────────────────────
+  // One small summary GET on mount, refreshed after every completed ask (a
+  // new chat appears, the active one re-titles and re-dates) and after a
+  // delete. The pane degrades honestly — a failed load never blocks the chat.
+  const refreshConversations = useCallback(async () => {
+    if (!getToken()) return;
+    try {
+      const list = await api.tutorSessionList();
+      setConversations(list);
+      setConversationsError(null);
+    } catch (err) {
+      setConversationsError(err instanceof Error ? err.message : "unavailable");
+    }
+  }, []);
+
   // ── the grounded turn ───────────────────────────────────────────────
   const ask = useCallback(
     async (threadId: string, question: string) => {
@@ -181,6 +239,20 @@ export function TutorChat() {
       const patchTurn = (patch: Partial<Turn>) =>
         patchLastMessage(threadId, (m) => ({ ...m, ...patch }));
 
+      // §22 (web s140 parity): lazily create the server session on the first
+      // ask of a signed-in chat. A failed create degrades to an unpersisted
+      // ask — the answer matters more than its archival.
+      let sessionId: string | null = getThreads().find((t) => t.id === threadId)?.sessionId ?? null;
+      if (!sessionId && getToken()) {
+        try {
+          const created = await api.tutorSessionCreate();
+          bindSession(threadId, created.sessionId);
+          sessionId = created.sessionId;
+        } catch {
+          sessionId = null;
+        }
+      }
+
       try {
         const token = getToken();
         const res = await fetch("/api/ai/chat", {
@@ -192,10 +264,25 @@ export function TutorChat() {
           body: JSON.stringify({
             question: `${trimmed}${anchorSuffix}`.slice(0, QUESTION_CAP),
             history,
+            ...(sessionId ? { sessionId } : {}),
           }),
           signal: controller.signal,
         });
-        if (!res.body || !res.ok) throw new Error(`stream failed (${res.status})`);
+        if (!res.body || !res.ok) {
+          // core's §22 integrity probe 404s a foreign/deleted session BEFORE
+          // the stream opens — drop the stale binding so the next ask lazily
+          // creates a fresh session (web s140's foreign-id drop, hub terms)
+          if (res.status === 404 && sessionId) {
+            unbindSession(threadId);
+            patchTurn({
+              error: true,
+              content:
+                "This conversation's server copy has ended — your next reply starts a fresh synced chat.",
+            });
+            return;
+          }
+          throw new Error(`stream failed (${res.status})`);
+        }
 
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
@@ -258,9 +345,13 @@ export function TutorChat() {
       } finally {
         abortsRef.current.delete(threadId);
         setStreamingId((cur) => (cur === threadId ? null : cur));
+        // s143 parity: every completed attempt may have changed the server
+        // list (a brand-new chat, a re-dated active one — even a failed ask
+        // can leave an honestly-empty row the learner can see and delete)
+        if (getToken()) void refreshConversations();
       }
     },
-    [anchorSuffix, scrollToBottom],
+    [anchorSuffix, scrollToBottom, refreshConversations],
   );
 
   // boot an anchored question from the Learning Hub deep links
@@ -275,6 +366,95 @@ export function TutorChat() {
     // identity would re-arm the boot on every render (demo-verified behavior)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bootQuestion]);
+
+  // s143: the synced pane's list loads on mount — and, s140 adapted to the
+  // hub: a SIGNED-IN browser with an empty local store (fresh device, cleared
+  // storage, private mode) restores the most recent server conversation, so
+  // the chat picks up where the account left off. Local transcripts already
+  // survive refresh via localStorage; the server is the store of record.
+  // Skipped when a deep-link boot is armed (it creates its own thread).
+  useEffect(() => {
+    void refreshConversations();
+    if (hydratedServerRef.current) return;
+    hydratedServerRef.current = true;
+    if (bootQuestion || !getToken()) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await api.tutorSessionList();
+        if (cancelled || list.length === 0) return;
+        const existing = getThreads();
+        if (existing.length > 0) return; // local history present — nothing to recover
+        const session = await api.tutorSessionGet(list[0].sessionId);
+        if (cancelled || session.turns.length === 0) return;
+        const thread = createThread(list[0].title?.trim() || "Restored conversation");
+        bindSession(thread.id, session.sessionId);
+        updateThread(thread.id, (t) => ({ ...t, messages: session.turns.map(restoredTurn) }));
+        setActiveThread(thread.id);
+      } catch {
+        // unknown/expired/foreign — a fresh chat, never an error wall
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // once-per-mount bootstrap — deliberately unreactive to transcript changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** s143: resume a synced conversation — the transcript comes from the
+   *  server (every completed ask was persisted), so switching away and back
+   *  loses nothing. A thread already bound to this session is reused as-is
+   *  (its local copy may carry citations the stored turns do not). */
+  const openServerConversation = async (summary: TutorSessionSummary) => {
+    if (streamingId !== null || summary.sessionId === activeThread?.sessionId) return;
+    setOpeningId(summary.sessionId);
+    try {
+      const bound = getThreads().find((t) => t.sessionId === summary.sessionId);
+      if (bound) {
+        setActiveThread(bound.id);
+        return;
+      }
+      const session = await api.tutorSessionGet(summary.sessionId);
+      const thread = createThread(summary.title?.trim() || "Restored conversation");
+      bindSession(thread.id, session.sessionId);
+      updateThread(thread.id, (t) => ({ ...t, messages: session.turns.map(restoredTurn) }));
+      setActiveThread(thread.id);
+    } catch {
+      // deleted on another device / foreign id — drop it from the pane
+      // honestly; the transcript stays whatever it currently is
+      setConversations((prev) =>
+        prev ? prev.filter((c) => c.sessionId !== summary.sessionId) : prev,
+      );
+    } finally {
+      setOpeningId(null);
+    }
+  };
+
+  /** s143: delete a synced conversation — §20 data minimization, the
+   *  learner's own transcript, their call (confirm-gated: a server delete
+   *  has no undo). Deleting the ACTIVE chat's session unbinds the thread —
+   *  its local copy stays as an honest local-only transcript. */
+  const confirmDeleteServer = async () => {
+    const target = deleteTarget;
+    if (!target || deleting) return;
+    setDeleting(true);
+    try {
+      await api.tutorSessionDelete(target.sessionId);
+      setConversations((prev) =>
+        prev ? prev.filter((c) => c.sessionId !== target.sessionId) : prev,
+      );
+      const bound = getThreads().find((t) => t.sessionId === target.sessionId);
+      if (bound) unbindSession(bound.id);
+      setDeleteTarget(null);
+    } catch (err) {
+      // keep the pane honest: the delete failed, the chat is still there
+      setConversationsError(err instanceof Error ? err.message : "Could not delete — try again.");
+      setDeleteTarget(null);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const busyHere = streamingId !== null && streamingId === activeId;
 
@@ -357,6 +537,12 @@ export function TutorChat() {
           threads={threads}
           activeId={activeId}
           onNewChat={newChat}
+          conversations={conversations}
+          conversationsError={conversationsError}
+          activeSessionId={activeThread?.sessionId ?? null}
+          openingId={openingId}
+          onOpenConversation={openServerConversation}
+          onDeleteConversation={setDeleteTarget}
         />
       </aside>
 
@@ -371,6 +557,14 @@ export function TutorChat() {
               activeId={activeId}
               onNewChat={newChat}
               onNavigate={() => setMobileNav(false)}
+              conversations={conversations}
+              conversationsError={conversationsError}
+              activeSessionId={activeThread?.sessionId ?? null}
+              openingId={openingId}
+              onOpenConversation={(s) => {
+                void openServerConversation(s);
+              }}
+              onDeleteConversation={setDeleteTarget}
             />
           </div>
         </SheetContent>
@@ -440,7 +634,10 @@ export function TutorChat() {
                 </li>
                 <li>
                   <strong className="text-foreground">Coverage.</strong> Pearson Edexcel
-                  International GCSE Chemistry (4CH1). Conversations stay in this browser.
+                  International GCSE Chemistry (4CH1).{" "}
+                  {identity
+                    ? "Conversations sync to your SyllabAI account — resume them on any device."
+                    : "Conversations stay in this browser."}
                 </li>
               </ul>
             </PopoverContent>
@@ -553,6 +750,33 @@ export function TutorChat() {
           </div>
         </div>
       </div>
+
+      {/* s143: server-delete confirm — a §22 delete has no undo (unlike the
+          local-thread toast-undo, which only ever touched this browser) */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this conversation?</AlertDialogTitle>
+            <AlertDialogDescription>
+              “{deleteTarget?.title?.trim() || "Empty conversation"}” will be removed from your
+              SyllabAI account on every device. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Keep it</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleting}
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={(e) => {
+                e.preventDefault();
+                void confirmDeleteServer();
+              }}
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

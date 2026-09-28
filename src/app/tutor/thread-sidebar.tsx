@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { useIdentity } from "@/lib/identity";
+import type { TutorSessionSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import type { Thread } from "./threads";
 import {
@@ -31,6 +32,7 @@ import {
 import {
   Atom,
   Check,
+  Cloud,
   LogIn,
   MessageSquare,
   MoreHorizontal,
@@ -46,11 +48,27 @@ export function ThreadSidebar({
   activeId,
   onNewChat,
   onNavigate, // called after a mobile-Sheet selection
+  // §22 synced conversations (web s143 parity) — present only when the chat
+  // owns the server-pane state (i.e. always on /tutor); the sections render
+  // only while signed in, degrading to the local rail otherwise
+  conversations,
+  conversationsError,
+  activeSessionId,
+  openingId,
+  onOpenConversation,
+  onDeleteConversation,
 }: {
   threads: Thread[];
   activeId: string | null;
   onNewChat: () => void;
   onNavigate?: () => void;
+  conversations?: TutorSessionSummary[] | null;
+  conversationsError?: string | null;
+  /** the §22 session the OPEN thread is bound to (drives the active row) */
+  activeSessionId?: string | null;
+  openingId?: string | null;
+  onOpenConversation?: (summary: TutorSessionSummary) => void;
+  onDeleteConversation?: (summary: TutorSessionSummary) => void;
 }) {
   const { toast } = useToast();
   const identity = useIdentity();
@@ -71,6 +89,14 @@ export function ThreadSidebar({
     [threads, q],
   );
   const groups = useMemo(() => groupThreads(filtered), [filtered]);
+  const synced = useMemo(
+    () =>
+      q && conversations
+        ? conversations.filter((c) => (c.title ?? "").toLowerCase().includes(q))
+        : (conversations ?? null),
+    [conversations, q],
+  );
+  const serverPane = !!(identity && onOpenConversation);
 
   const remove = (t: Thread) => {
     deleteThread(t.id);
@@ -122,6 +148,85 @@ export function ThreadSidebar({
       </div>
 
       <nav aria-label="Conversation history" className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+        {/* ── synced conversations (server-owned, web s143 parity) ── */}
+        {serverPane && (
+          <div className="mb-2">
+            <p className="flex items-center gap-1.5 px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/80">
+              <Cloud className="size-3" aria-hidden /> Synced to your account
+            </p>
+            {conversationsError ? (
+              <p className="mx-1 rounded-md border border-warn/30 bg-warn/10 px-2 py-1.5 text-[11px] leading-snug text-warn-ink">
+                Couldn’t load your conversations — {conversationsError}. The chat itself keeps
+                working.
+              </p>
+            ) : synced === null ? (
+              <p className="px-2 py-2 text-[11px] text-muted-foreground">Loading…</p>
+            ) : synced.length === 0 ? (
+              <p className="px-2 py-2 text-[11px] text-muted-foreground">
+                No synced conversations yet — your chats will appear here.
+              </p>
+            ) : (
+              <ul className="space-y-px">
+                {synced.map((c) => {
+                  const active = c.sessionId === activeSessionId;
+                  const opening = openingId === c.sessionId;
+                  return (
+                    <li key={c.sessionId} className="group/item relative flex items-center rounded-md transition-colors">
+                      <button
+                        type="button"
+                        disabled={opening}
+                        onClick={() => onOpenConversation?.(c)}
+                        aria-current={active ? "true" : undefined}
+                        className={cn(
+                          "flex min-w-0 flex-1 flex-col items-start gap-0.5 px-2.5 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          active ? "bg-sidebar-accent" : "hover:bg-sidebar-accent/60",
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "w-full truncate text-[13px] leading-tight",
+                            active && "font-semibold",
+                          )}
+                        >
+                          {c.title?.trim() || "Empty conversation"}
+                        </span>
+                        <span className="flex w-full items-center gap-1.5 text-[10.5px] text-muted-foreground">
+                          <MessageSquare className="size-3 shrink-0" aria-hidden />
+                          <span className="shrink-0 tabular-nums">
+                            {c.turnCount === 1 ? "1 turn" : `${c.turnCount} turns`}
+                          </span>
+                          <span className="ml-auto shrink-0 tabular-nums">
+                            {relativeTime(Date.parse(c.lastActiveAt) || 0)}
+                          </span>
+                        </span>
+                      </button>
+                      {onDeleteConversation && (
+                        <button
+                          type="button"
+                          aria-label={`Delete conversation: ${c.title?.trim() || "empty"}`}
+                          className={cn(
+                            "mr-1 flex size-8 shrink-0 items-center justify-center rounded text-muted-foreground transition-opacity hover:bg-background hover:text-destructive",
+                            "opacity-100 lg:opacity-0 lg:group-hover/item:opacity-100 lg:focus-visible:opacity-100",
+                          )}
+                          onClick={() => onDeleteConversation(c)}
+                        >
+                          <Trash2 className="size-3.5" aria-hidden />
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {serverPane && (groups.length > 0 || filtered.length > 0) && (
+          <p className="flex items-center gap-1.5 px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/80">
+            On this device
+          </p>
+        )}
+
         {groups.length === 0 ? (
           <p className="px-2 py-6 text-center text-xs text-muted-foreground">
             {threads.length === 0
@@ -248,7 +353,7 @@ export function ThreadSidebar({
             <span className="flex size-7 items-center justify-center rounded-full border">
               <LogIn className="size-3.5" aria-hidden />
             </span>
-            Sign in to keep your progress
+            Sign in to sync your conversations
           </Link>
         )}
         {threads.length > 0 && (
