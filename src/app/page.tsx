@@ -202,13 +202,13 @@ export default async function HubPage() {
       </section>
 
       {/* surfaces */}
-      <section aria-label="Demo surfaces" className="space-y-3">
+      <section aria-label="More to explore" className="space-y-3">
         <div className="space-y-1">
-          <h2 className="text-lg font-semibold">Explore the playground</h2>
+          <h2 className="text-lg font-semibold">More to explore</h2>
           <p className="max-w-2xl text-sm text-muted-foreground">
-            Beyond the student flow, this shell is still the experimental playground where
-            learning-surface ideas get tested against real SyllabAI content — provider and AI
-            swap via env vars without touching a component.
+            Beyond the core study flow: a grounded AI tutor with citations, the contextual
+            assistant, knowledge-graph surfaces and the full past-paper library — all anchored to
+            the specification.
           </p>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -237,7 +237,7 @@ export default async function HubPage() {
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-base">
               <ShieldCheck className="size-4 text-primary" aria-hidden />
-              What is real in this demo
+              What is real on this surface
             </CardTitle>
             <CardDescription className="break-all">
               Bundle: {manifest.importSource.repo}@{importRef} ·{" "}
@@ -261,7 +261,7 @@ export default async function HubPage() {
             <div className="flex-wrap items-center gap-2 sm:flex">
               <ProvenanceBadge tier="DEMO_DERIVED" />
               <span className="text-muted-foreground">
-                flashcards generated for the demo — disposable by design
+                flashcards generated for the pilot corpus — disposable by design
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-2">

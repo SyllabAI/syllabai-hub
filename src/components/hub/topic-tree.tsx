@@ -312,7 +312,7 @@ export function TopicTree({
                         </Link>
                       ) : (
                         <span
-                          title="No resources for this sub-topic in the demo bundle yet"
+                          title="No resources for this sub-topic in the corpus yet"
                           className="flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-muted-foreground"
                         >
                           {row}

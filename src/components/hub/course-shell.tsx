@@ -180,7 +180,7 @@ export function CourseShell({
                         {item.disabled ? (
                           <span
                             aria-disabled
-                            title="Not part of the demo corpus yet"
+                            title="Not part of the pilot corpus yet"
                             className="flex cursor-not-allowed items-center gap-2.5 rounded-md px-3 py-2 text-sm text-muted-foreground"
                           >
                             {inner}
@@ -315,7 +315,7 @@ function MobileDrawerInner({
                       {item.disabled ? (
                         <span
                           aria-disabled
-                          title="Not part of the demo corpus yet"
+                          title="Not part of the pilot corpus yet"
                           className="flex cursor-not-allowed items-center gap-2.5 rounded-md px-3 py-2 text-sm text-muted-foreground"
                         >
                           {inner}
