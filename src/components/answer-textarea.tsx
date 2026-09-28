@@ -28,10 +28,41 @@
  * verbatim lists; the wave-3 chemistry glyphs SME lacks keep their own
  * group.
  *
- * Honest-absent (plain-text contract, NOT faked with lookalikes): SME's
- * Italic/Subscript/Superscript are rich-text toggles over markdown
- * storage and "Insert equation" is the MathLive LaTeX editor — all three
- * are deferred pending the answer-format contract decision.
+ * Wave 3d — the KEYBOARD look, matched to the keyboard that actually
+ * appears in SME. SME's editor ships no popover palette at all: pressing
+ * their math tools opens MathLive's stock VIRTUAL KEYBOARD — body-mounted
+ * (no virtualKeyboardContainer override in any SME chunk), i.e. a
+ * viewport-fixed bottom sheet at SME's --keyboard-zindex: 1055, styled
+ * verbatim (recovered from the MathLive bundle in chunk 79d2298f + SME's
+ * css_0308bb0b7a1ae6ad.css z-index override):
+ *   light: sheet #cacfd7, top border #ddd, backdrop shadow
+ *     0 -5px 6px rgba(0,0,0,.08); toolbar tabs (glyph labels — "123",
+ *     italic "αβγ", "∞≠∈", "abc") text #2c2e2f at 135%, min 42×34,
+ *     radius 8px, hover #eee, selected = accent #0c75d8 text + 2px
+ *     underline, toolbar max-width 996px centered; keycaps white with a
+ *     #e5e6e9 border and a #8d8f92 bottom edge (the 3D cap), radius 6px,
+ *     height 60px, gap 8px, font clamp(16px,4cqw,24px), pressed = accent
+ *     bg + white text; secondary action keys #a0a9b8 (hover #7d8795,
+ *     bottom edge #989da6, text #060707, weight 600); row separators are
+ *     1px white rules on the gray sheet.
+ *   dark: sheet #151515, keycaps #1f2022 (hover #2f3032), text #e3e4e8,
+ *     action keys #3d4144 (hover #4d5154), accent #0b5c9c, transparent
+ *     borders — MathLive's own dark palette, mapped to the hub's class
+ *     dark mode.
+ * The sheet portals to document.body (MathLive mounts there too) and its
+ * keys swallow mousedown so the textarea NEVER loses the caret — inserts
+ * land exactly where the learner was typing, like the real keyboard.
+ * Honest scope, unchanged from wave 3c: this is LOOK parity on the
+ * plain-text Unicode keyboard, not a LaTeX editor. The tab strip reuses
+ * MathLive's glyph-label register — "∞≠∈" for Mathematical (their symbols
+ * album label), italic "αβγ" for Greek letters (their greek album label)
+ * — and "₂⁺°" for Chemistry & notation, which is OURS (MathLive has no
+ * chemistry album). Action row = [left] [right] [backspace ×2]
+ * [hide-keyboard], all implementable exactly on a controlled textarea;
+ * MathLive's undo/redo keys are NOT faked (a controlled React value has
+ * no honest native-undo contract). "Insert equation" stays contract-gated
+ * (wave 3c record). Keycap glyphs render in a serif stack as the closest
+ * honest stand-in for SME's KaTeX_Main keycap font.
  *
  * This component mirrors that anatomy on the plain-text textarea:
  *   - collapsed = one line tall; ACTIVE (focused, has content, or a tool
@@ -40,8 +71,9 @@
  *     internally and the strip stays reachable;
  *   - the tool strip (symbols / write / status / word count) renders only
  *     when active, attached below the box like SME's menu row;
- *   - the symbols palette (caret insert, preference under the syllabai-hub:
- *     namespaced localStorage key) opens inside the strip block;
+ *   - the symbols keyboard (caret insert, preference under the
+ *     syllabai-hub: namespaced localStorage key) portals to the viewport
+ *     bottom as the wave-3d MathLive-look sheet;
  *   - wave-3 ink pad / photo → core transcription → insert-at-caret is
  *     session-gated (the spend is authenticated and per-learner — a button
  *     that always 401s would be dishonest);
@@ -65,8 +97,17 @@
  * same string they always have.
  */
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import type { ChangeEvent, ReactNode } from "react";
-import { Omega, PenLine, Upload } from "lucide-react";
+import type { ChangeEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import { createPortal } from "react-dom";
+import {
+  ArrowLeft,
+  ArrowRight,
+  ChevronDown,
+  Delete,
+  Omega,
+  PenLine,
+  Upload,
+} from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { AnswerInkPad, useHasLearnerSession } from "@/components/answer-ink-pad";
@@ -114,10 +155,43 @@ const MENU_BUTTON_SQUARE =
 const MENU_BUTTON_PILL =
   "flex h-8 items-center gap-1 rounded-full pl-2 pr-3 text-[13px] font-medium text-foreground/90 hover:bg-muted aria-expanded:bg-muted focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/25";
 
-/** SME Symbols_menu popover: padding .25rem, border, their exact ambient
- *  shadow (0 4px 30px rgba(59,68,89,.16)). */
-const SYMBOLS_PANEL =
-  "m-1 mt-0 rounded-md border bg-muted/40 p-1 shadow-[0_4px_30px_0_rgba(59,68,89,0.16)]";
+/** MathLive virtual-keyboard palette, verbatim from SME's production
+ *  MathLive bundle (light + dark theme blocks of the injected stylesheet;
+ *  z-index from SME's own --keyboard-zindex override). Every value below
+ *  traces to that stylesheet — nothing here is invented. */
+const KB_SHEET =
+  "fixed inset-x-0 bottom-0 z-[1055] border-t border-[#ddd] bg-[#cacfd7] pt-[5px] pb-[env(safe-area-inset-bottom)] shadow-[0_-5px_6px_rgba(0,0,0,0.08)] dark:border-transparent dark:bg-[#151515] dark:shadow-none";
+const KB_TABS = "mx-auto flex min-h-8 max-w-[996px] items-end px-2";
+const KB_TAB =
+  "mx-0.5 flex min-h-[34px] min-w-[42px] items-center justify-center rounded-[8px] px-2.5 pb-2 pt-2 text-[135%] leading-none text-[#2c2e2f] hover:bg-[#eee] dark:text-[#e3e4e8] dark:hover:bg-[#303030]";
+const KB_TAB_ACTIVE =
+  "mb-2 rounded-none border-b-2 border-[#0c75d8] pb-1 text-[#0c75d8] hover:bg-transparent dark:border-[#0b5c9c] dark:text-[#0b5c9c] dark:hover:bg-transparent";
+const KB_ROWS =
+  "mx-auto max-w-[996px] divide-y divide-white px-2 dark:divide-[#303030]";
+const KB_ROW = "grid grid-cols-10 gap-2 py-1";
+const KB_KEY =
+  "flex h-[60px] items-center justify-center rounded-[6px] border border-[#e5e6e9] border-b-[#8d8f92] bg-white font-serif text-[clamp(16px,4vw,24px)] leading-none text-black hover:bg-[#f5f5f7] active:bg-[#0c75d8] active:text-white dark:border-transparent dark:bg-[#1f2022] dark:text-[#e3e4e8] dark:active:bg-[#0b5c9c] dark:hover:bg-[#2f3032]";
+const KB_ACTION =
+  "flex h-[60px] items-center justify-center rounded-[6px] border border-[#e5e6e9] border-b-[#989da6] bg-[#a0a9b8] font-semibold text-[min(1rem,3.2vw)] leading-none text-[#060707] hover:bg-[#7d8795] active:bg-[#0c75d8] active:text-white dark:border-transparent dark:bg-[#3d4144] dark:text-[#e7ebee] dark:active:bg-[#0b5c9c] dark:hover:bg-[#4d5154]";
+
+/** Tab strip labels, in MathLive's glyph-label register (their toolbar
+ *  shows glyph sigils, not words). "∞≠∈" and italic "αβγ" are MathLive's
+ *  verbatim album labels; "₂⁺°" is ours for Chemistry & notation —
+ *  MathLive ships no chemistry album (documented honest substitution). */
+const SYMBOL_TABS = SYMBOL_GROUPS.map((g, i) => ({
+  label: ["∞≠∈", "αβγ", "₂⁺°"][i] ?? g.label,
+  italic: i === 1,
+}));
+
+/** MathLive layers are 10 keycaps wide (their numeric layer: 10 keys per
+ *  row) — our glyph groups chunk onto the same grid, ragged last rows and
+ *  all, exactly like MathLive's separator-padded rows. */
+const KB_COLS = 10;
+const kbRows = (symbols: string[]): string[][] => {
+  const rows: string[][] = [];
+  for (let i = 0; i < symbols.length; i += KB_COLS) rows.push(symbols.slice(i, i + KB_COLS));
+  return rows;
+};
 
 /**
  * Answer-shape-aware placeholder derived ONLY from the stem's imperative
@@ -197,6 +271,7 @@ export function AnswerTextarea({
   const [padOpen, setPadOpen] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [focused, setFocused] = useState(false);
+  const [symTab, setSymTab] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hasSession = useHasLearnerSession();
   const autoId = useId();
@@ -233,6 +308,39 @@ export function AnswerTextarea({
   };
 
   const onFileConsumed = useCallback(() => setPendingFile(null), []);
+
+  /** Keyboard action row — caret ops on the controlled textarea, exactly
+   *  what MathLive's [left] [right] [backspace] [hide-keyboard] keys do
+   *  on the mathfield. Undo/redo stay honest-absent (see header). */
+  const caretMove = (dir: -1 | 1) => {
+    const el = taRef.current;
+    if (!el) return;
+    const start = el.selectionStart ?? value.length;
+    const end = el.selectionEnd ?? start;
+    const collapsed = start === end;
+    const pos = Math.max(0, Math.min(value.length, collapsed ? start + dir : dir === -1 ? start : end));
+    el.focus();
+    el.setSelectionRange(pos, pos);
+  };
+  const backspaceAtCaret = () => {
+    const el = taRef.current;
+    if (!el) return;
+    const start = el.selectionStart ?? value.length;
+    const end = el.selectionEnd ?? start;
+    if (start === end && start === 0) return;
+    const nextStart = start === end ? start - 1 : start;
+    onChange(value.slice(0, nextStart) + value.slice(end));
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(nextStart, nextStart);
+    });
+  };
+
+  /** Keys must never steal the caret: mousedown's focus side-effect is
+   *  swallowed (the canonical editor pattern — click still fires) so the
+   *  textarea keeps focus and insertAtCaret lands where the learner was
+   *  typing, exactly like MathLive's keyboard holds the mathfield. */
+  const keepFocus = (e: ReactMouseEvent) => e.preventDefault();
 
   const toggleSymbols = () => {
     const next = !symOpen;
@@ -378,34 +486,6 @@ export function AnswerTextarea({
                 </div>
               </div>
             </div>
-            {symOpen && (
-              <div className={SYMBOLS_PANEL}>
-                {SYMBOL_GROUPS.map((group) => (
-                  <fieldset key={group.label}>
-                    <legend className="px-2 pt-1.5 text-xs font-bold text-foreground">
-                      {group.label}
-                    </legend>
-                    <div
-                      role="group"
-                      aria-label={`Insert ${group.label.toLowerCase()} symbols`}
-                      className="grid grid-cols-7 gap-1 p-1 pb-2"
-                    >
-                      {group.symbols.map((ch) => (
-                        <button
-                          key={ch}
-                          type="button"
-                          onClick={() => insertAtCaret(ch)}
-                          aria-label={`Insert ${ch}`}
-                          className={MENU_BUTTON_SQUARE}
-                        >
-                          <span aria-hidden="true" className="font-mono text-sm">{ch}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </fieldset>
-                ))}
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -419,6 +499,80 @@ export function AnswerTextarea({
           onFileConsumed={onFileConsumed}
         />
       )}
+      {symOpen &&
+        createPortal(
+          <div
+            role="group"
+            aria-label="Math keyboard"
+            data-testid="answer-keyboard"
+            className={KB_SHEET}
+          >
+            {/* MathLive toolbar: glyph-label album tabs, selected tab gets
+                the 2px accent underline; 135% labels, 42×34 minimum. */}
+            <div role="tablist" aria-label="Keyboard layouts" className={KB_TABS}>
+              {SYMBOL_GROUPS.map((group, i) => (
+                <button
+                  key={group.label}
+                  type="button"
+                  role="tab"
+                  aria-selected={symTab === i}
+                  onMouseDown={keepFocus}
+                  onClick={() => setSymTab(i)}
+                  className={cn(KB_TAB, symTab === i && KB_TAB_ACTIVE)}
+                >
+                  <span aria-hidden="true" className={cn(SYMBOL_TABS[i].italic && "italic")}>
+                    {SYMBOL_TABS[i].label}
+                  </span>
+                  <span className="sr-only">{group.label}</span>
+                </button>
+              ))}
+            </div>
+            {/* Keycap rows on the gray sheet, 1px white rules between rows
+                (MathLive's --_horizontal-rule), 10 caps per row. */}
+            <div className={KB_ROWS}>
+              {kbRows(SYMBOL_GROUPS[symTab]?.symbols ?? []).map((row, r) => (
+                <div key={r} role="group" aria-label={`Keyboard row ${r + 1}`} className={KB_ROW}>
+                  {row.map((ch) => (
+                    <button
+                      key={ch}
+                      type="button"
+                      onMouseDown={keepFocus}
+                      onClick={() => insertAtCaret(ch)}
+                      aria-label={`Insert ${ch}`}
+                      className={KB_KEY}
+                    >
+                      <span aria-hidden="true">{ch}</span>
+                    </button>
+                  ))}
+                </div>
+              ))}
+              {/* MathLive's action row — secondary keycaps. Ours carries the
+                  four keys a controlled textarea implements exactly: caret
+                  left/right, backspace (2-wide like their numeric layer),
+                  hide-keyboard. Undo/redo honest-absent (header note). */}
+              <div role="group" aria-label="Keyboard actions" className={KB_ROW}>
+                <button type="button" onMouseDown={keepFocus} onClick={() => caretMove(-1)} aria-label="Move caret left" className={KB_ACTION}>
+                  <ArrowLeft className="size-5" aria-hidden />
+                </button>
+                <button type="button" onMouseDown={keepFocus} onClick={() => caretMove(1)} aria-label="Move caret right" className={KB_ACTION}>
+                  <ArrowRight className="size-5" aria-hidden />
+                </button>
+                <span aria-hidden="true" />
+                <span aria-hidden="true" />
+                <span aria-hidden="true" />
+                <span aria-hidden="true" />
+                <span aria-hidden="true" />
+                <button type="button" onMouseDown={keepFocus} onClick={backspaceAtCaret} aria-label="Backspace" className={cn(KB_ACTION, "col-span-2")}>
+                  <Delete className="size-5" aria-hidden />
+                </button>
+                <button type="button" onMouseDown={keepFocus} onClick={toggleSymbols} aria-expanded={symOpen} aria-label="Hide keyboard" title="Hide keyboard" className={KB_ACTION}>
+                  <ChevronDown className="size-5" aria-hidden />
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
