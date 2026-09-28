@@ -5,10 +5,13 @@
  *
  * The split-screen card keeps the demo's role-story panel (Student /
  * Teacher marketing stories); credentials now hit syllabai-core's
- * AuthController via the api client (login + register). The role selector
- * is a story switcher only — the actual role arrives from the server on
- * the user record, and routing follows it: TEACHER/ADMIN → /teacher,
- * everyone else → /dashboard.
+ * AuthController via the api client (login + register). In LOGIN mode the
+ * role selector is a story switcher only — the actual role arrives from
+ * the server on the user record, and routing follows it: TEACHER/ADMIN →
+ * /teacher, everyone else → /dashboard. In REGISTER mode the teacher
+ * story is a REAL request: core honours role=TEACHER only with the
+ * platform's teacher join code (fail-closed — a wrong code and an unset
+ * code are the same 403), so the field below only appears there.
  *
  * Browsing without an account stays possible: every resource surface
  * (notes, questions, flashcards, past papers) is public; only the
@@ -77,6 +80,7 @@ export function LoginClient() {
   const [typedEmail, setTypedEmail] = useState<string | null>(null);
   const [typedPassword, setTypedPassword] = useState("");
   const [typedName, setTypedName] = useState("");
+  const [joinCode, setJoinCode] = useState("");
   const role: Role = roleOverride ?? identity?.role ?? initialRole;
   const email = typedEmail ?? identity?.email ?? "";
   const [error, setError] = useState<string | null>(null);
@@ -103,13 +107,24 @@ export function LoginClient() {
       setError("Tell us your name — it personalises your dashboard.");
       return;
     }
+    if (mode === "register" && role === "teacher" && !joinCode.trim()) {
+      setError("Teacher accounts need the join code — ask your school's SyllabAI administrator.");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
       const auth =
         mode === "login"
           ? await api.login(trimmed, typedPassword)
-          : await api.register(trimmed, typedPassword, typedName.trim());
+          : await api.register(
+              trimmed,
+              typedPassword,
+              typedName.trim(),
+              role === "teacher"
+                ? { role: "TEACHER", joinCode: joinCode.trim() }
+                : undefined,
+            );
       setSession(auth);
       announceSessionChange();
       const isTeacher = auth.user.roles.some((r) => r === "TEACHER" || r === "ADMIN");
@@ -184,7 +199,9 @@ export function LoginClient() {
         <p className="mt-1 text-sm text-muted-foreground">
           {mode === "login"
             ? "Your tutor, assistant and progress live on your account."
-            : "A student account gets you the tutor, assistant and progress tracking."}
+            : role === "teacher"
+              ? "A teacher account opens the workspace — assignments, cohort mastery and content validation."
+              : "A student account gets you the tutor, assistant and progress tracking."}
         </p>
 
         {/* P3-7 (hub UI audit): say so explicitly — the pre-filled email and
@@ -287,6 +304,24 @@ export function LoginClient() {
             />
           </div>
 
+          {mode === "register" && role === "teacher" && (
+            <div className="space-y-2">
+              <Label htmlFor="login-join-code">Teacher join code</Label>
+              <Input
+                id="login-join-code"
+                type="password"
+                autoComplete="off"
+                placeholder="From your school's SyllabAI administrator"
+                value={joinCode}
+                onChange={(event) => setJoinCode(event.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Teacher self-registration is gated by a shared join code — the
+                server refuses a wrong one with the same answer as a missing one.
+              </p>
+            </div>
+          )}
+
           {error && (
             <p role="alert" className="text-xs font-medium text-destructive">
               {error}
@@ -315,7 +350,11 @@ export function LoginClient() {
               setError(null);
             }}
           >
-            {mode === "login" ? "Create a student account" : "Sign in"}
+            {mode === "login"
+              ? role === "teacher"
+                ? "Create a teacher account"
+                : "Create a student account"
+              : "Sign in"}
           </button>
         </p>
 

@@ -388,10 +388,21 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
 
-  register: (email: string, password: string, displayName: string) =>
+  register: (
+    email: string,
+    password: string,
+    displayName: string,
+    opts?: { role?: "TEACHER"; joinCode?: string },
+  ) =>
     request<AuthResponse>("/api/v1/auth/register", {
       method: "POST",
-      body: JSON.stringify({ email, password, displayName }),
+      body: JSON.stringify({
+        email,
+        password,
+        displayName,
+        ...(opts?.role ? { role: opts.role } : {}),
+        ...(opts?.joinCode ? { joinCode: opts.joinCode } : {}),
+      }),
     }),
 
   // ── content GETs (cached, see ./api-cache): user-independent curriculum /
