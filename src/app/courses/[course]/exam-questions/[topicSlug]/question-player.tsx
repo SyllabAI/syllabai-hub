@@ -39,6 +39,7 @@ import {
   PenLine,
   RotateCcw,
   Sparkles,
+  Type,
   X,
   XCircle,
 } from "lucide-react";
@@ -558,6 +559,39 @@ function StructuredPart({
 
 // ── typed-answer workspace (SME "type your answer" + "Mark my answer") ──
 
+/**
+ * localStorage key follows the syllabai-hub: namespacing convention
+ * (progress.ts parity — a shared/demo key must never collide or wipe).
+ */
+const SYMBOLS_PREF_KEY = "syllabai-hub:answer-symbols-open";
+
+/**
+ * Notation typed IGCSE answers actually need: sub/superscripts, charges,
+ * the equilibrium/direction arrows, degree, delta, multiplication sign.
+ * Inserted as plain text — the answer stays a plain-text contract
+ * end-to-end (core submitStructuredAttempt and the legacy /api/ai/mark).
+ */
+const ANSWER_SYMBOLS = ["₂", "₃", "₄", "⁺", "⁻", "²", "³", "→", "⇌", "°", "Δ", "×"] as const;
+
+/**
+ * Answer-shape-aware placeholder derived ONLY from the stem's imperative
+ * verbs — a writing hint, never a marking expectation (no fabricated
+ * exam policy; the marks chip stays the honest contract).
+ */
+function answerPlaceholder(problemMd: string): string {
+  const s = problemMd.toLowerCase();
+  if (/\b(calculate|determine|compute|work out)\b/.test(s)) {
+    return "Show your working — set out each step as you would in the exam…";
+  }
+  if (/\b(balance|equation)\b/.test(s)) {
+    return "Write the equation — include state symbols if the question asks…";
+  }
+  if (/\b(explain|describe|suggest|state|give)\b/.test(s)) {
+    return "Answer in clear points — one idea per point…";
+  }
+  return "Type your answer here…";
+}
+
 function TypedAnswerWorkspace({
   course,
   question,
@@ -576,10 +610,23 @@ function TypedAnswerWorkspace({
   const progress = useCourseProgress(course);
   const savedText = progress.typedAnswers[part.id]?.text ?? "";
   const [text, setText] = useState(savedText);
-  const [justSaved, setJustSaved] = useState(false);
   const [probedAi, setProbedAi] = useState<boolean | null>(null);
   const [mark, setMark] = useState<MarkState>({ kind: "idle" });
   const [applied, setApplied] = useState(false);
+  // Answer-box UX wave (HUB-ANSWER-BOX): the save indicator is DERIVED
+  // (text vs store), not a 1.5 s timer chip — a timer could claim "saved"
+  // while typing had already moved on. The symbols palette persists its
+  // collapsed/expanded preference under the hub-namespaced key.
+  const [symOpen, setSymOpen] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.localStorage.getItem(SYMBOLS_PREF_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  const resultRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // the old free-text AI marking lane is superseded by core Smart Mark
@@ -597,9 +644,44 @@ function TypedAnswerWorkspace({
 
   const persist = (value: string) => {
     saveTypedAnswer(course, part.id, value);
-    setJustSaved(true);
-    setTimeout(() => setJustSaved(false), 1500);
   };
+
+  /** steady-state save indicator: true only between a keystroke and the
+   *  (synchronous) store write reaching the next render */
+  const dirty = text !== savedText;
+  const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
+
+  /** insert at the caret; the per-keystroke autosave contract runs through
+   *  onType, so a fast "Mark my answer" click still sees the current text */
+  const insertSymbol = (ch: string) => {
+    const el = taRef.current;
+    const start = el?.selectionStart ?? text.length;
+    const end = el?.selectionEnd ?? start;
+    onType(text.slice(0, start) + ch + text.slice(end));
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(start + ch.length, start + ch.length);
+    });
+  };
+
+  const toggleSymbols = () => {
+    const next = !symOpen;
+    setSymOpen(next);
+    try {
+      window.localStorage.setItem(SYMBOLS_PREF_KEY, next ? "1" : "0");
+    } catch {
+      // private mode — the preference is session-only, palette still works
+    }
+  };
+
+  // the AI-mark result card renders below the fold on phones — bring it
+  // into view ("nearest" = no jarring jump when already visible; reduced
+  // motion gets the instant variant)
+  useEffect(() => {
+    if (mark.kind !== "done") return;
+    const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    resultRef.current?.scrollIntoView({ block: "nearest", behavior: reduced ? "auto" : "smooth" });
+  }, [mark.kind]);
 
   const onType = (value: string) => {
     setText(value);
@@ -684,21 +766,81 @@ function TypedAnswerWorkspace({
         <span className="text-[11px] text-muted-foreground">
           {coreLive ? "saved in this browser — submit below to mark it" : "saved in this browser"}
         </span>
-        {justSaved && (
-          <span className="inline-flex items-center gap-1 text-[11px] text-success">
-            <CheckCircle2 className="size-3" aria-hidden /> saved
+        {text.length > 0 && (
+          <span
+            aria-live="polite"
+            className={cn(
+              "inline-flex items-center gap-1 text-[11px]",
+              dirty ? "text-muted-foreground" : "text-success",
+            )}
+          >
+            {dirty ? (
+              <>
+                <Loader2 className="size-3 animate-spin" aria-hidden /> saving…
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="size-3" aria-hidden /> saved
+              </>
+            )}
           </span>
         )}
       </div>
       <Textarea
+        ref={taRef}
         value={text}
         onChange={(e) => onType(e.target.value)}
         onBlur={flushNow}
-        rows={4}
+        // floor scales with the part's marks (a 6-mark answer starts
+        // taller than a 1-mark one); field-sizing-content in the primitive
+        // does the growth on modern browsers, the cap keeps the action row
+        // reachable for very long answers (older browsers scroll instead)
+        rows={Math.min(10, Math.max(4, part.marks * 2))}
         aria-label={`Your typed answer for part ${part.order + 1}`}
-        placeholder="Type your answer here…"
-        className="min-h-24 bg-background text-[13px]"
+        placeholder={answerPlaceholder(part.problemMd)}
+        className="min-h-24 max-h-96 overflow-y-auto bg-background text-[13px]"
       />
+      <div className="mt-1.5 flex items-center gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={toggleSymbols}
+          aria-expanded={symOpen}
+          className="h-7 gap-1.5 px-2 text-[11px] text-muted-foreground"
+        >
+          <Type className="size-3.5" aria-hidden /> symbols
+          {symOpen ? (
+            <ChevronUp className="size-3" aria-hidden />
+          ) : (
+            <ChevronDown className="size-3" aria-hidden />
+          )}
+        </Button>
+        {wordCount > 0 && (
+          <span className="ml-auto text-[11px] tabular-nums text-muted-foreground">
+            {wordCount} word{wordCount === 1 ? "" : "s"}
+          </span>
+        )}
+      </div>
+      {symOpen && (
+        <div
+          className="mt-1 flex flex-wrap gap-1"
+          role="group"
+          aria-label="Insert chemistry and maths symbols"
+        >
+          {ANSWER_SYMBOLS.map((ch) => (
+            <button
+              key={ch}
+              type="button"
+              onClick={() => insertSymbol(ch)}
+              className="h-7 min-w-8 rounded-md border bg-background px-1.5 font-mono text-[13px] leading-none text-foreground/90 hover:bg-muted"
+              aria-label={`Insert ${ch}`}
+            >
+              {ch}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="mt-2 flex flex-wrap items-center gap-2">
         {aiAvailable !== false ? (
           <Button size="sm" variant="outline" disabled={!canMark} onClick={runMark} className="gap-1.5 text-xs">
@@ -714,12 +856,19 @@ function TypedAnswerWorkspace({
             AI marking needs a provider key on the server — self-mark via “How did you do?” below.
           </span>
         )}
+        {aiAvailable === true && text.trim().length === 0 && (
+          <span className="text-[11px] text-muted-foreground">Type an answer first</span>
+        )}
         {mark.kind !== "loading" && mark.kind !== "idle" && (
           <Button asChild size="sm" variant="ghost" className="text-xs">
+            {/* new tab: the question (and the draft) stays open while the
+                tutor conversation runs alongside */}
             <a
               href={`/tutor?q=${encodeURIComponent(
                 `I answered: "${text.slice(0, 300)}" — how could my answer to this question be improved? ${firstLine(question)}`,
               )}`}
+              target="_blank"
+              rel="noreferrer"
             >
               Ask the tutor how to improve
             </a>
@@ -734,7 +883,7 @@ function TypedAnswerWorkspace({
       )}
 
       {mark.kind === "done" && (
-        <div className="mt-3 space-y-2.5 rounded-lg border border-primary/30 bg-primary/5 p-3">
+        <div ref={resultRef} className="mt-3 space-y-2.5 rounded-lg border border-primary/30 bg-primary/5 p-3">
           <div className="flex flex-wrap items-center gap-2">
             <Badge className="gap-1 text-[11px]">
               <Sparkles className="size-3" aria-hidden /> AI-suggested mark: {mark.score}/{mark.max}
