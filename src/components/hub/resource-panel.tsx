@@ -16,7 +16,7 @@ import {
   useCourseData,
   resourceIndexHref,
 } from "@/components/hub/course-data-context";
-import { TopicTree, useActiveSubtopic } from "@/components/hub/topic-tree";
+import { TopicTreeAuto } from "@/components/hub/topic-tree";
 import { useCourseProgress, type Course } from "@/lib/progress";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -33,7 +33,6 @@ export function ResourcePanel({ variant }: { variant: PanelVariant }) {
   const data = useCourseData();
   const pathname = usePathname();
   const [hidden, setHidden] = useState(false);
-  const activeSubtopic = useActiveSubtopic(variant);
   const progress = useCourseProgress(data.course.slug as Course);
   const savedCount = useMemo(() => Object.keys(progress.saved).length, [progress.saved]);
 
@@ -105,7 +104,7 @@ export function ResourcePanel({ variant }: { variant: PanelVariant }) {
               <Bookmark className="size-4 text-muted-foreground" aria-hidden />
             </Link>
           )}
-          <TopicTree data={data} variant={variant} activeSubtopic={activeSubtopic} />
+          <TopicTreeAuto data={data} variant={variant} />
         </div>
       </div>
     </aside>

@@ -5,14 +5,18 @@ import { Breadcrumbs, ExamCodePill } from "@/components/hub/chrome";
 import { ResourcePanel } from "@/components/hub/resource-panel";
 import { Badge } from "@/components/ui/badge";
 import { QuestionPlayer } from "@/app/courses/[course]/exam-questions/[topicSlug]/question-player";
-
-export const dynamic = "force-dynamic";
+import { pilotPracticePaperParams } from "@/lib/static-params";
 
 /**
  * One practice paper (Task 22) — deterministic assembly from the course's
  * real question banks, so the paper is identical on every visit. Questions
  * keep their attested mark schemes; the assembly framing is shown up front.
  */
+
+/** Prerendered at build (ADR-021 perf pass, tranche 4.12) — see static-params.ts. */
+export async function generateStaticParams() {
+  return pilotPracticePaperParams();
+}
 export default async function PracticePaperPage({
   params,
 }: {

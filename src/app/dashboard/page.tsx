@@ -1,8 +1,6 @@
 import { listCourses } from "@/lib/courses";
 import { DashboardClient } from "./dashboard-client";
 
-export const dynamic = "force-dynamic";
-
 export const metadata = {
   title: "Dashboard — SyllabAI",
   description: "Your subjects and their spec-anchored resources.",

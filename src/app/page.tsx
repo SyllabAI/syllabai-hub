@@ -22,8 +22,6 @@ import { listCourses, pilotCourseSlug } from "@/lib/courses";
 import { publicConfig } from "@/lib/config";
 import { ProvenanceBadge } from "@/components/provenance";
 
-export const dynamic = "force-dynamic";
-
 export default async function HubPage() {
   const provider = getDataProvider();
   const cfg = publicConfig();

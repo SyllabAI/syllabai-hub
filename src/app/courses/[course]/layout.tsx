@@ -1,11 +1,9 @@
 import { notFound } from "next/navigation";
-import { loadHubCourse } from "@/lib/courses";
+import { listCourses, loadHubCourse } from "@/lib/courses";
 import { hasPastPapers } from "@/lib/past-papers";
 import { courseHasCorpusPapers } from "@/lib/pastpapers-corpus";
 import { CourseShell, type SidebarData } from "@/components/hub/course-shell";
 import { LastOpenedTracker } from "@/components/hub/last-opened-tracker";
-
-export const dynamic = "force-dynamic";
 
 /**
  * Per-course layout — mounts the persistent course sidebar (the ONE sidebar,
@@ -19,7 +17,22 @@ export const dynamic = "force-dynamic";
  * soft-404 (200 + not-found UI, s133). Pages must be able to 404 pre-flush;
  * loadHubCourse is request-deduped (React cache) so the page rides the
  * layout's data instead of paying a second bundle read.
+ *
+ * Static-serving (ADR-021 perf pass, tranche 4.12): the corpus is committed
+ * and immutable between deploys, and nothing in this tree reads session
+ * state server-side (verified: no cookies()/headers() under src/app/courses
+ * or src/components/hub — the shell's sign-in state is client-side), so the
+ * former blanket force-dynamic (a demo-era inheritance — every course page
+ * was ƒ server-rendered per request, zero CDN HTML) is gone. The layout
+ * enumerates all registered course slugs at build; child pages prerender
+ * what they enumerate (index pages: every course; detail pages: the pilot)
+ * and render on-demand otherwise — unknown slugs still 404 pre-flush on the
+ * on-demand path, so the s133 soft-404 fix holds verbatim.
  */
+export async function generateStaticParams() {
+  const courses = await listCourses();
+  return courses.filter((c) => c.hasBundle).map((c) => ({ course: c.slug }));
+}
 export default async function CourseLayout({
   children,
   params,

@@ -31,3 +31,6 @@ jobs:
         run: bun run build
         env:
           HUB_DATA_MODE: mock
+
+      - name: ADR-021 content package selftest (compile + verify + restore + determinism + tamper)
+        run: bash tools/content-package/selftest.sh

@@ -5,8 +5,7 @@ import { loadHubCourse } from "@/lib/courses";
 import { buildPracticePapers, paperEstTime } from "@/lib/practice-papers";
 import { CourseHeader } from "@/components/hub/course-header";
 import { Card, CardContent } from "@/components/ui/card";
-
-export const dynamic = "force-dynamic";
+import { allCourseParams } from "@/lib/static-params";
 
 /**
  * Practice Papers index (Task 22) — full-length mixed papers assembled
@@ -14,6 +13,11 @@ export const dynamic = "force-dynamic";
  * throughout: same questions and mark schemes as the topic banks, assembled
  * into paper-shaped revision because official papers can't be redistributed.
  */
+
+/** Prerendered at build (ADR-021 perf pass, tranche 4.12) — see static-params.ts. */
+export async function generateStaticParams() {
+  return allCourseParams();
+}
 export default async function PracticePapersPage({
   params,
 }: {

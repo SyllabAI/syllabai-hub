@@ -3,8 +3,7 @@ import { loadHubCourse } from "@/lib/courses";
 import { Breadcrumbs, ExamCodePill } from "@/components/hub/chrome";
 import { ResourcePanel } from "@/components/hub/resource-panel";
 import { QuestionPlayer } from "./question-player";
-
-export const dynamic = "force-dynamic";
+import { pilotTopicSetParams } from "@/lib/static-params";
 
 /**
  * Question set page (SME, research §6.2 + flow crawl fig. 14): breadcrumb
@@ -12,6 +11,11 @@ export const dynamic = "force-dynamic";
  * exam-code pill, slim meta line (questions · marks · estimated time), then
  * the player. The resource topic panel (SME's second column) mounts left.
  */
+
+/** Prerendered at build (ADR-021 perf pass, tranche 4.12) — see static-params.ts. */
+export async function generateStaticParams() {
+  return pilotTopicSetParams();
+}
 export default async function QuestionSetPage({
   params,
 }: {

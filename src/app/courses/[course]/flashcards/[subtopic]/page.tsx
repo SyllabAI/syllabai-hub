@@ -3,9 +3,13 @@ import { loadHubCourse } from "@/lib/courses";
 import { CourseHeader } from "@/components/hub/course-header";
 import { ResourcePanel } from "@/components/hub/resource-panel";
 import { DeckPlayer, type DeckCard } from "./deck-player";
+import { pilotFlashcardParams } from "@/lib/static-params";
 
-export const dynamic = "force-dynamic";
 
+/** Prerendered at build (ADR-021 perf pass, tranche 4.12) — see static-params.ts. */
+export async function generateStaticParams() {
+  return pilotFlashcardParams();
+}
 export default async function FlashcardDeckPage({
   params,
 }: {

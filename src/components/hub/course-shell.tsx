@@ -36,7 +36,7 @@ import {
   type SidebarData,
   type SidebarVariant,
 } from "@/components/hub/course-data-context";
-import { TopicTreeWithIndex, useActiveSubtopic } from "@/components/hub/topic-tree";
+import { TopicTreeWithIndexAuto } from "@/components/hub/topic-tree";
 import { isDocumentFocusRoute } from "@/lib/focus-routes";
 
 export type { SidebarData, SidebarVariant } from "@/components/hub/course-data-context";
@@ -278,7 +278,6 @@ function MobileDrawerInner({
     items: { href: string; label: string; icon: typeof BookOpen; disabled?: boolean; badge?: string; exact?: boolean }[];
   }[];
 }) {
-  const activeSubtopic = useActiveSubtopic(variant);
   const base = `/courses/${data.course.slug}`;
 
   return (
@@ -360,7 +359,7 @@ function MobileDrawerInner({
                 if ((e.target as HTMLElement).closest("a")) onNavigate();
               }}
             >
-              <TopicTreeWithIndex variant={variant} activeSubtopic={activeSubtopic} />
+              <TopicTreeWithIndexAuto variant={variant} />
             </div>
           </div>
         )}

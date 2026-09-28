@@ -11,6 +11,13 @@ import { join } from "node:path";
  */
 export const dynamic = "force-dynamic";
 
+/**
+ * The corpus behind this route is committed and immutable between deploys,
+ * so the CDN may cache responses (ADR-021 perf pass, tranche 4.12). Not
+ * `immutable` — URLs are not deploy-versioned.
+ */
+const CONTENT_CACHE = { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=86400" };
+
 interface CourseStat {
   slug: string;
   hasBundle: boolean;
@@ -95,5 +102,8 @@ export async function GET(request: Request) {
   const stats: Record<string, CourseStat> = {};
   for (const slug of slugs) stats[slug] = statFor(slug);
 
-  return NextResponse.json({ stats }, { headers: { "cache-control": "no-store" } });
+  // Corpus counts are committed + immutable between deploys (ADR-021 perf
+  // pass, tranche 4.12): CDN-cacheable with bounded staleness, SWR keeps
+  // serving through revalidation onto the next deploy's lambda.
+  return NextResponse.json({ stats }, { headers: CONTENT_CACHE });
 }

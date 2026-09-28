@@ -3,8 +3,6 @@ import { Suspense } from "react";
 import { listCourses } from "@/lib/courses";
 import { KnowledgeGraphClient } from "./client";
 
-export const dynamic = "force-dynamic";
-
 export const metadata: Metadata = {
   title: "Knowledge Graph — SyllabAI Hub",
   description:

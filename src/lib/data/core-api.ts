@@ -59,12 +59,14 @@ export function coreApiProvider(): DemoDataProvider {
     conceptGraph: fallback.conceptGraph,
 
     // live lanes (degrade gracefully)
-    revisionNotes: async () => {
-      const live = await coreFetch<{ topics: unknown }>(
-        "/api/v1/learners/me/revision-notes",
-      );
-      return live ? fallback.revisionNotes() : fallback.revisionNotes();
-    },
+    // revisionNotes: the former "live" wrapper fetched
+    // /api/v1/learners/me/revision-notes and then returned the bundled
+    // fallback on BOTH branches — a no-op wrapper whose only effect was a
+    // runtime core round trip (20s timeout) on every render of pages that
+    // served identical output regardless (measured tranche 4.12). Removed;
+    // when core grows a real per-learner notes read model it returns here
+    // with an honest fallback contract like the other live lanes.
+    revisionNotes: fallback.revisionNotes,
     examQuestionTopics: fallback.examQuestionTopics,
     flashcards: fallback.flashcards,
     simLearnerState: fallback.simLearnerState,

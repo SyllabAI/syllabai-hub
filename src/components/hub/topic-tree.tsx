@@ -7,7 +7,7 @@
  * the desktop ResourcePanel and the mobile course drawer — one canonical
  * tree drives nav + progress everywhere.
  */
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ArrowRight } from "lucide-react";
@@ -354,5 +354,48 @@ export function TopicTreeWithIndex({
       </Link>
       <TopicTree data={data} variant={variant} activeSubtopic={activeSubtopic} />
     </div>
+  );
+}
+
+/**
+ * Suspense-gated auto-active variants (ADR-021 perf pass, tranche 4.12).
+ *
+ * useActiveSubtopic() reads ?subtopic via useSearchParams(); on a statically
+ * prerendered page that read must sit behind a Suspense boundary (Next's CSR
+ * bailout) or the build fails with missing-suspense-with-csr-bailout. The
+ * boundary changes nothing observable: the fallback renders the identical
+ * tree with no active highlight, hydration resolves the highlight from the
+ * URL exactly as before, and dynamic (on-demand) renders are unchanged.
+ * ?subtopic is a client-side highlight signal only — never content.
+ */
+function TopicTreeAutoInner({
+  data,
+  variant,
+}: {
+  data: SidebarData;
+  variant: SidebarVariant;
+}) {
+  const activeSubtopic = useActiveSubtopic(variant);
+  return <TopicTree data={data} variant={variant} activeSubtopic={activeSubtopic} />;
+}
+
+export function TopicTreeAuto({ data, variant }: { data: SidebarData; variant: SidebarVariant }) {
+  return (
+    <Suspense fallback={<TopicTree data={data} variant={variant} activeSubtopic={null} />}>
+      <TopicTreeAutoInner data={data} variant={variant} />
+    </Suspense>
+  );
+}
+
+function TopicTreeWithIndexAutoInner({ variant }: { variant: SidebarVariant }) {
+  const activeSubtopic = useActiveSubtopic(variant);
+  return <TopicTreeWithIndex variant={variant} activeSubtopic={activeSubtopic} />;
+}
+
+export function TopicTreeWithIndexAuto({ variant }: { variant: SidebarVariant }) {
+  return (
+    <Suspense fallback={<TopicTreeWithIndex variant={variant} activeSubtopic={null} />}>
+      <TopicTreeWithIndexAutoInner variant={variant} />
+    </Suspense>
   );
 }

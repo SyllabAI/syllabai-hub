@@ -1,7 +1,6 @@
 import { getDataProvider } from "@/lib/data";
 import { KgNavigationExperiment } from "./client";
 
-export const dynamic = "force-dynamic";
 export const metadata = { title: "kg-navigation — experiments" };
 
 export default async function KgNavigationPage() {

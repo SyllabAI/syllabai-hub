@@ -4,6 +4,14 @@ import { loadHubCourse } from "@/lib/courses";
 export const dynamic = "force-dynamic";
 
 /**
+ * The corpus behind this route is committed and immutable between deploys,
+ * so the CDN may cache responses (ADR-021 perf pass, tranche 4.12): a short
+ * s-maxage bounds staleness, stale-while-revalidate keeps serving through
+ * revalidation. Not `immutable` — URLs are not deploy-versioned.
+ */
+const CONTENT_CACHE = { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=86400" };
+
+/**
  * GET /api/notes/[course] — compact revision-note digest for client-side
  * joins (the question↔note help panel). The join keys (specPointCodes) ride
  * both read models, so the panel joins locally by design — no extra round
@@ -30,5 +38,5 @@ export async function GET(
       path: [topic?.title, sub?.title].filter(Boolean).join(" · ") || null,
     };
   });
-  return Response.json({ course: hub.meta.slug, notes });
+  return Response.json({ course: hub.meta.slug, notes }, { headers: CONTENT_CACHE });
 }

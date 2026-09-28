@@ -3,9 +3,13 @@ import { loadHubCourse } from "@/lib/courses";
 import { CourseHeader } from "@/components/hub/course-header";
 import { ResourcePanel } from "@/components/hub/resource-panel";
 import { SavedQuestionsList, type SavedQuestionMeta } from "./saved-list";
+import { allCourseParams } from "@/lib/static-params";
 
-export const dynamic = "force-dynamic";
 
+/** Prerendered at build (ADR-021 perf pass, tranche 4.12) — see static-params.ts. */
+export async function generateStaticParams() {
+  return allCourseParams();
+}
 export default async function SavedQuestionsPage({
   params,
 }: {
@@ -27,13 +31,18 @@ export default async function SavedQuestionsPage({
         marks: q.totalMarks,
         snippet:
           q.parts[0]?.problemMd
-            .split("\n")
+            ?.split("\n")
             .filter((l) => l.trim() && !l.startsWith("!["))[0]
             // plain-text preview: drop bold markers / math dollars / blank runs
-            .replace(/\*{2,}/g, "")
-            .replace(/\$/g, "")
-            .replace(/_{2,}/g, "_")
+            ?.replace(/\*{2,}/g, "")
+            ?.replace(/\$/g, "")
+            ?.replace(/_{2,}/g, "_")
             ?.slice(0, 140) ?? q.id,
+        // (tranche 4.12 note: the unguarded chain crashed on questions whose
+        // first part is ALL image lines — filter()[0] = undefined → .replace
+        // threw. Surfaced by the static prerender sweep on
+        // ial-maths-20-pure-1 (image-heavy maths papers); it was equally
+        // crashable at request time before this tranche. Fall back to the id.)
         subtopicCode,
       };
     }),

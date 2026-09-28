@@ -78,3 +78,8 @@ upload/
 
 # offline QP blueprint cache (scripts/build_paper_blueprints.ts)
 .blueprint-cache/
+
+# ADR-021 content package output (derived artifact — build on demand with
+# tools/content-package/selftest.sh, never committed; ~165 MB with the
+# restore-test tree)
+/dist/

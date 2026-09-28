@@ -7,9 +7,13 @@ import { loadHubCourse } from "@/lib/courses";
 import { CourseHeader } from "@/components/hub/course-header";
 import { NumberedLabel } from "@/components/hub/chrome";
 import { DeckDueBadge } from "./deck-due-badge";
+import { allCourseParams } from "@/lib/static-params";
 
-export const dynamic = "force-dynamic";
 
+/** Prerendered at build (ADR-021 perf pass, tranche 4.12) — see static-params.ts. */
+export async function generateStaticParams() {
+  return allCourseParams();
+}
 export default async function FlashcardsIndexPage({
   params,
 }: {

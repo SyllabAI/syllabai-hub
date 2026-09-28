@@ -1,8 +1,6 @@
 import { listCourses } from "@/lib/courses";
 import { CourseDirectory } from "./course-directory";
 
-export const dynamic = "force-dynamic";
-
 export default async function CoursesIndexPage() {
   const courses = await listCourses();
   return (

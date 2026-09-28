@@ -21,8 +21,7 @@ import { buildPracticePapers } from "@/lib/practice-papers";
 import { CourseHeader } from "@/components/hub/course-header";
 import { CourseSwitcher } from "@/components/hub/course-switcher";
 import { TagChip } from "@/components/hub/chrome";
-
-export const dynamic = "force-dynamic";
+import { allCourseParams } from "@/lib/static-params";
 
 type FrameworkTag = "Study" | "Practice" | "Diagnose";
 
@@ -46,6 +45,11 @@ interface ResourceItem {
  *   links when the committed bundle actually has the content; roadmap
  *   surfaces stay explicitly marked.
  */
+
+/** Prerendered at build (ADR-021 perf pass, tranche 4.12) — see static-params.ts. */
+export async function generateStaticParams() {
+  return allCourseParams();
+}
 export default async function CourseHubPage({
   params,
 }: {

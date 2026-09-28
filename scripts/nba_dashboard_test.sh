@@ -91,7 +91,7 @@ import json, time
 now = int(time.time()*1000)
 d45 = now - 45*86400000
 p = {"notesRead": {},
-     "selfScores": {"qstn_jqfsn2rdNhdD96tK": {"subtopic": None, "topicSlug": "1-1-states-of-matter", "score": 2, "max": 6, "at": d45}},
+     "selfScores": {"qstn_jqfsn2rdNhdD96tK": {"subtopic": None, "topicSlug": "1-1-states-of-matter--exam-questions", "score": 2, "max": 6, "at": d45}},
      "mcqAnswers": {}, "flashcards": {}, "saved": {}, "typedAnswers": {}}
 open('/tmp/nba-seed.json','w').write(json.dumps(p))
 EOF

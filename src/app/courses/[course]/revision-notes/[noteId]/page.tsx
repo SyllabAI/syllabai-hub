@@ -10,8 +10,7 @@ import { Breadcrumbs } from "@/components/hub/chrome";
 import { ResourcePanel } from "@/components/hub/resource-panel";
 import { NoteCla } from "@/components/cla/note-cla";
 import { NoteFootnote } from "./note-footnote";
-
-export const dynamic = "force-dynamic";
+import { pilotNoteParams } from "@/lib/static-params";
 
 /**
  * Note reader — SME page anatomy (research §5.3 + flow crawl fig. flow-04):
@@ -21,6 +20,11 @@ export const dynamic = "force-dynamic";
  * prev/next footer. The resource topic panel (SME's second column) mounts
  * left with the active note highlighted.
  */
+
+/** Prerendered at build (ADR-021 perf pass, tranche 4.12) — see static-params.ts. */
+export async function generateStaticParams() {
+  return pilotNoteParams();
+}
 export default async function NoteReaderPage({
   params,
 }: {

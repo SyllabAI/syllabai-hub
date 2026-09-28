@@ -3,8 +3,7 @@ import { getCourseBundle, loadHubCourse } from "@/lib/courses";
 import { getDataProvider } from "@/lib/data";
 import { CourseHeader } from "@/components/hub/course-header";
 import { SpecificationExplorer, type SpecTopicVM } from "./client";
-
-export const dynamic = "force-dynamic";
+import { allCourseParams } from "@/lib/static-params";
 
 /**
  * Specification explorer — the official spec tree with each statement's
@@ -13,6 +12,11 @@ export const dynamic = "force-dynamic";
  * verbatim, chips render the canonical object verbatim, and the printed
  * rule sentence rides along as tooltip provenance.
  */
+
+/** Prerendered at build (ADR-021 perf pass, tranche 4.12) — see static-params.ts. */
+export async function generateStaticParams() {
+  return allCourseParams();
+}
 export default async function CourseSpecificationPage({
   params,
 }: {

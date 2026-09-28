@@ -27,8 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { InteractiveChip } from "@/components/pastpapers/interactive-chip";
 import { MockResultsStrip } from "@/components/pastpapers/mock-results-strip";
-
-export const dynamic = "force-dynamic";
+import { allCourseParams } from "@/lib/static-params";
 
 /** PDFs stream from raw.githubusercontent.com — warm the connection early. */
 function PreconnectCorpus() {
@@ -56,6 +55,11 @@ function PreconnectCorpus() {
  * the index is derived from the canonical corpus layout. Papers exist here
  * ONLY because the archive holds them.
  */
+
+/** Prerendered at build (ADR-021 perf pass, tranche 4.12) — see static-params.ts. */
+export async function generateStaticParams() {
+  return allCourseParams();
+}
 export default async function PastPapersPage({
   params,
 }: {

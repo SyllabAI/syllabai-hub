@@ -13,8 +13,6 @@ import { Breadcrumbs, ExamCodePill } from "@/components/hub/chrome";
 import { Badge } from "@/components/ui/badge";
 import { QuestionPlayer } from "@/app/courses/[course]/exam-questions/[topicSlug]/question-player";
 
-export const dynamic = "force-dynamic";
-
 /**
  * One past paper (Task 22) — a partial reconstruction built strictly from
  * questions whose parts attest this session + paper number (sourcePaper),

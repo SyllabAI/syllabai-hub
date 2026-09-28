@@ -3,6 +3,9 @@ import { loadHubCourse } from "@/lib/courses";
 
 export const dynamic = "force-dynamic";
 
+/** Committed corpus, immutable between deploys — CDN-cacheable (tranche 4.12). */
+const CONTENT_CACHE = { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=86400" };
+
 /**
  * GET /api/questions/[course]/[topicSlug] — compact question catalog for the
  * standalone assistant's question picker. Codes and ids only — the label is
@@ -37,5 +40,5 @@ export async function GET(
       specPointCodes: [...new Set(q.parts.flatMap((p) => p.specPointCodes))],
     };
   });
-  return Response.json({ course: hub.meta.slug, topic: topicSlug, name: topic.name, questions });
+  return Response.json({ course: hub.meta.slug, topic: topicSlug, name: topic.name, questions }, { headers: CONTENT_CACHE });
 }
