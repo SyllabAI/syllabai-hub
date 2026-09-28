@@ -1,22 +1,32 @@
 "use client";
 
 /**
- * Teacher sub-navigation (TEACHER-2/3) — the teacher workspace keeps the demo's
- * no-global-sidebar chrome: one compact tab strip shared by the teacher
- * routes (Overview / Test Builder / Assignments / Class knowledge graph /
- * Validation). TEACHER_ARCHITECTURE §3 IA, demo-sized.
+ * Teacher sub-navigation (teacher-console tranche, 2026-09-28) — the teacher
+ * workspace keeps the demo's no-global-sidebar chrome: one compact tab strip
+ * shared by the teacher routes. The two LIVE console surfaces ported from
+ * syllabai-web (Marking review, Class intelligence — real core data, RBAC on
+ * every call) come first; the corpus-local tools follow, honestly labeled.
  */
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ClipboardList, FileCheck2, LayoutDashboard, ListChecks, Network, ShieldCheck } from "lucide-react";
+import {
+  ClipboardCheck,
+  ClipboardList,
+  FileCheck2,
+  LayoutDashboard,
+  ListChecks,
+  Network,
+  ShieldCheck,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useIdentity } from "@/lib/identity";
 
 const TABS = [
   { href: "/teacher", label: "Overview", icon: LayoutDashboard },
+  { href: "/teacher/marking", label: "Marking review", icon: ClipboardCheck },
+  { href: "/teacher/class", label: "Class intelligence", icon: Network },
   { href: "/teacher/test-builder", label: "Test Builder", icon: ClipboardList },
   { href: "/teacher/assignments", label: "Assignments", icon: ListChecks },
-  { href: "/teacher/class-graph", label: "Class knowledge graph", icon: Network },
   { href: "/teacher/validation", label: "Validation", icon: FileCheck2 },
 ] as const;
 
