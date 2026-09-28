@@ -315,6 +315,12 @@ export interface LearnerStateView {
    * Optional: cores older than V47 serve the state view without it.
    */
   flashcardRatings?: FlashcardRatingView[];
+  /**
+   * V48 (tranche 4.9): the learner's recent note-vote events (newest first,
+   * capped at 50) — the self-report evidence class. Optional: cores older
+   * than V48 serve the state view without it.
+   */
+  noteVotes?: NoteVoteView[];
 }
 
 /** One flashcard rating event (V47) — hub card id + the hub wire vocabulary. */
@@ -323,6 +329,17 @@ export interface FlashcardRatingView {
   /** "still-learning" | "know" */
   rating: string;
   /** echoes the deck anchor on the POST response; null on the state slice */
+  subtopicCode: string | null;
+  nodeId: string;
+  occurredAt: string;
+}
+
+/** One note-vote event (V48) — hub note id + the canonical wire vocabulary. */
+export interface NoteVoteView {
+  noteId: string;
+  /** "helpful" | "not-helpful" */
+  vote: string;
+  /** echoes the note anchor on the POST response; null on the state slice */
   subtopicCode: string | null;
   nodeId: string;
   occurredAt: string;

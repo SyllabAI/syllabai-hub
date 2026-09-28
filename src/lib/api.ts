@@ -40,6 +40,7 @@ import type {
   AttemptResultView,
   ConceptGraphEdgesView,
   ConceptGraphSeedSummary,
+  NoteVoteView,
   ExamPaperBrowseView,
   ExamPaperDetailView,
   HumanMarkView,
@@ -478,6 +479,21 @@ export const api = {
     subtopicCode: string;
   }) =>
     request<FlashcardRatingView>("/api/v1/learners/me/flashcard-ratings", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  // Note-vote evidence (V48, ADR-029 tranche 4.9): one append-only vote per
+  // call, attributed to the note's subtopic anchor (same structural gate as
+  // ratings — an unknown anchor 404s and the caller degrades to local-only).
+  // Self-report: NEVER mastery on core, and never a content-quality verdict.
+  recordNoteVote: (body: {
+    noteId: string;
+    /** the hub's local vocabulary — core maps up→helpful, down→not-helpful */
+    vote: "up" | "down";
+    subtopicCode: string;
+  }) =>
+    request<NoteVoteView>("/api/v1/learners/me/note-votes", {
       method: "POST",
       body: JSON.stringify(body),
     }),

@@ -681,6 +681,20 @@ function useCoreLearnerModel(course: string): CoreModelData | "off" | "loading" 
           points: toPointIdsOf(bridge, bridge.flashcardCodes[r.cardId]),
           href: null,
         })),
+        // V48 (tranche 4.9): the append-only note-vote trail — every vote and
+        // vote change is its own history event; the trail is self-report
+        // evidence and the note's spec points stay "Not measured" without
+        // marked attempts (the honesty rule, same as ratings)
+        ...(coreState.noteVotes ?? []).map((v) => ({
+          id: `notevote:${v.noteId}:${v.occurredAt}`,
+          at: Date.parse(v.occurredAt),
+          kind: "exposure" as LearnerEventKind,
+          label: "Note voted",
+          value: null,
+          detail: v.vote === "helpful" ? 'rated helpful' : 'rated not helpful',
+          points: toPointIdsOf(bridge, bridge.noteCodes[v.noteId]),
+          href: null,
+        })),
       ].sort((x, y) => y.at - x.at);
 
       const awaiting = events.filter((e) => e.kind === "awaiting").length;
