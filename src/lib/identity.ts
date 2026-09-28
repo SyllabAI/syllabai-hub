@@ -1,21 +1,25 @@
 "use client";
 
 /**
- * Mock identity — the credential side of the login mockup (TEACHER-1).
+ * Session identity — core-auth-backed (promotion ADR-029).
  *
- * The demo has no real authentication (no next-auth wiring, no user table —
- * see docs/TEACHER_MODE_PLAN.md), so the login page simulates one: choosing
- * a role and submitting any credentials writes a local identity record that
- * role-aware surfaces (dashboard greeting, /teacher workspace) can read.
+ * The Hub authenticates against syllabai-core's AuthController. `@/lib/api`
+ * owns the session (localStorage "syllabai.token" + "syllabai.user", written
+ * by setSession after login/register); this store derives the role-aware
+ * identity surface from it so role-aware surfaces (dashboard greeting,
+ * teacher workspace, app shell account menu) keep one simple API.
  *
- * Persists to localStorage["syllabai.identity.v1"]:
- *   { role: "student" | "teacher", name, email, signedInAt }
+ * Role mapping: core issues role strings on UserView.roles — TEACHER/ADMIN
+ * map to the "teacher" workspace role, everything else is a student.
  *
  * Same store pattern as my-subjects.ts / theme-store.ts: module store +
  * useSyncExternalStore, referentially-stable snapshot, custom event for
- * same-tab reactivity + storage event for cross-tab.
+ * same-tab reactivity + storage event for cross-tab. It also follows the
+ * api client's `syllabai:session-expired` event so a 401 anywhere signs
+ * the identity surface out in place.
  */
 import { useSyncExternalStore } from "react";
+import { clearSession, currentUser, getToken } from "@/lib/api";
 
 export type Role = "student" | "teacher";
 
@@ -26,8 +30,8 @@ export interface Identity {
   signedInAt: string;
 }
 
-const KEY = "syllabai.identity.v1";
 const IDENTITY_EVENT = "syllabai:identity-changed";
+const SESSION_EXPIRED_EVENT = "syllabai:session-expired";
 
 export function nameFromEmail(email: string): string {
   const local = email.split("@")[0] ?? "";
@@ -40,31 +44,23 @@ export function nameFromEmail(email: string): string {
     .join(" ");
 }
 
+/** Signed-in identity derived from the core session; null when signed out. */
 function readIdentity(): Identity | null {
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<Identity>;
-    if (parsed.role !== "student" && parsed.role !== "teacher") return null;
-    if (typeof parsed.email !== "string" || parsed.email.length === 0) return null;
-    return {
-      role: parsed.role,
-      email: parsed.email,
-      name:
-        typeof parsed.name === "string" && parsed.name.length > 0
-          ? parsed.name
-          : nameFromEmail(parsed.email),
-      signedInAt:
-        typeof parsed.signedInAt === "string" ? parsed.signedInAt : new Date().toISOString(),
-    };
-  } catch {
-    return null;
-  }
+  if (typeof window === "undefined") return null;
+  const token = getToken();
+  const user = currentUser();
+  if (!token || !user) return null;
+  return {
+    role:
+      user.roles.some((r) => r === "TEACHER" || r === "ADMIN") ? "teacher" : "student",
+    email: user.email,
+    name: user.displayName?.trim() ? user.displayName.trim() : nameFromEmail(user.email),
+    signedInAt: new Date().toISOString(),
+  };
 }
 
 // getSnapshot must return a referentially stable value between store changes
-const EMPTY_SNAPSHOT: Identity | null = null;
-let snapshot: Identity | null = EMPTY_SNAPSHOT;
+let snapshot: Identity | null = null;
 
 function getSnapshot(): Identity | null {
   const next = readIdentity();
@@ -84,35 +80,27 @@ function getServerSnapshot(): Identity | null {
 function subscribe(onChange: () => void) {
   window.addEventListener(IDENTITY_EVENT, onChange);
   window.addEventListener("storage", onChange);
+  // a 401 on any core call clears the session — mirror it on the identity
+  // surface so the shell flips back to "Sign in" without a reload
+  window.addEventListener(SESSION_EXPIRED_EVENT, onChange);
   return () => {
     window.removeEventListener(IDENTITY_EVENT, onChange);
     window.removeEventListener("storage", onChange);
+    window.removeEventListener(SESSION_EXPIRED_EVENT, onChange);
   };
 }
 
-export function setIdentity(identity: { role: Role; email: string; name?: string }): Identity {
-  const next: Identity = {
-    role: identity.role,
-    email: identity.email,
-    name: identity.name?.trim() ? identity.name.trim() : nameFromEmail(identity.email),
-    signedInAt: new Date().toISOString(),
-  };
-  try {
-    window.localStorage.setItem(KEY, JSON.stringify(next));
-  } catch {
-    // storage full / private mode — identity just won't persist
-  }
-  snapshot = next;
+/**
+ * Announce a session change (same tab). Call after api.setSession(...) on
+ * login/register — cross-tab updates arrive via the storage event.
+ */
+export function announceSessionChange(): void {
   window.dispatchEvent(new CustomEvent(IDENTITY_EVENT));
-  return next;
 }
 
+/** Sign out: clear the core session and notify every identity consumer. */
 export function clearIdentity(): void {
-  try {
-    window.localStorage.removeItem(KEY);
-  } catch {
-    // ignore
-  }
+  clearSession();
   snapshot = null;
   window.dispatchEvent(new CustomEvent(IDENTITY_EVENT));
 }

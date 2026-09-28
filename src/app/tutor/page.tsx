@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
+import { RequireAuth } from "@/components/auth/require-auth";
 import { TutorChat } from "./chat";
 
 export const metadata: Metadata = { title: "Tutor — SyllabAI" };
@@ -13,7 +14,9 @@ export default function TutorPage() {
         </div>
       }
     >
-      <TutorChat />
+      <RequireAuth>
+        <TutorChat />
+      </RequireAuth>
     </Suspense>
   );
 }

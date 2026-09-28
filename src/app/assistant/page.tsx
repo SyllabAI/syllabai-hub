@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
+import { RequireAuth } from "@/components/auth/require-auth";
 import { listCourses, loadHubCourse, pilotCourseSlug } from "@/lib/courses";
 import { AssistantClient } from "./assistant-client";
 
@@ -39,7 +41,9 @@ export default async function AssistantPage({
   });
 
   return (
-    <AssistantClient
+    <Suspense fallback={<div className="flex min-h-[60vh] items-center justify-center text-sm text-muted-foreground">Loading assistant…</div>}>
+    <RequireAuth>
+      <AssistantClient
       courses={courses.map(pick)}
       course={pick(hub.meta)}
       topics={hub.index.tree.topics.map((t) => ({
@@ -53,6 +57,8 @@ export default async function AssistantPage({
         name: t.name,
         setName: t.setName ?? null,
       }))}
-    />
+      />
+    </RequireAuth>
+    </Suspense>
   );
 }

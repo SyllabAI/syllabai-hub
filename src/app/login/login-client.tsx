@@ -1,19 +1,23 @@
 "use client";
 
 /**
- * Login mockup — the teacher/student mode split (TEACHER-1).
+ * Sign-in / registration — real core auth (promotion ADR-029).
  *
- * A split-screen auth card: brand panel (left) tells a role-specific story,
- * the form panel (right) carries a Student/Teacher segmented control. There
- * is NO real authentication (docs/TEACHER_MODE_PLAN.md) — submitting any
- * credentials writes a local mock identity (src/lib/identity.ts) and routes
- * to the role's home: student → /dashboard, teacher → /teacher.
+ * The split-screen card keeps the demo's role-story panel (Student /
+ * Teacher marketing stories); credentials now hit syllabai-core's
+ * AuthController via the api client (login + register). The role selector
+ * is a story switcher only — the actual role arrives from the server on
+ * the user record, and routing follows it: TEACHER/ADMIN → /teacher,
+ * everyone else → /dashboard.
  *
- * Demo discipline: the mock nature is disclosed on the card, not hidden.
+ * Browsing without an account stays possible: every resource surface
+ * (notes, questions, flashcards, past papers) is public; only the
+ * core-backed surfaces (tutor, assistant, progress, teacher tools) need
+ * a session.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Atom,
   BookOpen,
@@ -21,7 +25,6 @@ import {
   ClipboardList,
   FileQuestion,
   GraduationCap,
-  Info,
   Loader2,
   ShieldCheck,
   Sparkles,
@@ -31,7 +34,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { setIdentity, useIdentity, type Role } from "@/lib/identity";
+import { api, setSession, wakeBackend } from "@/lib/api";
+import { announceSessionChange, useIdentity, type Role } from "@/lib/identity";
 
 const ROLE_STORY: Record<
   Role,
@@ -42,7 +46,7 @@ const ROLE_STORY: Record<
     sub: "Every note, question and hint is grounded in the Edexcel syllabus.",
     bullets: [
       { icon: BookOpen, text: "Spec-grounded revision notes for 49 courses" },
-      { icon: FileQuestion, text: "Exam-style questions with AI marking" },
+      { icon: FileQuestion, text: "Exam-style questions with self-marking" },
       { icon: Sparkles, text: "A tutor that cites the syllabus, not vibes" },
     ],
   },
@@ -57,44 +61,71 @@ const ROLE_STORY: Record<
   },
 };
 
+function nextDestination(search: URLSearchParams, isTeacher: boolean): string {
+  const next = search.get("next");
+  if (next && next.startsWith("/") && !next.startsWith("//")) return next;
+  return isTeacher ? "/teacher" : "/dashboard";
+}
+
 export function LoginClient() {
   const router = useRouter();
+  const search = useSearchParams();
   const identity = useIdentity();
-  // role/email derive from the mock identity until the user overrides them —
-  // the derive-during-render pattern (no setState-in-effect prefill cascade)
+  const initialRole: Role = search.get("mode") === "teacher" ? "teacher" : "student";
   const [roleOverride, setRoleOverride] = useState<Role | null>(null);
+  const [mode, setMode] = useState<"login" | "register">("login");
   const [typedEmail, setTypedEmail] = useState<string | null>(null);
   const [typedPassword, setTypedPassword] = useState("");
-  const role: Role = roleOverride ?? identity?.role ?? "student";
+  const [typedName, setTypedName] = useState("");
+  const role: Role = roleOverride ?? identity?.role ?? initialRole;
   const email = typedEmail ?? identity?.email ?? "";
-  const setEmail = setTypedEmail;
-  const password = typedPassword;
-  const setPassword = setTypedPassword;
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  function signIn(asRole: Role, asEmail: string) {
-    setSubmitting(true);
-    setError(null);
-    // simulate a network round-trip so the loading state is visible
-    window.setTimeout(() => {
-      setIdentity({ role: asRole, email: asEmail });
-      router.push(asRole === "teacher" ? "/teacher" : "/dashboard");
-    }, 500);
-  }
+  // wake the Render-hosted core while the human types — one unauthenticated
+  // health request per browser session (see api.ts for the ToS rationale)
+  useEffect(() => {
+    wakeBackend();
+  }, []);
 
-  function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmed = email.trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
-      setError("Enter a valid email address — any address works in this mockup.");
+      setError("Enter a valid email address.");
       return;
     }
-    if (password.length === 0) {
-      setError("Enter a password — it is not checked in this mockup.");
+    if (typedPassword.length < 8) {
+      setError(mode === "register" ? "Choose a password of at least 8 characters." : "Enter your password.");
       return;
     }
-    signIn(role, trimmed);
+    if (mode === "register" && typedName.trim().length < 2) {
+      setError("Tell us your name — it personalises your dashboard.");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      const auth =
+        mode === "login"
+          ? await api.login(trimmed, typedPassword)
+          : await api.register(trimmed, typedPassword, typedName.trim());
+      setSession(auth);
+      announceSessionChange();
+      const isTeacher = auth.user.roles.some((r) => r === "TEACHER" || r === "ADMIN");
+      router.push(nextDestination(search, isTeacher));
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Sign-in failed";
+      setError(
+        /401|credentials|password|unauthor/i.test(message)
+          ? mode === "login"
+            ? "That email and password combination didn't match. Check both and try again."
+            : message
+          : message,
+      );
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   const story = ROLE_STORY[role];
@@ -108,7 +139,7 @@ export function LoginClient() {
           <span className="flex size-7 items-center justify-center rounded-md bg-white/15">
             <Atom className="size-4" aria-hidden />
           </span>
-          <span className="font-display font-semibold tracking-tight">syllabai-demo</span>
+          <span className="font-display font-semibold tracking-tight">SyllabAI Hub</span>
         </div>
 
         {/* role-specific story; key triggers a subtle swap animation */}
@@ -133,7 +164,7 @@ export function LoginClient() {
 
         <div className="space-y-1 text-xs text-primary-foreground/70">
           <p className="font-medium">Edexcel IGCSE &amp; IAL · 4CH1 pilot corpus · 49 courses</p>
-          <p>Teacher surfaces are planned — see the teacher workspace mockup after signing in.</p>
+          <p>Grounded AI, honest citations, spec-anchored everything.</p>
         </div>
       </div>
 
@@ -144,18 +175,22 @@ export function LoginClient() {
           <span className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
             <Atom className="size-4" aria-hidden />
           </span>
-          <span className="font-display font-semibold tracking-tight">syllabai-demo</span>
+          <span className="font-display font-semibold tracking-tight">SyllabAI Hub</span>
         </div>
 
-        <h1 className="font-display text-2xl font-semibold tracking-tight">Sign in</h1>
+        <h1 className="font-display text-2xl font-semibold tracking-tight">
+          {mode === "login" ? "Sign in" : "Create your account"}
+        </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Choose your mode, then continue — mockup, no server involved.
+          {mode === "login"
+            ? "Your tutor, assistant and progress live on your account."
+            : "A student account gets you the tutor, assistant and progress tracking."}
         </p>
 
-        {/* role split */}
+        {/* role story split (student / teacher views) */}
         <div
           role="group"
-          aria-label="Choose your mode"
+          aria-label="Preview your mode"
           className="mt-6 grid grid-cols-2 gap-1 rounded-lg bg-muted p-1"
         >
           {(
@@ -187,6 +222,19 @@ export function LoginClient() {
         </div>
 
         <form onSubmit={onSubmit} className="mt-6 space-y-4" noValidate>
+          {mode === "register" && (
+            <div className="space-y-2">
+              <Label htmlFor="login-name">Name</Label>
+              <Input
+                id="login-name"
+                type="text"
+                autoComplete="name"
+                placeholder="Ayesha Rahman"
+                value={typedName}
+                onChange={(event) => setTypedName(event.target.value)}
+              />
+            </div>
+          )}
           <div className="space-y-2">
             <Label htmlFor="login-email">Email</Label>
             <Input
@@ -195,7 +243,7 @@ export function LoginClient() {
               autoComplete="email"
               placeholder={role === "teacher" ? "you@school.edu" : "you@student.school.edu"}
               value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              onChange={(event) => setTypedEmail(event.target.value)}
             />
           </div>
           <div className="space-y-2">
@@ -208,10 +256,10 @@ export function LoginClient() {
             <Input
               id="login-password"
               type="password"
-              autoComplete="current-password"
+              autoComplete={mode === "login" ? "current-password" : "new-password"}
               placeholder="••••••••"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
+              value={typedPassword}
+              onChange={(event) => setTypedPassword(event.target.value)}
             />
           </div>
 
@@ -225,51 +273,32 @@ export function LoginClient() {
             {submitting ? (
               <>
                 <Loader2 className="size-4 animate-spin" aria-hidden />
-                Signing in…
+                {mode === "login" ? "Signing in…" : "Creating account…"}
               </>
             ) : (
-              <>Continue as a {role}</>
+              <>{mode === "login" ? "Sign in" : "Create account"}</>
             )}
           </Button>
         </form>
 
-        <div className="my-5 flex items-center gap-3" aria-hidden>
-          <span className="h-px flex-1 bg-border" />
-          <span className="text-xs text-muted-foreground">or</span>
-          <span className="h-px flex-1 bg-border" />
-        </div>
-
-        <Button
-          type="button"
-          variant="outline"
-          disabled={submitting}
-          className="w-full gap-2"
-          onClick={() => signIn(role, role === "teacher" ? "demo.teacher@syllabai.app" : "demo.student@syllabai.app")}
-        >
-          Continue with a demo {role} account
-        </Button>
-
-        <div className="mt-5 flex items-start gap-2 rounded-md border bg-muted/50 p-3 text-xs leading-relaxed text-muted-foreground">
-          <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-          <span>
-            Mockup only — nothing is sent to a server and any credentials sign you in locally.
-            Real authentication is planned (see the{" "}
-            <Link
-              href="https://github.com/SyllabAI/syllabai-hub/blob/main/docs/TEACHER_MODE_PLAN.md"
-              target="_blank"
-              rel="noreferrer"
-              className="font-medium text-foreground underline underline-offset-2"
-            >
-              teacher mode plan
-            </Link>
-            ).
-          </span>
-        </div>
-
         <p className="mt-5 text-sm text-muted-foreground">
+          {mode === "login" ? "New to SyllabAI? " : "Already registered? "}
+          <button
+            type="button"
+            className="font-medium text-foreground underline underline-offset-2"
+            onClick={() => {
+              setMode(mode === "login" ? "register" : "login");
+              setError(null);
+            }}
+          >
+            {mode === "login" ? "Create a student account" : "Sign in"}
+          </button>
+        </p>
+
+        <p className="mt-4 text-sm text-muted-foreground">
           Just exploring?{" "}
           <Link href="/dashboard" className="font-medium text-foreground underline underline-offset-2">
-            Skip sign-in and browse the demo →
+            Browse without an account →
           </Link>
         </p>
       </div>
