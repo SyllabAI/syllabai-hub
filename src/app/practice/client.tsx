@@ -15,7 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
+import { AnswerTextarea, answerPlaceholder } from "@/components/answer-textarea";
 import { Atom, CheckCircle2, ChevronRight } from "lucide-react";
 import type { ExamQuestionTopic } from "@/lib/contracts";
 import { Markdown } from "@/components/markdown";
@@ -132,12 +132,23 @@ export function PracticeClient({ topics }: Props) {
               <Label htmlFor="answer" className="text-sm">
                 Your answer
               </Label>
-              <Textarea
+              <AnswerTextarea
                 id="answer"
                 value={answer}
-                onChange={(e) => setAnswer(e.target.value)}
-                placeholder="Write your answer as you would in the exam…"
-                className="min-h-28"
+                onChange={setAnswer}
+                ariaLabel="Your practice answer"
+                placeholder={answerPlaceholder(item.part.problemMd)}
+                marks={item.part.marks}
+                // mirrors the footer buttons exactly: reveal needs text
+                // (no scheme peek without an attempt), Next needs a
+                // self-mark (no 0-mark row slipping into the session log)
+                onSubmitShortcut={() => {
+                  if (!revealed) {
+                    if (answer.trim()) setRevealed(true);
+                  } else if (selfMarks !== null) {
+                    next();
+                  }
+                }}
               />
             </div>
 

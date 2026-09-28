@@ -39,7 +39,6 @@ import {
   PenLine,
   RotateCcw,
   Sparkles,
-  Type,
   X,
   XCircle,
 } from "lucide-react";
@@ -48,7 +47,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
+import { AnswerTextarea, answerPlaceholder } from "@/components/answer-textarea";
 import { QuestionHelpPanel } from "@/components/question-help-panel";
 import { Markdown } from "@/components/markdown";
 import { PartProblem } from "@/components/part-problem";
@@ -404,7 +403,7 @@ function QuestionBody({
   const coreLive = bridge.kind === "ready" && coreJoin !== null;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-question-block={question.id}>
       {question.parts.map((p, idx) => {
         if (p.questionType === "multiple_choice") {
           return (
@@ -559,39 +558,6 @@ function StructuredPart({
 
 // ── typed-answer workspace (SME "type your answer" + "Mark my answer") ──
 
-/**
- * localStorage key follows the syllabai-hub: namespacing convention
- * (progress.ts parity — a shared/demo key must never collide or wipe).
- */
-const SYMBOLS_PREF_KEY = "syllabai-hub:answer-symbols-open";
-
-/**
- * Notation typed IGCSE answers actually need: sub/superscripts, charges,
- * the equilibrium/direction arrows, degree, delta, multiplication sign.
- * Inserted as plain text — the answer stays a plain-text contract
- * end-to-end (core submitStructuredAttempt and the legacy /api/ai/mark).
- */
-const ANSWER_SYMBOLS = ["₂", "₃", "₄", "⁺", "⁻", "²", "³", "→", "⇌", "°", "Δ", "×"] as const;
-
-/**
- * Answer-shape-aware placeholder derived ONLY from the stem's imperative
- * verbs — a writing hint, never a marking expectation (no fabricated
- * exam policy; the marks chip stays the honest contract).
- */
-function answerPlaceholder(problemMd: string): string {
-  const s = problemMd.toLowerCase();
-  if (/\b(calculate|determine|compute|work out)\b/.test(s)) {
-    return "Show your working — set out each step as you would in the exam…";
-  }
-  if (/\b(balance|equation)\b/.test(s)) {
-    return "Write the equation — include state symbols if the question asks…";
-  }
-  if (/\b(explain|describe|suggest|state|give)\b/.test(s)) {
-    return "Answer in clear points — one idea per point…";
-  }
-  return "Type your answer here…";
-}
-
 function TypedAnswerWorkspace({
   course,
   question,
@@ -613,19 +579,10 @@ function TypedAnswerWorkspace({
   const [probedAi, setProbedAi] = useState<boolean | null>(null);
   const [mark, setMark] = useState<MarkState>({ kind: "idle" });
   const [applied, setApplied] = useState(false);
-  // Answer-box UX wave (HUB-ANSWER-BOX): the save indicator is DERIVED
-  // (text vs store), not a 1.5 s timer chip — a timer could claim "saved"
-  // while typing had already moved on. The symbols palette persists its
-  // collapsed/expanded preference under the hub-namespaced key.
-  const [symOpen, setSymOpen] = useState(() => {
-    if (typeof window === "undefined") return false;
-    try {
-      return window.localStorage.getItem(SYMBOLS_PREF_KEY) === "1";
-    } catch {
-      return false;
-    }
-  });
-  const taRef = useRef<HTMLTextAreaElement>(null);
+  // Answer-box UX wave: the save indicator is DERIVED (text vs store), not
+  // a 1.5 s timer chip — a timer could claim "saved" while typing had
+  // already moved on. Textarea + symbols palette + word count live in the
+  // shared AnswerTextarea (wave 2) so the practice player behaves the same.
   const resultRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -649,29 +606,28 @@ function TypedAnswerWorkspace({
   /** steady-state save indicator: true only between a keystroke and the
    *  (synchronous) store write reaching the next render */
   const dirty = text !== savedText;
-  const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
 
-  /** insert at the caret; the per-keystroke autosave contract runs through
-   *  onType, so a fast "Mark my answer" click still sees the current text */
-  const insertSymbol = (ch: string) => {
-    const el = taRef.current;
-    const start = el?.selectionStart ?? text.length;
-    const end = el?.selectionEnd ?? start;
-    onType(text.slice(0, start) + ch + text.slice(end));
-    requestAnimationFrame(() => {
-      el?.focus();
-      el?.setSelectionRange(start + ch.length, start + ch.length);
-    });
-  };
-
-  const toggleSymbols = () => {
-    const next = !symOpen;
-    setSymOpen(next);
-    try {
-      window.localStorage.setItem(SYMBOLS_PREF_KEY, next ? "1" : "0");
-    } catch {
-      // private mode — the preference is session-only, palette still works
+  // Ctrl/Cmd+Enter — CONTEXTUAL by honesty design:
+  //   legacy lane → "Mark my answer" (advisory, writes no attempts, and
+  //   canMark already gates empty/loading);
+  //   core live   → bring the question-level "Submit answers" button into
+  //   view and focus it, but do NOT fire it: that button posts REAL
+  //   attempts to the learner's core account, so firing stays a deliberate
+  //   second action (Enter/click on the focused button), never a stray
+  //   keystroke mid-typing.
+  const submitShortcut = () => {
+    if (coreLive) {
+      const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      const btn = document.querySelector<HTMLButtonElement>(
+        `[data-question-block="${question.id}"] [data-core-submit]`,
+      );
+      if (btn) {
+        btn.scrollIntoView({ block: "center", behavior: reduced ? "auto" : "smooth" });
+        btn.focus({ preventScroll: true });
+      }
+      return;
     }
+    if (canMark) runMark();
   };
 
   // the AI-mark result card renders below the fold on phones — bring it
@@ -786,61 +742,15 @@ function TypedAnswerWorkspace({
           </span>
         )}
       </div>
-      <Textarea
-        ref={taRef}
+      <AnswerTextarea
         value={text}
-        onChange={(e) => onType(e.target.value)}
+        onChange={onType}
         onBlur={flushNow}
-        // floor scales with the part's marks (a 6-mark answer starts
-        // taller than a 1-mark one); field-sizing-content in the primitive
-        // does the growth on modern browsers, the cap keeps the action row
-        // reachable for very long answers (older browsers scroll instead)
-        rows={Math.min(10, Math.max(4, part.marks * 2))}
-        aria-label={`Your typed answer for part ${part.order + 1}`}
+        ariaLabel={`Your typed answer for part ${part.order + 1}`}
         placeholder={answerPlaceholder(part.problemMd)}
-        className="min-h-24 max-h-96 overflow-y-auto bg-background text-[13px]"
+        marks={part.marks}
+        onSubmitShortcut={submitShortcut}
       />
-      <div className="mt-1.5 flex items-center gap-2">
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          onClick={toggleSymbols}
-          aria-expanded={symOpen}
-          className="h-7 gap-1.5 px-2 text-[11px] text-muted-foreground"
-        >
-          <Type className="size-3.5" aria-hidden /> symbols
-          {symOpen ? (
-            <ChevronUp className="size-3" aria-hidden />
-          ) : (
-            <ChevronDown className="size-3" aria-hidden />
-          )}
-        </Button>
-        {wordCount > 0 && (
-          <span className="ml-auto text-[11px] tabular-nums text-muted-foreground">
-            {wordCount} word{wordCount === 1 ? "" : "s"}
-          </span>
-        )}
-      </div>
-      {symOpen && (
-        <div
-          className="mt-1 flex flex-wrap gap-1"
-          role="group"
-          aria-label="Insert chemistry and maths symbols"
-        >
-          {ANSWER_SYMBOLS.map((ch) => (
-            <button
-              key={ch}
-              type="button"
-              onClick={() => insertSymbol(ch)}
-              className="h-7 min-w-8 rounded-md border bg-background px-1.5 font-mono text-[13px] leading-none text-foreground/90 hover:bg-muted"
-              aria-label={`Insert ${ch}`}
-            >
-              {ch}
-            </button>
-          ))}
-        </div>
-      )}
       <div className="mt-2 flex flex-wrap items-center gap-2">
         {aiAvailable !== false ? (
           <Button size="sm" variant="outline" disabled={!canMark} onClick={runMark} className="gap-1.5 text-xs">
@@ -1396,7 +1306,14 @@ function CoreMarkingFlow({
       {/* phase machine */}
       {(phase === "draft" || phase === "submitting") && (
         <div className="flex flex-wrap items-center gap-3">
-          <Button size="sm" disabled={!hasAnyText || phase === "submitting"} onClick={submit}>
+          <Button
+            size="sm"
+            disabled={!hasAnyText || phase === "submitting"}
+            onClick={submit}
+            // keyboard target for the answer-box Ctrl/Cmd+Enter shortcut
+            // (scroll+focus only — the attempt POST stays a deliberate fire)
+            data-core-submit
+          >
             {phase === "submitting" ? (
               <>
                 <Loader2 className="size-3.5 animate-spin" aria-hidden /> Submitting…
