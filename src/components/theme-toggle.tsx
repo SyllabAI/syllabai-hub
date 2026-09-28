@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * ThemeToggle — dual-theme switcher (SME | Quiet Green × Light | Dark |
- * System). Two mount shapes:
+ * ThemeToggle — tri-theme switcher (SME | Quiet Green | Candy Shop ×
+ * Light | Dark | System). Two mount shapes:
  *   variant="icon" (default) — compact header dropdown
  *   variant="row"            — labelled pill for the footer
  *
@@ -34,7 +34,7 @@ import {
   type ThemeName,
 } from "@/lib/theme-store";
 
-const THEMES: ThemeName[] = ["sme", "quiet-green"];
+const THEMES: ThemeName[] = ["sme", "quiet-green", "candy-shop"];
 const MODES: ThemeMode[] = ["light", "dark", "system"];
 
 function Row({

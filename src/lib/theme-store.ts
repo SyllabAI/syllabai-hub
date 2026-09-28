@@ -1,10 +1,12 @@
 "use client";
 
 /**
- * Dual-theme store — SME (default) and Quiet Green, each light/dark/system.
+ * Tri-theme store — SME (default), Quiet Green and Candy Shop, each
+ * light/dark/system.
  *
  * Persists to localStorage["syllabai-theme"] as
- *   { theme: "sme" | "quiet-green", mode: "light" | "dark" | "system" }
+ *   { theme: "sme" | "quiet-green" | "candy-shop",
+ *     mode: "light" | "dark" | "system" }
  * and applies the resolved state to <html> as data-theme + .dark, exactly
  * like the inline no-flash bootstrap in src/app/layout.tsx (same key, same
  * parsing — keep both in sync).
@@ -13,7 +15,7 @@
  * the toggle component. No zustand/next-themes so the app shell stays lean.
  */
 
-export type ThemeName = "sme" | "quiet-green";
+export type ThemeName = "sme" | "quiet-green" | "candy-shop";
 export type ThemeMode = "light" | "dark" | "system";
 
 export interface ThemeState {
@@ -64,7 +66,12 @@ function parseStored(): ThemeState {
     if (!raw) return INITIAL;
     const t = JSON.parse(raw) as { theme?: string; mode?: string };
     return {
-      theme: t.theme === "quiet-green" ? "quiet-green" : "sme",
+      theme:
+        t.theme === "quiet-green"
+          ? "quiet-green"
+          : t.theme === "candy-shop"
+            ? "candy-shop"
+            : "sme",
       mode:
         t.mode === "light" || t.mode === "dark" || t.mode === "system"
           ? t.mode
@@ -128,6 +135,7 @@ export function setTheme(partial: Partial<ThemeState>): void {
 export const THEME_LABEL: Record<ThemeName, string> = {
   sme: "SME",
   "quiet-green": "Quiet Green",
+  "candy-shop": "Candy Shop",
 };
 
 export const MODE_LABEL: Record<ThemeMode, string> = {

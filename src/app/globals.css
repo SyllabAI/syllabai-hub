@@ -395,6 +395,268 @@
   color: var(--gold);
 }
 
+/* ====================================================================
+   CANDY SHOP THEME (candy-shop-design-system, alpha) —
+   data-theme="candy-shop"
+   Port of https://github.com/nawaf-al-hussain/FileUpload/blob/main/
+   candy-shop-design-system.md onto the hub's QG architecture: light raw
+   block → one shared shadcn alias group → dark raw overrides ONLY →
+   theme-scoped authored layer (no component files touched).
+
+   The spec's laws, honored here:
+   - cherry #FF2D6E is byte-identical in light AND dark (the brand);
+     hover darkens in light (#E61F5F), lightens in dark (#FF5C8D)
+   - ink & paper swap in dark: bubblegum↔plum-black #1E0A16 (never #000)
+   - no green exists: success = mulberry (the spec's success voice),
+     warn = deepened cherry (cherry doubles as danger), info/cat/sim =
+     mulberry/plum family — status never rides hue alone (labels always
+     accompany color in the hub UI)
+   - destructive uses the spec §13 mitigation 3 (deepened cherry
+     #D11450 light / #E61F5F dark) — shadcn destructive buttons render
+     small white labels the raw cherry fill can't carry
+   - flat on purpose: static shadow utilities are zeroed; floating
+     layers re-receive the only sanctioned shadows (--shadow-pop /
+     --shadow-overlay); dark adds the soft --glow-accent on cherry
+   - round everything: --radius 40 + pinned utility ladder 14/24/40
+     (inputs/badges keep their spec radii via slot overrides; controls
+     under ~32px are exempt and untouched — checkbox/switch/radio ship
+     arbitrary or pill radii)
+   - known spec exception (§13 option 1, documented): white-on-cherry
+     fills ≈3.6:1 — carried by the 800-weight uppercase label style
+   ==================================================================== */
+[data-theme="candy-shop"] {
+  /* brand constants — identical in both themes */
+  --cherry: #ff2d6e;
+  --bubblegum: #ffe9f2;
+  --plum: #3c0d28;
+  --mulberry: #b2578c;
+
+  /* surfaces / ink / lines (light raws) */
+  --bg: #ffe9f2;  --bg-deep: #ffdce9;
+  --surface: #ffffff;           --surface-raised: #ffffff;
+  --surface-recessed: #ffdce9;  --surface-sunken: #ffd0e2;
+  --ink: #3c0d28;  --ink-soft: #8a3a63;  --ink-faint: #b2578c;  --ink-faintest: #c77ba8;
+  --line: rgba(178, 87, 140, 0.3);  --line-soft: rgba(178, 87, 140, 0.16);
+  --line-strong: #b2578c;
+
+  /* action / danger / status raws */
+  --primary-cs: #ff2d6e;  --primary-cs-hover: #e61f5f;  --on-primary-cs: #ffffff;
+  --accent-ink: #d11450;
+  --danger-cs: #d11450;
+  --focus-cs: #b2578c;
+  --success: var(--mulberry);
+  --warn: #d11450;  --warn-ink: #3c0d28;
+  --info: #8a3a63;
+  --cat: #3c0d28;  --sim: #b2578c;
+
+  /* the only sanctioned shadows (floating layers) */
+  --shadow-pop: 0 12px 32px -8px rgba(60, 13, 40, 0.18);
+  --shadow-overlay: 0 24px 56px -12px rgba(60, 13, 40, 0.28);
+
+  /* geometry — round everything (pins below give the exact 14/24/40) */
+  --radius: 40px;
+
+  /* fonts — Fraunces display / Nunito body (mono keeps the app default;
+     the spec defines no mono voice) */
+  --app-font-sans: var(--font-nunito), "Segoe UI", "Helvetica Neue", sans-serif;
+  --app-font-display: var(--font-fraunces), Georgia, "Times New Roman", serif;
+
+  color-scheme: light;
+}
+
+/* shadcn alias contract — defined once, re-resolves in dark */
+[data-theme="candy-shop"],
+[data-theme="candy-shop"].dark {
+  --background: var(--bg);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface-raised);
+  --popover-foreground: var(--ink);
+  --primary: var(--primary-cs);
+  --primary-foreground: var(--on-primary-cs);
+  --secondary: var(--surface-recessed);
+  --secondary-foreground: var(--ink);
+  --muted: var(--surface-recessed);
+  --muted-foreground: var(--ink-soft);
+  --accent: var(--surface-sunken);
+  --accent-foreground: var(--ink);
+  --destructive: var(--danger-cs);
+  --border: var(--line);
+  --input: var(--line-strong);
+  --ring: var(--focus-cs);
+  --chart-1: var(--cherry);
+  --chart-2: var(--mulberry); /* progress/metric fill voice (§10.12) */
+  --chart-3: var(--accent-ink);
+  --chart-4: var(--info);
+  --chart-5: var(--plum);
+  --sidebar: var(--bg-deep);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--primary-cs);
+  --sidebar-primary-foreground: var(--on-primary-cs);
+  --sidebar-accent: var(--surface);
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--focus-cs);
+}
+
+/* dark — ink & paper swap, cherry stays; raw values only */
+[data-theme="candy-shop"].dark {
+  --bg: #1e0a16;  --bg-deep: #170911;
+  --surface: #2e1224;           --surface-raised: #3a1830;
+  --surface-recessed: #241020;  --surface-sunken: #38172e;
+  --ink: #ffe9f2;  --ink-soft: #e3a8cd;  --ink-faint: #b2578c;  --ink-faintest: #8f4e74;
+  --line: rgba(178, 87, 140, 0.38);  --line-soft: rgba(178, 87, 140, 0.22);
+  --line-strong: #b2578c;
+
+  --primary-cs: #ff2d6e;        /* byte-identical — the brand never moves */
+  --primary-cs-hover: #ff5c8d;  /* hover moves toward the viewer in dark */
+  --accent-ink: #ff5c8d;
+  --danger-cs: #e61f5f;
+  --focus-cs: #ff5c8d;
+  --success: #e3a8cd;
+  --warn: #ff5c8d;  --warn-ink: #ffe9f2;
+  --info: #e3a8cd;
+  --cat: #ffe9f2;  --sim: #e3a8cd;
+
+  --chart-1: #ff2d6e;
+  --chart-2: #e3a8cd;
+  --chart-3: #ff5c8d;
+  --chart-4: #c77ba8;
+  --chart-5: #ffe9f2;
+
+  --shadow-pop: 0 12px 32px -8px rgba(0, 0, 0, 0.55);
+  --shadow-overlay: 0 24px 56px -12px rgba(0, 0, 0, 0.65);
+  --glow-accent: 0 0 24px rgba(255, 45, 110, 0.18);
+
+  color-scheme: dark;
+}
+
+/* ====================================================================
+   CANDY SHOP — authored layer (theme-scoped component signatures)
+   Everything targets [data-theme="candy-shop"] only; SME and QG are
+   untouched. Component files are NOT modified for candy.
+   ==================================================================== */
+
+/* --- geometry: the 14/24/40 ladder. --radius is 40 under this theme, so
+       the calc chain (36/38/40/44) is pinned to the spec ladder instead.
+       Small controls (<~32px) are exempt per spec — they ship arbitrary
+       or pill radii and are deliberately not touched. --- */
+[data-theme="candy-shop"] .rounded-sm { border-radius: 14px; }
+[data-theme="candy-shop"] .rounded-md { border-radius: 24px; }
+[data-theme="candy-shop"] .rounded-lg { border-radius: 40px; }
+[data-theme="candy-shop"] .rounded-xl { border-radius: 40px; }
+
+/* --- slot radii: inputs/selects = 14 (radius-sm rung), badges = pill --- */
+[data-theme="candy-shop"] :is([data-slot="input"], [data-slot="textarea"], [data-slot="select-trigger"]) {
+  border-radius: 14px;
+}
+[data-theme="candy-shop"] [data-slot="badge"] { border-radius: 999px; }
+
+/* --- depth: flat on purpose. Zero static shadows; floating layers get
+       the only sanctioned ones back. --- */
+[data-theme="candy-shop"] :is(.shadow-2xs, .shadow-xs, .shadow-sm, .shadow, .shadow-md, .shadow-lg, .shadow-xl) {
+  --tw-shadow: 0 0 #0000;
+  --tw-shadow-colored: 0 0 #0000;
+}
+[data-theme="candy-shop"] :is(
+  [data-slot="popover-content"],
+  [data-slot="dropdown-menu-content"],
+  [data-slot="select-content"],
+  [data-slot="tooltip-content"],
+  [data-slot="toast"],
+  [data-sonner-toast]
+) {
+  box-shadow: var(--shadow-pop);
+}
+[data-theme="candy-shop"] :is([data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="sheet-content"]) {
+  box-shadow: var(--shadow-overlay);
+}
+
+/* --- buttons: the candy signature. Label voice (Nunito 800 uppercase
+       0.04em — component font-size kept so dense headers don't wrap),
+       squash on press with spring release, hover toward the sanctioned
+       variant, soft cherry glow in dark. --- */
+[data-theme="candy-shop"] [data-slot="button"] {
+  text-transform: uppercase;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+[data-theme="candy-shop"] [data-slot="button"]:active {
+  transform: scale(0.97);
+  transition-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+[data-theme="candy-shop"] [data-slot="button"].bg-primary:hover {
+  background: var(--primary-cs-hover);
+}
+[data-theme="candy-shop"] [data-slot="button"].bg-destructive:hover {
+  background: var(--primary-cs-hover);
+}
+[data-theme="candy-shop"].dark [data-slot="button"].bg-primary {
+  box-shadow: var(--glow-accent);
+}
+
+/* --- tabs: the underline signature — cherry spine, accent-ink active --- */
+[data-theme="candy-shop"] [data-slot="tabs-list"] {
+  background: transparent;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  padding: 0;
+  gap: 1rem;
+  height: auto;
+}
+[data-theme="candy-shop"] [data-slot="tabs-trigger"] {
+  height: 2.25rem;
+  margin-bottom: -1px;
+  border-radius: 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  padding-inline: 0.25rem;
+}
+[data-theme="candy-shop"] [data-slot="tabs-trigger"]:hover {
+  background: transparent;
+  color: var(--ink);
+}
+[data-theme="candy-shop"] [data-slot="tabs-trigger"][data-state="active"] {
+  background: transparent;
+  border-bottom-color: var(--cherry);
+  color: var(--accent-ink);
+  box-shadow: none;
+}
+
+/* --- framework chips: pill, owned-hue voices (Study=mulberry,
+       Practice=cherry-ink, Diagnose=plum). Light: deep ink on tint;
+       dark: light voice on deeper tint. --- */
+[data-theme="candy-shop"] .chip-study {
+  background: rgba(178, 87, 140, 0.14);
+  color: #8a3a63;
+  border-radius: 999px;
+}
+[data-theme="candy-shop"] .chip-practice {
+  background: rgba(255, 45, 110, 0.1);
+  color: #d11450;
+  border-radius: 999px;
+}
+[data-theme="candy-shop"] .chip-diagnose {
+  background: rgba(60, 13, 40, 0.08);
+  color: #3c0d28;
+  border-radius: 999px;
+}
+[data-theme="candy-shop"].dark .chip-study {
+  background: rgba(178, 87, 140, 0.24);
+  color: #e3a8cd;
+}
+[data-theme="candy-shop"].dark .chip-practice {
+  background: rgba(255, 45, 110, 0.18);
+  color: #ff5c8d;
+}
+[data-theme="candy-shop"].dark .chip-diagnose {
+  background: rgba(255, 233, 242, 0.1);
+  color: #ffe9f2;
+}
+
 /* --- Past Papers viewer (pdf-pane v3): pdf.js text layer + find highlights ---
    The text layer hosts transparent absolutely-positioned spans produced by
    pdf.js TextLayer; spans position themselves with

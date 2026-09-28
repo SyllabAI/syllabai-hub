@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import {
   Bricolage_Grotesque,
+  Fraunces,
   Instrument_Sans,
   Kodchasan,
+  Nunito,
   Plus_Jakarta_Sans,
   Spline_Sans_Mono,
 } from "next/font/google";
@@ -20,7 +22,8 @@ import { publicConfig } from "@/lib/config";
  * Dual-theme support (Quiet Green port): the three QG faces below ship
  * with preload disabled so default-theme (SME) visitors never pay for
  * them — they download only when the quiet-green theme activates and its
- * --app-font-* chains reference the variables.
+ * --app-font-* chains reference the variables. Candy Shop follows the
+ * same pattern (Fraunces display / Nunito body, preload: false).
  */
 const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -52,16 +55,30 @@ const splineMono = Spline_Sans_Mono({
   display: "swap",
   preload: false,
 });
+const fraunces = Fraunces({
+  subsets: ["latin"],
+  weight: ["600", "700"],
+  variable: "--font-fraunces",
+  display: "swap",
+  preload: false,
+});
+const nunito = Nunito({
+  subsets: ["latin"],
+  weight: ["400", "600", "700", "800"],
+  variable: "--font-nunito",
+  display: "swap",
+  preload: false,
+});
 
 /**
  * No-flash theme bootstrap — runs before first paint, mirrors the logic in
  * src/lib/theme-store.ts (same storage key + parsing). Reads
- * { theme: "sme"|"quiet-green", mode: "light"|"dark"|"system" } from
- * localStorage["syllabai-theme"] and applies data-theme + .dark.
+ * { theme: "sme"|"quiet-green"|"candy-shop", mode: "light"|"dark"|"system" }
+ * from localStorage["syllabai-theme"] and applies data-theme + .dark.
  */
 const themeBootstrap = `(function(){try{
 var t=JSON.parse(localStorage.getItem("syllabai-theme")||"{}");
-var theme=t.theme==="quiet-green"?"quiet-green":"sme";
+var theme=t.theme==="quiet-green"?"quiet-green":t.theme==="candy-shop"?"candy-shop":"sme";
 var mode=t.mode||"system";
 var dark=mode==="dark"||(mode==="system"&&window.matchMedia("(prefers-color-scheme: dark)").matches);
 var d=document.documentElement;
@@ -83,7 +100,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${jakarta.variable} ${kodchasan.variable} ${instrumentSans.variable} ${bricolage.variable} ${splineMono.variable}`}
+      className={`${jakarta.variable} ${kodchasan.variable} ${instrumentSans.variable} ${bricolage.variable} ${splineMono.variable} ${fraunces.variable} ${nunito.variable}`}
       suppressHydrationWarning
     >
       <body className="antialiased">
