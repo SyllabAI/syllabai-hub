@@ -1,5 +1,5 @@
 /**
- * ADR-021 Content Package v0.1 — verifier.
+ * ADR-021 Content Package v0.2 — verifier.
  *
  *   bun tools/content-package/verify.ts [packageDir] [sourceRoot]
  *
@@ -24,13 +24,18 @@
  *   V7  lifecycle: status == VALIDATED and statusSource recorded; no
  *       severity='error' findings; warnings reported
  *   V8  buildId recomputed from artifacts == manifest buildId
+ *   V9  KG projection (v0.2): kg_node / kg_edge / kg_node_specification_point
+ *       match an independent re-derivation from the package's own
+ *       concept-graph.json (row counts, per-row fields ordered by code /
+ *       edge_index, tier census); every edge endpoint resolves against the
+ *       package's OWN kg_node or specification_point tables; scope-aware
+ *       registry check (full scope: strict equality; scoped: dirs ⊆ registry)
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import {
-  BUNDLE_FILES,
   BUNDLE_SCHEMA,
   COMPILER_VERSION,
   PACKAGE_FORMAT,
@@ -39,7 +44,9 @@ import {
   repoRoot,
 } from "./lib";
 
-const pkgDir = process.argv[2] ? join(process.cwd(), process.argv[2]) : join(repoRoot(), "dist", "content-package");
+const argvFlags = process.argv.slice(2);
+const positional = argvFlags.filter((a) => !a.startsWith("--"));
+const pkgDir = positional[0] ? join(process.cwd(), positional[0]) : join(repoRoot(), "dist", "content-package");
 
 let failures = 0;
 const fail = (code: string, msg: string) => {
@@ -123,12 +130,39 @@ const coursesJson = JSON.parse(readFileSync(join(pkgDir, "content", "courses.jso
 const slugs = readdirSync(contentRoot).sort();
 if (slugs.length !== manifest.courses) fail("V6", `courses ${slugs.length} != manifest ${manifest.courses}`);
 
+// scope-aware registry check: full scope = strict equality (v0.1 behavior);
+// scoped package = dirs ⊆ registry (the registry is copied verbatim by
+// design — the scoping finding records the difference)
+const registrySlugs = new Set(coursesJson.courses.map((c: any) => c.slug));
+const scopeCourses: string[] = Array.isArray(manifest.scopeCourses) ? manifest.scopeCourses : slugs;
+for (const s of slugs) {
+  if (!registrySlugs.has(s)) fail("V6", `course dir ${s} not in registry`);
+}
+if (scopeCourses.length === registrySlugs.size) {
+  const missing = [...registrySlugs].filter((s: string) => !slugs.includes(s));
+  if (missing.length > 0) fail("V6", `full-scope package missing registry courses: ${missing.join(", ")}`);
+} else {
+  // scoped: dirs must equal scopeCourses exactly
+  const expected = new Set(scopeCourses);
+  const extra = slugs.filter((s) => !expected.has(s));
+  const absent = scopeCourses.filter((s) => !slugs.includes(s));
+  if (extra.length > 0) fail("V6", `scoped package carries non-scope courses: ${extra.join(", ")}`);
+  if (absent.length > 0) fail("V6", `scoped package missing scope courses: ${absent.join(", ")}`);
+}
+
 let expNotes = 0,
   expSpecs = 0,
   expSets = 0,
   expCards = 0,
   expMappings = 0;
+let expKgNodes = 0,
+  expKgEdges = 0,
+  expKgMappings = 0;
 const noteHashSpot = new Map<string, string>(); // (course, noteId) -> body sha
+// V9: expected KG rows, keyed for ordered comparison (nodes by code, edges by index)
+const expKgNodeRows = new Map<string, string>(); // (course, code) -> `${family}|${title}|${tier}|${pass}`
+const expKgEdgeRows = new Map<string, string>(); // (course, index) -> `${source}|${relation}|${target}|${tier}`
+const expKgTierCensus = new Map<string, number>();
 for (const slug of slugs) {
   const dir = join(contentRoot, slug);
   const mf = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8"));
@@ -137,6 +171,7 @@ for (const slug of slugs) {
   const cur = JSON.parse(readFileSync(join(dir, "curriculum.json"), "utf8"));
   const qs = JSON.parse(readFileSync(join(dir, "questions.json"), "utf8"));
   const fc = JSON.parse(readFileSync(join(dir, "flashcards.json"), "utf8"));
+  const cg = JSON.parse(readFileSync(join(dir, "concept-graph.json"), "utf8"));
 
   // G4 re-applied on the packaged copies (source manifest counts vs arrays)
   const specPts = cur.nodes.filter((n: any) => n.family === "SPEC_POINT");
@@ -164,6 +199,31 @@ for (const slug of slugs) {
     }
     noteHashSpot.set(`${slug}\u0000${n.noteId}`, createHash("sha256").update(Buffer.from(String(n.bodyMd ?? ""), "utf8")).digest("hex"));
   }
+
+  // V9 expectations — independent re-derivation of the KG rows from the
+  // package's own concept-graph.json (G6 shape gates re-applied here would
+  // duplicate lib.ts; V9 verifies the PROJECTION matches the source graph)
+  const pkgSpecCodes = new Set(specPts.map((n: any) => n.code));
+  const pkgKgCodes = new Set<string>((cg.nodes ?? []).map((n: any) => n.code));
+  for (const n of cg.nodes ?? []) {
+    expKgNodes++;
+    expKgNodeRows.set(`${slug}\u0000${n.code}`, `${n.family}|${n.title}|${n.provenanceTier}|${n.extractionPass}`);
+    expKgTierCensus.set(`node:${n.provenanceTier}`, (expKgTierCensus.get(`node:${n.provenanceTier}`) ?? 0) + 1);
+    for (const code of n.specPoints ?? []) {
+      expKgMappings++;
+      if (!pkgSpecCodes.has(code)) fail("V9", `${slug}: kg node ${n.code} specPoint ${code} unresolved in package`);
+    }
+  }
+  (cg.edges ?? []).forEach((e: any, i: number) => {
+    expKgEdges++;
+    expKgEdgeRows.set(`${slug}\u0000${i}`, `${e.source}|${e.relation}|${e.target}|${e.provenanceTier}`);
+    expKgTierCensus.set(`edge:${e.provenanceTier}`, (expKgTierCensus.get(`edge:${e.provenanceTier}`) ?? 0) + 1);
+    for (const endpoint of [e.source, e.target]) {
+      if (!pkgKgCodes.has(endpoint) && !pkgSpecCodes.has(endpoint)) {
+        fail("V9", `${slug}: kg edge endpoint ${endpoint} resolves to neither kg_node nor specification_point`);
+      }
+    }
+  });
 }
 
 const count = (q: string) => (db.query(q).get() as any).n;
@@ -182,7 +242,6 @@ if (gotResolved !== expMappings) fail("V6", `resolved mappings ${gotResolved} !=
 if (failures === 0) {
   ok(`independent re-derivation matches DB: ${gotNotes} notes, ${gotSpecs} spec points, ${gotSets} sets, ${gotCards} cards, ${gotMappings}/${gotMappings} mappings resolved`);
 }
-
 // body-integrity spot check: every note row's body_sha256 matches the
 // packaged content (full check — 3743 rows is cheap)
 const badBodies = db.query("SELECT course_slug, note_id, body_sha256 FROM revision_note").all() as any[];
@@ -192,6 +251,53 @@ for (const r of badBodies) {
 }
 if (bodyMismatches > 0) fail("V6", `${bodyMismatches} note body hashes do not match packaged content`);
 else ok(`all ${badBodies.length} note body hashes match the packaged note bodies`);
+
+// ── V9 KG projection re-derivation (v0.2) ──────────────────────────────
+if (manifest.counts?.kgNodes !== undefined) {
+  const gotKgNodes = count("SELECT COUNT(*) AS n FROM kg_node");
+  const gotKgEdges = count("SELECT COUNT(*) AS n FROM kg_edge");
+  const gotKgMappings = count("SELECT COUNT(*) AS n FROM kg_node_specification_point");
+  if (gotKgNodes !== expKgNodes) fail("V9", `kg_node rows ${gotKgNodes} != ${expKgNodes}`);
+  if (gotKgEdges !== expKgEdges) fail("V9", `kg_edge rows ${gotKgEdges} != ${expKgEdges}`);
+  if (gotKgMappings !== expKgMappings) fail("V9", `kg_node_specification_point rows ${gotKgMappings} != ${expKgMappings}`);
+
+  // per-row fidelity: nodes ordered by code, edges by edge_index
+  let kgRowMismatches = 0;
+  for (const r of db.query("SELECT course_slug, code, family, title, provenance_tier, extraction_pass FROM kg_node ORDER BY course_slug, code").all() as any[]) {
+    if (expKgNodeRows.get(`${r.course_slug}\u0000${r.code}`) !== `${r.family}|${r.title}|${r.provenance_tier}|${r.extraction_pass}`) kgRowMismatches++;
+  }
+  for (const r of db.query("SELECT course_slug, edge_index, source, relation, target, provenance_tier FROM kg_edge ORDER BY course_slug, edge_index").all() as any[]) {
+    if (expKgEdgeRows.get(`${r.course_slug}\u0000${r.edge_index}`) !== `${r.source}|${r.relation}|${r.target}|${r.provenance_tier}`) kgRowMismatches++;
+  }
+  if (kgRowMismatches > 0) fail("V9", `${kgRowMismatches} kg rows do not match the packaged concept-graph.json`);
+
+  // tier census — the non-authoritative pin, verified not asserted
+  const gotCensus = new Map<string, number>();
+  for (const r of db.query("SELECT 'node' AS k, provenance_tier AS t, COUNT(*) AS n FROM kg_node GROUP BY provenance_tier UNION ALL SELECT 'edge', provenance_tier, COUNT(*) FROM kg_edge GROUP BY provenance_tier").all() as any[]) {
+    gotCensus.set(`${r.k}:${r.t}`, r.n);
+  }
+  let censusMismatch = "";
+  for (const [k, v] of expKgTierCensus) {
+    if (gotCensus.get(k) !== v) censusMismatch += ` ${k} db=${gotCensus.get(k) ?? 0} src=${v};`;
+  }
+  if (censusMismatch) fail("V9", `kg tier census mismatch:${censusMismatch}`);
+
+  // endpoints resolve against the package's OWN tables (not the source tree)
+  let dangling = 0;
+  for (const r of db.query("SELECT course_slug, source, target FROM kg_edge").all() as any[]) {
+    for (const code of [r.source, r.target]) {
+      const isNode = db.query("SELECT 1 FROM kg_node WHERE course_slug = ? AND code = ?").get(r.course_slug, code);
+      const isSpec = db.query("SELECT 1 FROM specification_point WHERE course_slug = ? AND code = ?").get(r.course_slug, code);
+      if (!isNode && !isSpec) dangling++;
+    }
+  }
+  if (dangling > 0) fail("V9", `${dangling} kg_edge endpoints resolve to neither kg_node nor specification_point (two-namespace rule)`);
+
+  if (failures === 0) {
+    const tiers = [...new Set([...expKgTierCensus.keys()])].sort().join(", ");
+    ok(`V9 KG projection verified: ${gotKgNodes} nodes, ${gotKgEdges} edges, ${gotKgMappings} node-spec mappings; tier census exact (${tiers}); all endpoints resolve (two-namespace rule)`);
+  }
+}
 
 // ── V7 lifecycle + findings ─────────────────────────────────────────────
 const errors = count("SELECT COUNT(*) AS n FROM validation_finding WHERE severity = 'error'");

@@ -1,7 +1,7 @@
 /**
- * ADR-021 Content Package v0.1 — compiler.
+ * ADR-021 Content Package v0.2 — compiler.
  *
- *   bun tools/content-package/compile.ts [sourceRoot] [outDir]
+ *   bun tools/content-package/compile.ts [sourceRoot] [outDir] [--courses=a,b]
  *
  * Builds a portable content package from the hub's committed corpus:
  *
@@ -9,22 +9,29 @@
  *   ├── MANIFEST.json               identity + per-artifact SHA-256 + counts
  *   ├── content/                    verbatim copies (courses.json, <slug>/…,
  *   │                               pastpapers index + blueprints)
- *   └── database/content.sqlite     the v0.1 queryable projection
+ *   └── database/content.sqlite     the queryable projection (v0.2: + KG)
+ *
+ * v0.2 (CONTENT_PACKAGE_V0_2.md — ADR-021 forward gates):
+ *   - KG projection (kg_node / kg_node_specification_point / kg_edge):
+ *     non-authoritative, tiers preserved verbatim, G6 fail-closed gates
+ *   - scope selection: --courses=<slugs> builds a bounded package (the
+ *     default remains the full hub corpus); scopeId is deterministic
  *
  * Fail-closed gates: G1 inventory, G2 schema, G3 provenance, G4 counts
- * reconciliation, G5 within-course identity (see lib.ts). Cross-course
- * note-id sharing and unresolved spec codes are FINDINGS, not failures —
- * the corpus measurement that produced the composite identity model.
+ * reconciliation, G5 within-course identity, G6 KG projection (lib.ts).
+ * Cross-course note-id sharing and unresolved spec codes are FINDINGS, not
+ * failures — the corpus measurement that produced the composite identity
+ * model.
  *
  * Determinism target: same source tree + same compiler → byte-identical
  * content.sqlite and identical artifact hashes; buildId is derived from the
- * artifact digests (NOT the clock). createdAt stays informational. The
- * determinism claim is only as good as the selftest measurement —
- * CONTENT_PACKAGE_V0_1.md §8: "byte-for-byte package determinism is a later
- * goal and must not be claimed until verified".
+ * artifact digests (NOT the clock). createdAt stays informational (and is
+ * therefore EXCLUDED from the determinism claim — MANIFEST.json bytes differ
+ * across compiles; the sqlite + buildId do not). The determinism claim is
+ * only as good as the selftest measurement.
  */
 import { mkdirSync, readdirSync, readFileSync, writeFileSync, copyFileSync, statSync, existsSync, rmSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join } from "node:path";
 import { Database } from "bun:sqlite";
 import {
   BUNDLE_FILES,
@@ -43,15 +50,37 @@ import {
   sha256File,
 } from "./lib";
 
-const root = process.argv[2] ? join(process.cwd(), process.argv[2]) : repoRoot();
-const outDir = process.argv[3] ? join(process.cwd(), process.argv[3]) : join(root, "dist", "content-package");
+// args: positional [sourceRoot] [outDir] + optional --courses=<slug,…> scope
+// and --out=<dir> (equivalent to the outDir positional)
+const argvFlags = process.argv.slice(2);
+const positional = argvFlags.filter((a) => !a.startsWith("--"));
+const scopeFlag = argvFlags.find((a) => a.startsWith("--courses="));
+const outFlag = argvFlags.find((a) => a.startsWith("--out="));
+const root = positional[0] ? join(process.cwd(), positional[0]) : repoRoot();
+const outDir = outFlag
+  ? join(process.cwd(), outFlag.slice("--out=".length))
+  : positional[1]
+    ? join(process.cwd(), positional[1])
+    : join(root, "dist", "content-package");
 
 console.log(`compile: root=${root}`);
 console.log(`compile: out=${outDir}`);
 
-const slugs = courseSlugs(root);
-if (slugs.length === 0) throw new GateError("G1-inventory", "no course directories under content/");
-console.log(`compile: ${slugs.length} courses`);
+const available = courseSlugs(root);
+if (available.length === 0) throw new GateError("G1-inventory", "no course directories under content/");
+let slugs = available;
+if (scopeFlag) {
+  const requested = scopeFlag.slice("--courses=".length).split(",").map((s) => s.trim()).filter(Boolean).sort();
+  const unknown = requested.filter((s) => !available.includes(s));
+  if (unknown.length > 0) throw new GateError("G1-inventory", `--courses unknown slugs: ${unknown.join(", ")}`);
+  slugs = requested;
+}
+const fullCorpus = slugs.length === available.length;
+// scopeId — deterministic, filename-safe identity for the distribution name
+const scopeId = fullCorpus
+  ? "hub-corpus"
+  : `scope-${sha256Bytes(Buffer.from(slugs.join("\n") + "\n", "utf8")).slice(0, 8)}`;
+console.log(`compile: ${slugs.length} courses (scope=${scopeId}${fullCorpus ? "" : `, ${available.length} available`})`);
 
 // The package is a derived snapshot — always start from a clean output so a
 // recompile can never merge with stale artifacts (determinism precondition).
@@ -92,6 +121,16 @@ const insSet = db.prepare(
 );
 const insCard = db.prepare(
   "INSERT INTO flashcard (course_slug, card_id, deck_slug, card_type, spec_point_code, provenance_tier) VALUES (?,?,?,?,?,?)",
+);
+const insKgNode = db.prepare(
+  "INSERT INTO kg_node (course_slug, code, family, title, aliases, summary, provenance_tier, extraction_pass) VALUES (?,?,?,?,?,?,?,?)",
+);
+const insKgNodeSpec = db.prepare(
+  "INSERT INTO kg_node_specification_point (course_slug, node_code, spec_code) VALUES (?,?,?)",
+);
+const insKgEdge = db.prepare(
+  `INSERT INTO kg_edge (course_slug, edge_index, source, relation, target, role, evidence_quote, provenance_tier, extraction_pass, derivation_method)
+   VALUES (?,?,?,?,?,?,?,?,?,?)`,
 );
 const insFinding = db.prepare(
   "INSERT INTO validation_finding (course_slug, severity, kind, detail) VALUES (?,?,?,?)",
@@ -251,6 +290,44 @@ for (const slug of slugs) {
   for (const c of src.flashcards) {
     insCard.run(slug, c.id, c.deckSlug ?? null, c.cardType ?? null, c.specPointCode ?? null, c.provenanceTier ?? null);
   }
+
+  // KG projection (v0.2) — non-authoritative; tiers preserved verbatim.
+  // G6 already gated shape/vocabulary/endpoints in loadCourseBundle.
+  for (const n of src.graph.nodes) {
+    insKgNode.run(
+      slug,
+      n.code,
+      n.family,
+      n.title,
+      JSON.stringify(n.aliases ?? []),
+      n.summary ?? null,
+      n.provenanceTier,
+      n.extractionPass,
+    );
+    for (const code of n.specPoints ?? []) insKgNodeSpec.run(slug, n.code, code);
+  }
+  src.graph.edges.forEach((e: any, i: number) => {
+    insKgEdge.run(
+      slug,
+      i,
+      e.source,
+      e.relation,
+      e.target,
+      e.role ?? null,
+      e.evidenceQuote ?? null,
+      e.provenanceTier,
+      e.extractionPass,
+      e.derivationMethod ?? null,
+    );
+  });
+  if (src.graph.validationGate) {
+    findings.push({
+      course_slug: slug,
+      severity: "info",
+      kind: "kg_validation_gate",
+      detail: src.graph.validationGate,
+    });
+  }
 }
 
 // ── findings + metadata ─────────────────────────────────────────────────
@@ -264,6 +341,29 @@ findings.push({
   detail:
     "manifest.counts.sections is upstream-declared (syllabai-resources import); no single derivation from the committed bundle files reproduces it for all courses — see lib.ts G4 note",
 });
+if (!fullCorpus) {
+  findings.push({
+    course_slug: null,
+    severity: "info",
+    kind: "scoped_package",
+    detail: `scoped package (scopeId=${scopeId}): registry copied verbatim lists ${available.length} courses, package carries ${slugs.length} (${slugs.join(", ")}) — registry ⊇ package by design`,
+  });
+}
+// KG census finding — the non-authoritative pin, recorded from measurement
+{
+  const kgTotal = (db.query("SELECT COUNT(*) AS n FROM kg_node").get() as any).n + (db.query("SELECT COUNT(*) AS n FROM kg_edge").get() as any).n;
+  const kgPromoted =
+    (db.query("SELECT COUNT(*) AS n FROM kg_node WHERE provenance_tier NOT IN ('AI_SUGGESTED')").get() as any).n +
+    (db.query("SELECT COUNT(*) AS n FROM kg_edge WHERE provenance_tier NOT IN ('AI_SUGGESTED')").get() as any).n;
+  if (kgTotal > 0) {
+    findings.push({
+      course_slug: null,
+      severity: "info",
+      kind: "kg_projection_non_authoritative",
+      detail: `${kgTotal} KG rows projected; ${kgPromoted} carry a tier other than AI_SUGGESTED. The KG projection preserves provenance tiers verbatim and NEVER confers authority, curriculum/KG truth, or learner-serving eligibility (CONTENT_PACKAGE_V0_2.md; the pilot's own validationGate — operator review pending — is preserved verbatim in validation_finding kind=kg_validation_gate).`,
+    });
+  }
+}
 for (const f of findings) insFinding.run(f.course_slug, f.severity, f.kind, f.detail);
 
 const noteCount = (db.query("SELECT COUNT(*) AS n FROM revision_note").get() as any).n;
@@ -272,6 +372,10 @@ const resolvedCount = (db.query("SELECT COUNT(*) AS n FROM revision_note_specifi
 const setCount = (db.query("SELECT COUNT(*) AS n FROM exam_question_set").get() as any).n;
 const cardCount = (db.query("SELECT COUNT(*) AS n FROM flashcard").get() as any).n;
 const specCount = (db.query("SELECT COUNT(*) AS n FROM specification_point").get() as any).n;
+const kgNodeCount = (db.query("SELECT COUNT(*) AS n FROM kg_node").get() as any).n;
+const kgEdgeCount = (db.query("SELECT COUNT(*) AS n FROM kg_edge").get() as any).n;
+const kgMappingCount = (db.query("SELECT COUNT(*) AS n FROM kg_node_specification_point").get() as any).n;
+const kgCourseCount = (db.query("SELECT COUNT(DISTINCT course_slug) AS n FROM kg_node").get() as any).n;
 const warnings = (db.query("SELECT COUNT(*) AS n FROM validation_finding WHERE severity = 'warning'").get() as any).n;
 
 // buildId = digest over sorted artifact digests (deterministic; clock-free)
@@ -280,7 +384,9 @@ const buildId = sha256Bytes(Buffer.from(artifactLines.join("\n") + "\n", "utf8")
 
 insMeta.run("packageFormat", PACKAGE_FORMAT);
 insMeta.run("packageVersion", PACKAGE_VERSION);
-insMeta.run("scope", "hub-corpus");
+insMeta.run("scope", fullCorpus ? "hub-corpus" : `courses:${slugs.length}`);
+insMeta.run("scopeId", scopeId);
+insMeta.run("scopeCourses", slugs.join(","));
 insMeta.run("buildId", buildId);
 insMeta.run("compilerVersion", COMPILER_VERSION);
 insMeta.run("sqliteSchemaVersion", SQLITE_SCHEMA_VERSION);
@@ -300,11 +406,15 @@ insMeta.run(
 );
 insMeta.run(
   "deferrals",
-  "paper/paper_question/question_part/mark_scheme/mark_point/parser_run deferred: payload carries SME-derived question sets, not parsed QP/MS artifacts (no source-PDF/parser provenance exists to preserve — fabricating it would violate fail-closed provenance). kg_node/kg_edge deferred per CONTENT_PACKAGE_V0_1 §6.",
+  "paper/paper_question/question_part/mark_scheme/mark_point/parser_run deferred: payload carries SME-derived question sets, not parsed QP/MS artifacts (no source-PDF/parser provenance exists to preserve — fabricating it would violate fail-closed provenance). kg_node/kg_edge/kg_node_specification_point ADDED in v0.2 (CONTENT_PACKAGE_V0_2.md) as a non-authoritative projection — tiers preserved verbatim, never conferring authority or serving eligibility.",
 );
 insMeta.run(
   "additiveTables",
   "exam_question_set + flashcard are additive identity/coverage projections (no bodies, no semantics) — schema notes recorded here per the ADR's governed-projection rule",
+);
+insMeta.run(
+  "kgProjection",
+  `non-authoritative (CONTENT_PACKAGE_V0_2.md): ${kgNodeCount} nodes + ${kgEdgeCount} edges across ${kgCourseCount} course(s); tiers preserved verbatim; never curriculum/KG truth, never learner-servable`,
 );
 
 db.exec("COMMIT");
@@ -314,7 +424,9 @@ db.close();
 const manifest = {
   packageFormat: PACKAGE_FORMAT,
   packageVersion: PACKAGE_VERSION,
-  scope: "hub-corpus",
+  scope: fullCorpus ? "hub-corpus" : `courses:${slugs.length}`,
+  scopeId,
+  scopeCourses: slugs,
   buildId,
   compilerVersion: COMPILER_VERSION,
   schemaVersion: SQLITE_SCHEMA_VERSION,
@@ -328,6 +440,10 @@ const manifest = {
     noteSpecMappingsResolved: resolvedCount,
     examQuestionSets: setCount,
     flashcards: cardCount,
+    kgNodes: kgNodeCount,
+    kgEdges: kgEdgeCount,
+    kgNodeSpecMappings: kgMappingCount,
+    kgCourses: kgCourseCount,
     validationFindings: findings.length,
     warnings,
   },
@@ -339,7 +455,7 @@ const manifest = {
 };
 writeFileSync(join(outDir, "MANIFEST.json"), JSON.stringify(manifest, null, 2) + "\n");
 
-console.log(`compile: DONE — ${slugs.length} courses, ${noteCount} notes, ${setCount} sets, ${cardCount} cards`);
+console.log(`compile: DONE — ${slugs.length} courses, ${noteCount} notes, ${setCount} sets, ${cardCount} cards, KG ${kgNodeCount}n/${kgEdgeCount}e (${kgCourseCount} course)`);
 console.log(`compile: buildId=${buildId.slice(0, 16)}…`);
 console.log(`compile: findings — shared note ids: ${sharedNoteIds}, unresolved spec codes: ${noteSpecCount - resolvedCount}`);
 console.log(`compile: artifacts: ${artifacts.length} (${(artifacts.reduce((a, x) => a + x.bytes, 0) / 1e6).toFixed(1)} MB)`);

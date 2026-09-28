@@ -1,6 +1,7 @@
 /**
- * ADR-021 Content Package v0.1 — clean-environment restore + semantic
- * equivalence check (CONTENT_PACKAGE_V0_1.md §8 reconstruction test).
+ * ADR-021 Content Package v0.2 — clean-environment restore + semantic
+ * equivalence check (CONTENT_PACKAGE_V0_1.md §8 reconstruction test;
+ * CONTENT_PACKAGE_V0_2.md adds the KG projection + scoped packages).
  *
  *   bun tools/content-package/restore.ts [packageDir] [restoreDir]
  *
@@ -14,12 +15,17 @@
  *        → restore package content/ → <restoreDir>/content/
  *        → inspect identities + provenance + lifecycle:
  *            R1  every restored file byte-identical to the package copy
- *            R2  the package's G1–G5 gates re-run against the RESTORED tree
+ *            R2  the package's G1–G6 gates re-run against the RESTORED tree
  *                (loadCourseBundle on every course — identity, provenance,
- *                counts, within-course uniqueness all hold post-restore)
- *            R3  semantic equivalence: re-derived note/spec/set/card counts
- *                + every note body hash == the package SQLite projection
- *            R4  registry consistency: courses.json entries == restored dirs
+ *                counts, within-course uniqueness, KG projection all hold
+ *                post-restore)
+ *            R3  semantic equivalence: re-derived note/spec/set/card/KG
+ *                counts + every note body hash == the package SQLite
+ *                projection
+ *            R4  registry consistency: full scope — registry entries ==
+ *                restored dirs; scoped package — dirs ⊆ registry and the
+ *                excluded set == registry minus scope (the verbatim-registry
+ *                rule: scoping never edits courses.json)
  */
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -27,8 +33,10 @@ import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { loadCourseBundle, repoRoot, sha256File } from "./lib";
 
-const pkgDir = process.argv[2] ? join(process.cwd(), process.argv[2]) : join(repoRoot(), "dist", "content-package");
-const restoreDir = process.argv[3] ? join(process.cwd(), process.argv[3]) : join(repoRoot(), "dist", "restore-test");
+const argvFlags = process.argv.slice(2);
+const positional = argvFlags.filter((a) => !a.startsWith("--"));
+const pkgDir = positional[0] ? join(process.cwd(), positional[0]) : join(repoRoot(), "dist", "content-package");
+const restoreDir = positional[1] ? join(process.cwd(), positional[1]) : join(repoRoot(), "dist", "restore-test");
 
 let failures = 0;
 const fail = (code: string, msg: string) => {
@@ -93,15 +101,21 @@ let expNotes = 0,
   expSets = 0,
   expCards = 0,
   expSpecs = 0,
-  expMappings = 0;
+  expMappings = 0,
+  expKgNodes = 0,
+  expKgEdges = 0,
+  expKgMappings = 0;
 const restoredNoteHashes = new Map<string, string>();
 try {
   for (const slug of slugs) {
-    const b = loadCourseBundle(slug, fakeRoot); // throws GateError on any violation
+    const b = loadCourseBundle(slug, fakeRoot); // throws GateError on any violation (G1–G6)
     expNotes += b.notes.length;
     expSets += b.questionSets.length;
     expCards += b.flashcards.length;
     expSpecs += b.curriculum.nodes.filter((n: any) => n.family === "SPEC_POINT").length;
+    expKgNodes += b.graph.nodes.length;
+    expKgEdges += b.graph.edges.length;
+    expKgMappings += b.graph.nodes.reduce((a: number, n: any) => a + (n.specPoints ?? []).length, 0);
     const codes = new Set(b.curriculum.nodes.filter((n: any) => n.family === "SPEC_POINT").map((n: any) => n.code));
     for (const n of b.notes) {
       expMappings += (n.specPointCodes ?? []).length;
@@ -114,7 +128,7 @@ try {
       );
     }
   }
-  ok(`R2: G1–G5 gates hold on every restored course (${slugs.length} courses)`);
+  ok(`R2: G1–G6 gates hold on every restored course (${slugs.length} courses)`);
 } catch (e: any) {
   fail("R2", `gate failed on restored tree: ${e.message}`);
 }
@@ -128,6 +142,9 @@ if (failures === 0) {
     ["flashcard", count("SELECT COUNT(*) AS n FROM flashcard"), expCards],
     ["specification_point", count("SELECT COUNT(*) AS n FROM specification_point"), expSpecs],
     ["note-spec mappings", count("SELECT COUNT(*) AS n FROM revision_note_specification_point"), expMappings],
+    ["kg_node", count("SELECT COUNT(*) AS n FROM kg_node"), expKgNodes],
+    ["kg_edge", count("SELECT COUNT(*) AS n FROM kg_edge"), expKgEdges],
+    ["kg node-spec mappings", count("SELECT COUNT(*) AS n FROM kg_node_specification_point"), expKgMappings],
   ];
   for (const [name, got, exp] of pairs) {
     if (got !== exp) fail("R3", `${name}: package=${got} restored=${exp}`);
@@ -138,19 +155,40 @@ if (failures === 0) {
   }
   if (hashMismatch > 0) fail("R3", `${hashMismatch} note bodies differ between package DB and restored tree`);
   if (failures === 0) {
-    ok(`R3: semantic equivalence — ${expNotes} notes, ${expSets} sets, ${expCards} cards, ${expMappings} mappings, all body hashes`);
+    ok(`R3: semantic equivalence — ${expNotes} notes, ${expSets} sets, ${expCards} cards, ${expMappings} mappings, KG ${expKgNodes}n/${expKgEdges}e, all body hashes`);
   }
 }
 
-// ── R4 registry consistency ─────────────────────────────────────────────
+// ── R4 registry consistency (scope-aware) ─────────────────────────────
+// Full scope: registry entries == restored dirs (v0.1 behavior).
+// Scoped package: the registry is copied VERBATIM by design (never edited to
+// match the scope — that would fabricate a registry state that never
+// existed); restored dirs ⊆ registry AND the excluded set == registry minus
+// the recorded scope, so nothing is silently dropped or added.
 const registry = JSON.parse(readFileSync(join(restoreDir, "courses.json"), "utf8"));
 const regSlugs = new Set(registry.courses.map((c: any) => c.slug));
 const dirSlugs = new Set(slugs);
 const orphanDirs = [...dirSlugs].filter((s) => !regSlugs.has(s));
-const missingDirs = [...regSlugs].filter((s) => !dirSlugs.has(s));
 if (orphanDirs.length > 0) fail("R4", `restored dirs without registry entry: ${orphanDirs.join(", ")}`);
-if (missingDirs.length > 0) fail("R4", `registry entries without restored dir: ${missingDirs.join(", ")}`);
-if (failures === 0) ok(`R4: registry consistent (${regSlugs.size} entries == ${dirSlugs.size} dirs)`);
+const scopeCourses: string[] = Array.isArray(manifest.scopeCourses) ? manifest.scopeCourses : [...regSlugs];
+if (scopeCourses.length === regSlugs.size) {
+  const missingDirs = [...regSlugs].filter((s) => !dirSlugs.has(s));
+  if (missingDirs.length > 0) fail("R4", `registry entries without restored dir: ${missingDirs.join(", ")}`);
+  if (failures === 0) ok(`R4: registry consistent (${regSlugs.size} entries == ${dirSlugs.size} dirs)`);
+} else {
+  const expected = new Set(scopeCourses);
+  const extra = [...dirSlugs].filter((s) => !expected.has(s));
+  const absent = scopeCourses.filter((s) => !dirSlugs.has(s));
+  const excludedShouldBe = [...regSlugs].filter((s) => !expected.has(s));
+  if (extra.length > 0) fail("R4", `restored dirs outside the recorded scope: ${extra.join(", ")}`);
+  if (absent.length > 0) fail("R4", `scope courses without restored dir: ${absent.join(", ")}`);
+  if (excludedShouldBe.length !== regSlugs.size - scopeCourses.length) {
+    fail("R4", "excluded set does not equal registry minus scope");
+  }
+  if (failures === 0) {
+    ok(`R4: scoped registry consistent (${dirSlugs.size} restored ⊆ ${regSlugs.size} registry; ${excludedShouldBe.length} excluded per scope, registry copied verbatim)`);
+  }
+}
 
 db.close();
 rmSync(fakeRoot, { recursive: true, force: true });
