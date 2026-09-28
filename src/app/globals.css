@@ -482,6 +482,9 @@
   --accent: var(--surface-sunken);
   --accent-foreground: var(--ink);
   --destructive: var(--danger-cs);
+  --destructive-foreground: var(--on-primary-cs); /* audit F5: the toast
+    destructive variant labels with this token; leaving it undefined let
+    page ink bleed onto the danger fill (3.07:1). Paper voice both modes */
   --border: var(--line);
   --input: var(--line-strong);
   --ring: var(--focus-cs);
@@ -553,6 +556,21 @@
 }
 [data-theme="candy-shop"] [data-slot="badge"] { border-radius: 999px; }
 
+/* --- audit F4: floating slots ride the exact rungs. Menus/tooltips/
+       alerts = radius-sm (14); sheets = radius-lg (40). The shipped
+       rounded-md/lg classes land one rung off (24/40) and read blobby.
+       Placed after the utility pins so the slot pins win the tie. --- */
+[data-theme="candy-shop"] :is(
+  [data-slot="popover-content"],
+  [data-slot="dropdown-menu-content"],
+  [data-slot="select-content"],
+  [data-slot="tooltip-content"],
+  [data-slot="alert"]
+) {
+  border-radius: 14px;
+}
+[data-theme="candy-shop"] [data-slot="sheet-content"] { border-radius: 40px; }
+
 /* --- depth: flat on purpose. Zero static shadows; floating layers get
        the only sanctioned ones back. --- */
 [data-theme="candy-shop"] :is(.shadow-2xs, .shadow-xs, .shadow-sm, .shadow, .shadow-md, .shadow-lg, .shadow-xl) {
@@ -590,8 +608,16 @@
 [data-theme="candy-shop"] [data-slot="button"].bg-primary:hover {
   background: var(--primary-cs-hover);
 }
+/* --- audit F6: destructive hover DEEPENS, never brightens toward the
+       raw cherry (#FF5C8D + white = 2.93:1). Light deepens #D11450,
+       dark deepens the /60-composited fill; white labels hold the floor
+       (6.16 / 5.08). Primary hover keeps the spec's own #FF5C8D tension,
+       documented in the audit. --- */
 [data-theme="candy-shop"] [data-slot="button"].bg-destructive:hover {
-  background: var(--primary-cs-hover);
+  background: #c01047;
+}
+[data-theme="candy-shop"].dark [data-slot="button"].bg-destructive:hover {
+  background: #d41e59;
 }
 [data-theme="candy-shop"].dark [data-slot="button"].bg-primary {
   box-shadow: var(--glow-accent);
@@ -655,6 +681,88 @@
 [data-theme="candy-shop"].dark .chip-diagnose {
   background: rgba(255, 233, 242, 0.1);
   color: #ffe9f2;
+}
+
+/* --- audit F1: cherry-as-text demotion. SME-inherited markup uses
+       .text-primary for small text (breadcrumbs, icon chips, filter
+       links); raw cherry there measures 2.73–3.11:1. The spec owns an
+       accent INK for exactly this duty (§3.2/§3.4) — route the class
+       through it (#D11450 light 4.63+ / #FF5C8D dark 6.46). --- */
+[data-theme="candy-shop"] .text-primary { color: var(--accent-ink); }
+
+/* --- audit F1: course-nav active — the sanctioned sibling recipe
+       (surface + hairline + 3px cherry spine), same as QG/plum ship.
+       The inherited wash+text-primary recipe fails AA even demoted
+       (accent-ink on the cherry wash = 4.07). --- */
+[data-theme="candy-shop"] a.course-nav-item[aria-current="page"] {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--line);
+  position: relative;
+}
+[data-theme="candy-shop"] a.course-nav-item[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 7px;
+  bottom: 7px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--cherry);
+}
+
+/* --- audit F10: selected menu items carry the accent-ink voice
+       (§10.9: accent-ink text + trailing check) instead of ink-on-ink. --- */
+[data-theme="candy-shop"] :is(
+  [data-slot="select-item"][data-state="checked"],
+  [data-slot="dropdown-menu-checkbox-item"][data-state="checked"],
+  [data-slot="dropdown-menu-radio-item"][data-state="checked"]
+) {
+  color: var(--accent-ink);
+}
+
+/* --- audit m1: tooltips are INVERSE by spec (ink fill / paper text),
+   not accent-on-accent — the inherited bg-primary fill put 12px white
+   labels on raw cherry (3.59:1). The arrow svg rides along. --- */
+[data-theme="candy-shop"] [data-slot="tooltip-content"] {
+  background: var(--ink);
+  color: var(--bg);
+}
+[data-theme="candy-shop"] [data-slot="tooltip-content"] > svg {
+  background: var(--ink);
+  fill: var(--ink);
+}
+
+/* --- audit F5: destructive-toast neutralization. The radix component
+   hardcodes a Tailwind red family (text-red-300 / hover red-50 / focus
+   rings red-400/600) neither spec owns a member of; the title/body now
+   ride --destructive-foreground (above), and the close rides the
+   on-primary paper voice. Dark fill deepens off raw #E61F5F — solid
+   white-on-#E61F5F is 4.44; the deepened cherry holds 7.9. --- */
+[data-theme="candy-shop"].dark [data-slot="toast"].destructive {
+  background: #9c1a47;
+}
+[data-theme="candy-shop"] [data-slot="toast"].destructive [toast-close] {
+  color: var(--on-primary-cs);
+  --tw-ring-color: rgba(255, 255, 255, 0.55);
+  --tw-ring-offset-color: var(--danger-cs);
+}
+
+/* --- audit F3: one-accent budget (§12.1 — "exactly one may be a call
+       to action"). The header CTA owns the landing's cherry; the hero
+       CTA demotes to the spec's own inverse voice (ink fill / paper
+       text, §10.1's demotion path). Marker class only fires under the
+   two audited themes — SME/QG landing is untouched. --- */
+[data-theme="candy-shop"] [data-slot="button"].hero-cta-inverse {
+  background: var(--ink);
+  color: var(--bg);
+}
+[data-theme="candy-shop"] [data-slot="button"].hero-cta-inverse:hover {
+  background: var(--ink);
+  opacity: 0.92;
+}
+[data-theme="candy-shop"].dark [data-slot="button"].hero-cta-inverse {
+  box-shadow: none; /* the dark bg-primary glow belongs to accent fills */
 }
 
 /* ====================================================================
@@ -754,6 +862,9 @@
   --accent: var(--surface-sunken);
   --accent-foreground: var(--ink);
   --destructive: var(--danger-pm);
+  --destructive-foreground: #ffffff; /* audit F5: the toast landmine —
+    light fill is plum ink #23132E, so its labels need the paper voice
+    (17.4:1); dark re-resolves below onto the text-voice fills */
   --border: var(--line);
   --input: var(--line-strong);
   --ring: var(--focus-pm);
@@ -785,6 +896,7 @@
   --primary-pm-hover: #8a55db;  /* hover moves toward the viewer in dark */
   --accent-ink: #a678ee;
   --danger-pm: #c9b7e4;         /* text/wash voice; FILLED slots override below */
+  --destructive-foreground: #23132e; /* audit F5: ink on the light voice ≈ 9.6 */
   --focus-pm: #a678ee;
   --success: #a678ee;
   --warn: #c4b0e8;  --warn-ink: #e8e0f6;
@@ -828,6 +940,21 @@
   border-radius: 10px;
 }
 [data-theme="chat-app-plum"] [data-slot="badge"] { border-radius: 999px; }
+
+/* --- audit F4: floating slots ride the exact rungs. Menus/tooltips/
+       alerts = radius-sm (10); sheets = radius-lg (28). The shipped
+       rounded-md/lg classes land one rung off (18/28). Placed after the
+       utility pins so the slot pins win the tie. --- */
+[data-theme="chat-app-plum"] :is(
+  [data-slot="popover-content"],
+  [data-slot="dropdown-menu-content"],
+  [data-slot="select-content"],
+  [data-slot="tooltip-content"],
+  [data-slot="alert"]
+) {
+  border-radius: 10px;
+}
+[data-theme="chat-app-plum"] [data-slot="sheet-content"] { border-radius: 28px; }
 
 /* --- depth: flat on purpose. Zero static shadows (anchored things
        separate with 1px lavender hairlines); floating layers get the
@@ -943,7 +1070,9 @@
 }
 [data-theme="chat-app-plum"].dark .chip-study {
   background: rgba(123, 68, 199, 0.22);
-  color: #a678ee;
+  color: #b48bea; /* audit F7: #A678EE sat 0.18 shy of AA on the violet
+    wash (4.32); a lighter violet tint clears it (5.17). Deepening the
+    wash instead LOWERS contrast — violet is lighter than the card */
 }
 [data-theme="chat-app-plum"].dark .chip-practice {
   background: rgba(134, 114, 160, 0.24);
@@ -971,6 +1100,67 @@
   width: 3px;
   border-radius: 2px;
   background: var(--violet);
+}
+
+/* --- audit F2: violet-as-text demotion, DARK only. --primary stays
+       raw #7B44C7 for fills (byte-identical law), but SME-inherited
+       .text-primary usages render it as 12–14px text on #161021 =
+       3.09:1. The spec's §3.2 split exists for exactly this: text duty
+       shifts to --accent-ink #A678EE (5.79). Light passes at 5.32 and
+       keeps the raw voice. --- */
+[data-theme="chat-app-plum"].dark .text-primary { color: var(--accent-ink); }
+
+/* --- audit F10: selected menu items carry the accent-ink voice
+       (§10.9: accent-ink text + trailing check) instead of ink-on-ink. --- */
+[data-theme="chat-app-plum"] :is(
+  [data-slot="select-item"][data-state="checked"],
+  [data-slot="dropdown-menu-checkbox-item"][data-state="checked"],
+  [data-slot="dropdown-menu-radio-item"][data-state="checked"]
+) {
+  color: var(--accent-ink);
+}
+
+/* --- audit m1: tooltips are INVERSE by spec (ink fill / paper text),
+   not the inherited accent fill. In dark the ink/paper swap makes this
+   mist-fill/plum-ink automatically. Arrow svg rides along. --- */
+[data-theme="chat-app-plum"] [data-slot="tooltip-content"] {
+  background: var(--ink);
+  color: var(--bg);
+}
+[data-theme="chat-app-plum"] [data-slot="tooltip-content"] > svg {
+  background: var(--ink);
+  fill: var(--ink);
+}
+
+/* --- audit F5: destructive-toast close neutralization. The radix
+   component hardcodes text-red-300/hover red-50/focus rings red-400/600
+   — a red family neither spec owns. Title/body now ride
+   --destructive-foreground (white on plum ink 17.4 light; ink on the
+   filled #3B2A52 12.81 dark); the close rides the on-primary voice. --- */
+[data-theme="chat-app-plum"] [data-slot="toast"].destructive [toast-close] {
+  color: var(--on-primary-pm);
+  --tw-ring-color: rgba(255, 255, 255, 0.55);
+  --tw-ring-offset-color: var(--danger-pm);
+}
+[data-theme="chat-app-plum"].dark [data-slot="toast"].destructive [toast-close] {
+  --tw-ring-offset-color: #3b2a52;
+}
+
+/* --- audit F3: one-accent budget (§12.1 — "exactly one may be a call
+       to action"). The header CTA owns the landing's violet; the hero
+       CTA demotes to the spec's own inverse voice (ink fill / paper
+       text). Marker class only fires under the two audited themes —
+       SME/QG landing is untouched. --- */
+[data-theme="chat-app-plum"] [data-slot="button"].hero-cta-inverse {
+  background: var(--ink);
+  color: var(--bg);
+}
+[data-theme="chat-app-plum"] [data-slot="button"].hero-cta-inverse:hover {
+  background: var(--ink);
+  opacity: 0.92;
+}
+[data-theme="chat-app-plum"].dark [data-slot="button"].hero-cta-inverse {
+  box-shadow: none; /* the dark bg-primary glow belongs to accent fills */
 }
 
 /* --- Past Papers viewer (pdf-pane v3): pdf.js text layer + find highlights ---

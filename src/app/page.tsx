@@ -115,7 +115,9 @@ export default async function HubPage() {
           <span className="font-medium text-foreground">{courseCount} subjects</span> ready to add.
         </p>
         <div className="flex flex-wrap items-center gap-3 pt-1">
-          <Button asChild size="lg" className="gap-2">
+          {/* audit F3 (one-accent budget): demoted to the themes' inverse
+              voice via the authored layers; inert under SME/QG */}
+          <Button asChild size="lg" className="hero-cta-inverse gap-2">
             <Link href="/dashboard">
               <LayoutDashboard className="size-4" aria-hidden />
               Open my dashboard
