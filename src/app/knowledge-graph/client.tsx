@@ -63,11 +63,13 @@ export function KnowledgeGraphClient({ courses }: { courses: CourseLite[] }) {
   // invalid or missing deep links fall back to the pilot course
   const activeCourse = courses.some((c) => c.slug === course) ? course : DEFAULT_COURSE;
 
-  // learner state (KG phases 1 + 2): derived from the browser-local progress
-  // store + the content bridge in ONE pass — `overlay` is pushed into the
-  // renderer's dormant learner-state engine over postMessage (re-derives live
-  // on progress changes), `drawer` feeds the My State / History sheet.
-  const { overlay: learner, drawer } = useLearnerState(activeCourse);
+  // learner state (KG phases 1 + 2): the CORE model when the course is the
+  // pilot and the learner is signed in (real attempts, real decay, real
+  // review queue — ADR-029 tranche 4), else the simulated browser-local
+  // derivation. `overlay` is pushed into the renderer's dormant
+  // learner-state engine over postMessage, `drawer` feeds the My State /
+  // History sheet, `source` keeps the provenance honest.
+  const { overlay: learner, drawer, source } = useLearnerState(activeCourse);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const postLearnerOverlay = useCallback(() => {
@@ -192,7 +194,13 @@ export function KnowledgeGraphClient({ courses }: { courses: CourseLite[] }) {
             <Gauge className="size-3.5 shrink-0" aria-hidden />
             <span className="tabular-nums">{learner.stats.measured}/{learner.stats.total}</span>
             <span className="hidden lg:inline">
-              {learner.stats.measured > 0 ? "measured · my state" : "no evidence · my state"}
+              {source === "core"
+                ? learner.stats.measured > 0
+                  ? "measured · live · my state"
+                  : "live · my state"
+                : learner.stats.measured > 0
+                  ? "measured · my state"
+                  : "no evidence · my state"}
             </span>
           </Button>
         )}
@@ -264,6 +272,7 @@ export function KnowledgeGraphClient({ courses }: { courses: CourseLite[] }) {
         onOpenChange={setDrawerOpen}
         courseLabel={current?.label ?? "this course"}
         drawer={drawer}
+        source={source}
       />
 
       {/* explorer canvas */}

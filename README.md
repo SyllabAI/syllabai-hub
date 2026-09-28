@@ -61,13 +61,42 @@ redirect into the pilot course's hub.
 | Variable | Where | Purpose |
 |---|---|---|
 | `NEXT_PUBLIC_API_BASE_URL` | client | core origin, e.g. `https://syllabai-core.onrender.com` (browser→core direct) |
-| `SYLLABAI_CORE_BASE_URL` | server | same origin for the `/api/ai/*` proxies |
+| `SYLLABAI_CORE_BASE_URL` | server | same origin for the `/api/ai/*` proxies + the question bridge |
 | `HUB_DATA_MODE` | server | `mock` (default, bundled corpus) \| `core-api` |
 
 **Deployment prerequisite:** core's CORS allow-list
 (`SYLLABAI_CORS_ORIGINS` on the Render service) must include this app's
 production origin — e.g. `https://<hub-domain>.vercel.app` alongside the
 existing entries.
+
+## The 4CH1 bridge (pilot learner model)
+
+The pilot course (Edexcel IGCSE Chemistry, `igcse-chemistry-19`) is wired to
+syllabai-core end-to-end while every other course stays on the bundled
+read-only corpus:
+
+- **Question identity** — `/api/core/questions` joins each corpus question to
+  core's SME question-bank rows (verified 1:1: 28 topics, 524 questions,
+  family `sme-eq-<topic>-q<N>` ↔ corpus order, marks sanity-checked). Any
+  question the join cannot verify stays local-only — never fabricated
+  evidence.
+- **Real attempts** — MCQ submissions and structured answers in the question
+  player go to the learner's core account (`POST /api/v1/attempts`,
+  `/attempts/structured`), alongside the local progress rings.
+- **Smart Mark** — after a structured submission the learner can Smart Mark
+  every part through core's κ-gated pipeline, with the honest
+  authoritative/indicative flag, per-part mark-point breakdowns, and the two
+  coaching actions (Explain my feedback / Improve my answer).
+- **Learner model** — the knowledge-graph overlay and the My State / History
+  drawer derive from core's read models (`/learners/me/state`,
+  `/knowledge-graph`, `/attempts`) when signed in, labelled
+  `CORE_MEASURED`; the browser-local derivation remains the fallback and is
+  labelled `SIMULATED`.
+- **Note views** — reading a pilot revision note reports to core's
+  revision-notes progress (feeds the backend learner model).
+
+Everything degrades honestly: signed out, non-pilot course, or backend down →
+the local experience, clearly labelled, nothing blocks.
 
 ## Development
 

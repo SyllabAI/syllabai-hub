@@ -1,14 +1,20 @@
 "use client";
 
 /**
- * Note-page client island: (1) fires the SIMULATED read event so the
- * sidebar rings react like SME's (research §8), and (2) renders the
- * "Was this revision note helpful?" micro-feedback footer (research §5.4).
+ * Note-page client island: (1) fires the read event so the sidebar rings
+ * react like SME's (research §8), and — when the course is the 4CH1 pilot
+ * and the learner is signed in — ALSO reports the view to syllabai-core
+ * (revision-notes progress feeds the backend's learner model), and (2)
+ * renders the "Was this revision note helpful?" micro-feedback footer
+ * (research §5.4). The helpful rating stays on the local overlay — core has
+ * no votes contract yet (tracked gap, honest as ever).
  */
 import { useEffect } from "react";
 import { ThumbsDown, ThumbsUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { markNoteRead, rateNoteHelpful, useCourseProgress, type Course } from "@/lib/progress";
+import { api } from "@/lib/api";
+import { fetchPilotInfo, coreEvidenceChanged } from "@/lib/attempt-bridge";
 
 export function NoteFootnote({
   course,
@@ -25,6 +31,22 @@ export function NoteFootnote({
 
   useEffect(() => {
     markNoteRead(course, noteId, subtopic);
+    // 4CH1 bridge: the same view becomes real evidence on the learner's core
+    // account. Fire-and-forget with the pilot check — a note read must never
+    // block rendering, and non-pilot courses stay local-only by design.
+    let cancelled = false;
+    fetchPilotInfo(course).then((pilot) => {
+      if (cancelled || !pilot) return;
+      api
+        .markRevisionNoteViewed(noteId)
+        .then(() => coreEvidenceChanged())
+        .catch(() => {
+          /* view stays local — honest, silent, non-blocking */
+        });
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [course, noteId, subtopic]);
 
   return (

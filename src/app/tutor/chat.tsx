@@ -527,7 +527,11 @@ export function TutorChat() {
                   ? "Ask about states of matter, bonding, moles, exam technique…"
                   : "Reply to SyllabAI Tutor…"
               }
-              onSend={send}
+              // () => send(): the composer's Send button calls onSend with the
+              // CLICK EVENT as its argument — passing send directly would make
+              // that event the `override` question and crash on .trim() (a
+              // real-click-only bug; Enter-to-send masked it in verification).
+              onSend={() => send()}
               onStop={() => abortsRef.current.get(activeId ?? "")?.abort()}
             />
             <p className="text-center text-[10px] leading-relaxed text-muted-foreground">

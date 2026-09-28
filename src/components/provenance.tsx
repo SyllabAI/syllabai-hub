@@ -26,9 +26,11 @@ export function ProvenanceBadge({ tier }: { tier: string | null | undefined }) {
     HUMAN_VALIDATED: "border-success/30 bg-success/10 text-success",
     DEMO_DERIVED: "border-cat/30 bg-cat/10 text-cat",
     SIMULATED: "border-sim/30 bg-sim/10 text-sim",
+    /** measured facts read live from the learner's syllabai-core account */
+    CORE_MEASURED: "border-success/30 bg-success/10 text-success",
   };
   return (
-    <Badge variant="outline" className={cn("text-[10px]", map[tier])}>
+    <Badge variant="outline" className={cn("text-[10px]", map[tier] ?? "text-muted-foreground")}>
       {tier}
     </Badge>
   );

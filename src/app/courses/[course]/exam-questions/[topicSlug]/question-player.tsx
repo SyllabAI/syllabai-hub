@@ -57,9 +57,24 @@ import {
   saveTypedAnswer,
   toggleSavedQuestion,
   useCourseProgress,
+  getProgressSnapshot,
   type Course,
 } from "@/lib/progress";
 import type { ExamQuestion } from "@/lib/contracts";
+import { api, ApiError, aiAskErrorMessage } from "@/lib/api";
+import type {
+  SmartMarkAttemptView,
+  SmartMarkFeedbackExplanation,
+  SmartMarkImprovementPlan,
+  StructuredAttemptResultView,
+} from "@/lib/types";
+import {
+  useAttemptBridge,
+  coreEvidenceChanged,
+  type AttemptBridgeStatus,
+  type BridgeMcqPart,
+  type BridgeQuestion,
+} from "@/lib/attempt-bridge";
 import { cn } from "@/lib/utils";
 
 const DIFFICULTIES = ["all", "easy", "medium", "hard"] as const;
@@ -124,6 +139,9 @@ export function QuestionPlayer({
   const [schemeFor, setSchemeFor] = useState<ExamQuestion | null>(null);
   const [fullFor, setFullFor] = useState<ExamQuestion | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
+  // 4CH1 bridge — resolves this set's corpus questions to core identity when
+  // the course is the pilot and the learner is signed in (ADR-029 tranche 4)
+  const bridge = useAttemptBridge(course, topicSlug);
 
   const counts = useMemo(() => {
     const c: Record<Difficulty, number> = { all: questions.length, easy: 0, medium: 0, hard: 0 };
@@ -151,6 +169,9 @@ export function QuestionPlayer({
 
   return (
     <div className="space-y-5">
+      {/* 4CH1 bridge status — one honest line, never a blocker */}
+      <BridgeBanner status={bridge} />
+
       {/* difficulty tabs + guided practice (SME controls, research §6.2) */}
       <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-card px-4 py-3">
         <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Difficulty">
@@ -253,6 +274,7 @@ export function QuestionPlayer({
                 subtopicCode={subtopicCode}
                 subtopicTitle={subtopicTitle}
                 onViewModel={() => setSchemeFor(q)}
+                bridge={bridge}
               />
             </div>
           </article>
@@ -283,6 +305,7 @@ export function QuestionPlayer({
               onViewModel={() => {
                 setSchemeFor(fullFor);
               }}
+              bridge={bridge}
             />
           )}
         </DialogContent>
@@ -299,6 +322,44 @@ export function QuestionPlayer({
   );
 }
 
+// ── bridge status banner — one honest line, never a blocker ──────────────
+
+function BridgeBanner({ status }: { status: AttemptBridgeStatus }) {
+  if (status.kind === "ready") {
+    const skipped = status.data.skipped.length;
+    return (
+      <div className="rounded-lg border border-success/25 bg-success/5 px-4 py-2.5 text-[13px] leading-relaxed">
+        <span className="inline-flex items-center gap-1.5 font-medium text-success">
+          <CheckCircle2 className="size-3.5" aria-hidden /> Live · SyllabAI core
+        </span>{" "}
+        <span className="text-muted-foreground">
+          answers in this set are recorded to your real learner model — Smart Mark,
+          mastery, review queue and history update from the backend.
+        </span>
+        {skipped > 0 && (
+          <span className="text-muted-foreground">
+            {" "}({skipped} question{skipped === 1 ? "" : "s"} could not be verified against the
+            backend and stay local-only.)
+          </span>
+        )}
+      </div>
+    );
+  }
+  if (status.kind === "unauthenticated") {
+    return (
+      <div className="rounded-lg border bg-muted/30 px-4 py-2.5 text-[13px] leading-relaxed text-muted-foreground">
+        Practice works locally right now.{" "}
+        <a href="/login" className="font-medium text-primary underline-offset-2 hover:underline">
+          Sign in
+        </a>{" "}
+        to record answers to your real SyllabAI learner model (the pilot subject is
+        connected to the backend — Smart Mark, mastery and history).
+      </div>
+    );
+  }
+  return null;
+}
+
 // ── question body (shared by list + full-screen) ────────────────────────
 
 function QuestionBody({
@@ -308,6 +369,7 @@ function QuestionBody({
   subtopicCode,
   subtopicTitle,
   onViewModel,
+  bridge,
 }: {
   course: Course;
   question: ExamQuestion;
@@ -315,6 +377,7 @@ function QuestionBody({
   subtopicCode: string | null;
   subtopicTitle: string | null;
   onViewModel: () => void;
+  bridge: AttemptBridgeStatus;
 }) {
   const progress = useCourseProgress(course);
   const [scoreDraft, setScoreDraft] = useState<string>("");
@@ -332,6 +395,10 @@ function QuestionBody({
     question.parts.length > 0 &&
     question.parts.every((p) => p.questionType === "multiple_choice" && hasAnswerKey(p));
 
+  const coreJoin: BridgeQuestion | null =
+    bridge.kind === "ready" ? (bridge.data.questions[question.id] ?? null) : null;
+  const coreLive = bridge.kind === "ready" && coreJoin !== null;
+
   return (
     <div className="space-y-4">
       {question.parts.map((p, idx) => {
@@ -345,6 +412,7 @@ function QuestionBody({
               subtopicCode={subtopicCode}
               optionsVisible={mcqOptionsVisible(question, idx)}
               onViewModel={onViewModel}
+              coreJoin={coreJoin?.mcq[p.id] ?? null}
             />
           );
         }
@@ -357,9 +425,16 @@ function QuestionBody({
             topicSlug={topicSlug}
             subtopicCode={subtopicCode}
             showPartBadge={question.parts.length > 1}
+            coreLive={coreLive}
           />
         );
       })}
+
+      {/* 4CH1 bridge — real attempts + Smart Mark on the learner's core
+          account (pilot + signed in + join verified for this question) */}
+      {coreLive && coreJoin && coreJoin.structured.length > 0 && (
+        <CoreMarkingFlow course={course} question={question} join={coreJoin} topicSlug={topicSlug} subtopicCode={subtopicCode} />
+      )}
 
       {/* SME self-marking footer (research §6.3, figure 10) — structured only;
           auto-marked MCQs already recorded their mark on submit */}
@@ -441,6 +516,7 @@ function StructuredPart({
   topicSlug,
   subtopicCode,
   showPartBadge,
+  coreLive,
 }: {
   course: Course;
   question: ExamQuestion;
@@ -448,6 +524,7 @@ function StructuredPart({
   topicSlug: string;
   subtopicCode: string | null;
   showPartBadge: boolean;
+  coreLive: boolean;
 }) {
   return (
     <div className="space-y-2">
@@ -469,6 +546,7 @@ function StructuredPart({
           part={part}
           topicSlug={topicSlug}
           subtopicCode={subtopicCode}
+          coreLive={coreLive}
         />
       )}
     </div>
@@ -483,29 +561,36 @@ function TypedAnswerWorkspace({
   part,
   topicSlug,
   subtopicCode,
+  coreLive,
 }: {
   course: Course;
   question: ExamQuestion;
   part: ExamQuestion["parts"][number];
   topicSlug: string;
   subtopicCode: string | null;
+  coreLive: boolean;
 }) {
   const progress = useCourseProgress(course);
   const savedText = progress.typedAnswers[part.id]?.text ?? "";
   const [text, setText] = useState(savedText);
   const [justSaved, setJustSaved] = useState(false);
-  const [aiAvailable, setAiAvailable] = useState<boolean | null>(null);
+  const [probedAi, setProbedAi] = useState<boolean | null>(null);
   const [mark, setMark] = useState<MarkState>({ kind: "idle" });
   const [applied, setApplied] = useState(false);
-  const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    // the old free-text AI marking lane is superseded by core Smart Mark
+    // whenever the bridge is live for this question — probe only then
+    if (coreLive) return;
     let live = true;
-    aiMarkAvailable().then((v) => live && setAiAvailable(v));
+    aiMarkAvailable().then((v) => live && setProbedAi(v));
     return () => {
       live = false;
     };
-  }, []);
+  }, [coreLive]);
+  /** derived, not state: when the core flow owns this question the legacy
+   *  lane is deterministically off — no effect-time setState needed */
+  const aiAvailable = coreLive ? false : probedAi;
 
   const persist = (value: string) => {
     saveTypedAnswer(course, part.id, value);
@@ -515,12 +600,14 @@ function TypedAnswerWorkspace({
 
   const onType = (value: string) => {
     setText(value);
-    if (debounce.current) clearTimeout(debounce.current);
-    debounce.current = setTimeout(() => persist(value), 700);
+    // save synchronously (no debounce): the question-level "Submit for
+    // marking" reads the store, so a fast click right after typing must
+    // still submit the current text — a stale submission would be fake
+    // evidence. The payload is small; per-keystroke persistence is cheap.
+    persist(value);
   };
 
   const flushNow = () => {
-    if (debounce.current) clearTimeout(debounce.current);
     if (text !== savedText) persist(text);
   };
 
@@ -582,10 +669,18 @@ function TypedAnswerWorkspace({
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <PenLine className="size-3.5 text-primary" aria-hidden />
         <span className="text-[13px] font-medium">Your answer</span>
-        <Badge variant="outline" className="px-1 text-[10.5px] uppercase text-muted-foreground">
-          simulated
+        <Badge
+          variant="outline"
+          className={cn(
+            "px-1 text-[10.5px] uppercase",
+            coreLive ? "border-success/30 text-success" : "text-muted-foreground",
+          )}
+        >
+          {coreLive ? "live draft" : "simulated"}
         </Badge>
-        <span className="text-[11px] text-muted-foreground">saved in this browser</span>
+        <span className="text-[11px] text-muted-foreground">
+          {coreLive ? "saved in this browser — submit below to mark it" : "saved in this browser"}
+        </span>
         {justSaved && (
           <span className="inline-flex items-center gap-1 text-[11px] text-success">
             <CheckCircle2 className="size-3" aria-hidden /> saved
@@ -734,6 +829,7 @@ function McqPart({
   subtopicCode,
   optionsVisible,
   onViewModel,
+  coreJoin,
 }: {
   course: Course;
   part: ExamQuestion["parts"][number];
@@ -742,11 +838,19 @@ function McqPart({
   /** option content is visible somewhere (stem media or an earlier part) */
   optionsVisible: boolean;
   onViewModel: () => void;
+  /** core identity for this part, when the 4CH1 bridge verified the join */
+  coreJoin: BridgeMcqPart | null;
 }) {
   const progress = useCourseProgress(course);
   // 182 questions carry more than one MCQ part — key attempts by part id
   const key = part.id;
   const answer = progress.mcqAnswers[key];
+  // response time is measured from mount to submit — core's learner model
+  // uses it as fluency telemetry (Paper B §3.5)
+  const shownAt = useRef(Date.now());
+  const [coreState, setCoreState] = useState<"idle" | "sending" | "recorded" | "failed">(
+    "idle",
+  );
 
   const keyedText = hasUsableChoices(part);
   const letterOnly = !keyedText && hasAnswerKey(part);
@@ -780,7 +884,34 @@ function McqPart({
     if (!chosen) return;
     recordMcqAnswer(course, key, topicSlug, subtopicCode, chosen, chosen === correctLabel);
     setSubmitted(true);
+    // 4CH1 bridge — the same answer becomes a REAL attempt on the learner's
+    // core account. Fire-and-observe: the local ring recorded already; the
+    // core write is reported honestly and never blocks the instant mark.
+    if (coreJoin && !coreStateRecorded()) {
+      const optionId = coreJoin.options[chosen];
+      if (optionId) {
+        setCoreState("sending");
+        api
+          .submitAttempt({
+            questionId: coreJoin.questionId,
+            chosenOptionId: optionId,
+            responseTimeMs: Math.max(0, Date.now() - shownAt.current),
+            confidence: null,
+            selfDoubtFlag: false,
+            timedCondition: false,
+          })
+          .then(() => {
+            setCoreState("recorded");
+            coreEvidenceChanged();
+          })
+          .catch(() => setCoreState("failed"));
+      }
+    }
   };
+
+  /** a recorded core attempt must not be re-submitted on "Try again" —
+   * evidence is immutable; trying again is local practice only */
+  const coreStateRecorded = () => coreState === "recorded" || coreState === "sending";
 
   return (
     <div className="space-y-3">
@@ -917,6 +1048,21 @@ function McqPart({
                 >
                   <RotateCcw className="size-3.5" aria-hidden /> Try again
                 </Button>
+                {coreJoin && coreState === "sending" && (
+                  <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                    <Loader2 className="size-3 animate-spin" aria-hidden /> recording to your learner model…
+                  </span>
+                )}
+                {coreJoin && coreState === "recorded" && (
+                  <span className="inline-flex items-center gap-1 text-[11px] text-success">
+                    <CheckCircle2 className="size-3" aria-hidden /> recorded to your learner model
+                  </span>
+                )}
+                {coreJoin && coreState === "failed" && (
+                  <span className="text-[11px] text-warn">
+                    not recorded (backend unreachable) — your local mark is safe
+                  </span>
+                )}
               </>
             )}
           </div>
@@ -947,6 +1093,359 @@ function McqPart({
           </button>{" "}
           for the final answer and explanation.
         </div>
+      )}
+    </div>
+  );
+}
+
+// ── core marking flow — real attempt → Smart Mark → coaching (4CH1) ──────
+
+function markFlowError(e: unknown): string {
+  if (e instanceof ApiError && e.status === 409) {
+    return "This attempt was already settled — the marks you see are the recorded ones.";
+  }
+  return aiAskErrorMessage(
+    e,
+    "The backend marking pipeline is unavailable right now — your answers are saved locally; try again in a moment.",
+  );
+}
+
+/**
+ * The pilot's real practice loop for structured questions: submit every
+ * typed answer as a REAL attempt on the learner's core account, then Smart
+ * Mark it through core's κ-gated pipeline, then the two coaching actions
+ * (feedback explanation / improvement plan) per part. Everything renders
+ * core's own decisions — the hub never invents a mark, and the honest
+ * `authoritative` flag is shown, κ gate and all.
+ */
+function CoreMarkingFlow({
+  course,
+  question,
+  join,
+  topicSlug,
+  subtopicCode,
+}: {
+  course: Course;
+  question: ExamQuestion;
+  join: BridgeQuestion;
+  topicSlug: string;
+  subtopicCode: string | null;
+}) {
+  const progress = useCourseProgress(course);
+  const shownAt = useRef(Date.now());
+  const [phase, setPhase] = useState<
+    "draft" | "submitting" | "submitted" | "marking" | "marked"
+  >("draft");
+  const [error, setError] = useState<string | null>(null);
+  const [attempts, setAttempts] = useState<StructuredAttemptResultView[]>([]);
+  const [marks, setMarks] = useState<SmartMarkAttemptView[]>([]);
+  const [applied, setApplied] = useState(false);
+  const [extras, setExtras] = useState<
+    Record<string, SmartMarkFeedbackExplanation | SmartMarkImprovementPlan | "loading" | "error">
+  >({});
+
+  const structuredHubParts = question.parts.filter(
+    (p) => p.questionType !== "multiple_choice",
+  );
+  const answerFor = (hubPartId: string) =>
+    progress.typedAnswers[hubPartId]?.text ?? "";
+  const hasAnyText = structuredHubParts.some((p) => answerFor(p.id).trim().length > 0);
+
+  /** core part UUID → hub part (labels/prompts stay corpus-rendered) */
+  const hubByCorePartId = useMemo(() => {
+    const m = new Map<string, ExamQuestion["parts"][number]>();
+    for (const sub of join.structured) {
+      for (const [hubPartId, corePartId] of Object.entries(sub.parts)) {
+        const hub = structuredHubParts.find((p) => p.id === hubPartId);
+        if (hub) m.set(corePartId, hub);
+      }
+    }
+    return m;
+  }, [join, structuredHubParts]);
+
+  const submit = async () => {
+    setPhase("submitting");
+    setError(null);
+    try {
+      const results = await Promise.all(
+        join.structured.map((sub) =>
+          api.submitStructuredAttempt({
+            questionId: sub.questionId,
+            partAnswers: Object.entries(sub.parts).map(([hubPartId, corePartId]) => ({
+              partId: corePartId,
+              answerText: answerFor(hubPartId),
+            })),
+            responseTimeMs: Math.max(0, Date.now() - shownAt.current),
+            confidence: null,
+            selfDoubtFlag: false,
+            timedCondition: false,
+          }),
+        ),
+      );
+      setAttempts(results);
+      setPhase("submitted");
+      coreEvidenceChanged();
+    } catch (e) {
+      setError(markFlowError(e));
+      setPhase("draft");
+    }
+  };
+
+  const smartMark = async () => {
+    setPhase("marking");
+    setError(null);
+    try {
+      const results = await Promise.all(
+        attempts.map((a) => api.smartMarkAttempt(a.attemptId)),
+      );
+      setMarks(results);
+      setPhase("marked");
+      coreEvidenceChanged();
+    } catch (e) {
+      setError(markFlowError(e));
+      setPhase("submitted");
+    }
+  };
+
+  const loadExtra = async (attemptId: string, partId: string, kind: "explain" | "improve") => {
+    const key = `${kind}:${partId}`;
+    setExtras((prev) => ({ ...prev, [key]: "loading" }));
+    try {
+      const res =
+        kind === "explain"
+          ? await api.explainSmartFeedback(attemptId, partId)
+          : await api.smartImprovementPlan(attemptId, partId);
+      setExtras((prev) => ({ ...prev, [key]: res }));
+    } catch {
+      setExtras((prev) => ({ ...prev, [key]: "error" }));
+    }
+  };
+
+  const totalAwarded = marks.reduce(
+    (a, m) => a + m.parts.reduce((s, p) => s + (p.marksAwarded ?? 0), 0),
+    0,
+  );
+  const totalPossible = marks.reduce((a, m) => a + m.marksPossible, 0);
+  const anyAuthoritative = marks.some((m) => m.parts.some((p) => p.authoritative));
+
+  return (
+    <div className="rounded-lg border border-primary/30 bg-primary/[0.03] p-3">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <Sparkles className="size-3.5 text-primary" aria-hidden />
+        <span className="text-[13px] font-medium">Submit for marking — SyllabAI core</span>
+        <Badge variant="outline" className="border-success/30 px-1 text-[10.5px] uppercase text-success">
+          live
+        </Badge>
+        <span className="text-[11px] text-muted-foreground">
+          your written answers go to your real learner account
+        </span>
+      </div>
+
+      {/* phase machine */}
+      {(phase === "draft" || phase === "submitting") && (
+        <div className="flex flex-wrap items-center gap-3">
+          <Button size="sm" disabled={!hasAnyText || phase === "submitting"} onClick={submit}>
+            {phase === "submitting" ? (
+              <>
+                <Loader2 className="size-3.5 animate-spin" aria-hidden /> Submitting…
+              </>
+            ) : (
+              "Submit answers"
+            )}
+          </Button>
+          <span className="text-[11px] text-muted-foreground">
+            {hasAnyText
+              ? "then Smart Mark marks every part against the mark scheme"
+              : "type an answer above first"}
+          </span>
+        </div>
+      )}
+
+      {(phase === "submitted" || phase === "marking" || phase === "marked") && phase !== "marked" && (
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="inline-flex items-center gap-1 text-[13px] font-medium text-success">
+            <CheckCircle2 className="size-3.5" aria-hidden /> Answers submitted
+          </span>
+          <Button size="sm" variant="outline" disabled={phase === "marking"} onClick={smartMark}>
+            {phase === "marking" ? (
+              <>
+                <Loader2 className="size-3.5 animate-spin" aria-hidden /> Marking…
+              </>
+            ) : (
+              <>
+                <Sparkles className="size-3.5" aria-hidden /> Smart Mark my answers
+              </>
+            )}
+          </Button>
+          <span className="text-[11px] text-muted-foreground">
+            AI marks each part through the marking pipeline; marks drive your mastery
+          </span>
+        </div>
+      )}
+
+      {phase === "marked" && (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge className="gap-1 text-[11px]">
+              <Sparkles className="size-3" aria-hidden /> Smart Mark: {totalAwarded}/{totalPossible}
+            </Badge>
+            <span className="text-[11px] text-muted-foreground">
+              {anyAuthoritative
+                ? "authoritative marks — they feed your mastery and review schedule"
+                : "indicative marks — the pipeline's κ release gate hasn't certified this batch yet, so treat them as AI-suggested and check against the scheme"}
+            </span>
+            {!applied && !progress.selfScores[question.id] && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="ml-auto h-7 text-xs"
+                onClick={() => {
+                  recordSelfScore(
+                    course,
+                    question.id,
+                    topicSlug,
+                    subtopicCode,
+                    totalAwarded,
+                    Math.max(1, totalPossible || question.totalMarks),
+                  );
+                  setApplied(true);
+                }}
+              >
+                Apply score
+              </Button>
+            )}
+            {(applied || progress.selfScores[question.id]) && (
+              <span className="ml-auto inline-flex items-center gap-1 text-xs text-success">
+                <CheckCircle2 className="size-3.5" aria-hidden /> applied
+              </span>
+            )}
+          </div>
+
+          {marks.map((m) =>
+            m.parts.map((p) => {
+              const hub = hubByCorePartId.get(p.partId);
+              const explainKey = `explain:${p.partId}`;
+              const improveKey = `improve:${p.partId}`;
+              const explain = extras[explainKey];
+              const improve = extras[improveKey];
+              return (
+                <div key={p.partId} className="rounded-lg border bg-background p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[13px] font-medium">
+                      Part {p.label}
+                      {hub && question.parts.filter((x) => x.questionType !== "multiple_choice").length > 1
+                        ? ` · ${hub.marks} mark${hub.marks === 1 ? "" : "s"}`
+                        : ""}
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "text-[11px]",
+                        p.marksAwarded > 0 ? "border-success/40 text-success" : "text-destructive",
+                      )}
+                    >
+                      {p.marksAwarded}/{p.marksPossible}
+                    </Badge>
+                    {!p.authoritative && (
+                      <Badge variant="secondary" className="text-[10px]">
+                        indicative · κ gate
+                      </Badge>
+                    )}
+                    {p.modelId && (
+                      <span className="text-[10.5px] text-muted-foreground">via {p.modelId}</span>
+                    )}
+                    <div className="ml-auto flex items-center gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 text-xs"
+                        disabled={explain === "loading"}
+                        onClick={() => loadExtra(m.attemptId, p.partId, "explain")}
+                      >
+                        {explain === "loading" ? (
+                          <Loader2 className="size-3 animate-spin" aria-hidden />
+                        ) : (
+                          "Explain my feedback"
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 text-xs"
+                        disabled={improve === "loading"}
+                        onClick={() => loadExtra(m.attemptId, p.partId, "improve")}
+                      >
+                        {improve === "loading" ? (
+                          <Loader2 className="size-3 animate-spin" aria-hidden />
+                        ) : (
+                          "Improve my answer"
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {p.breakdown.length > 0 && (
+                    <ul className="mt-2 space-y-1.5">
+                      {p.breakdown.map((d, i) => (
+                        <li key={i} className="flex items-start gap-2 text-[13px] leading-relaxed">
+                          {d.awarded ? (
+                            <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" aria-hidden />
+                          ) : (
+                            <XCircle className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden />
+                          )}
+                          <span>
+                            <span className="font-medium">{d.pointLabel ?? d.ref ?? "mark point"}</span>
+                            <span className="text-muted-foreground">
+                              {" "}
+                              — {d.rationale || d.evidence} [{d.marksAwarded}/{d.marks}]
+                            </span>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {explain === "error" && (
+                    <p className="mt-2 text-xs text-warn">
+                      The explanation could not be generated — try again in a moment.
+                    </p>
+                  )}
+                  {improve === "error" && (
+                    <p className="mt-2 text-xs text-warn">
+                      The improvement plan could not be generated — try again in a moment.
+                    </p>
+                  )}
+                  {explain && explain !== "loading" && explain !== "error" && "explanation" in explain && (
+                    <div className="mt-2 rounded-md border border-primary/20 bg-primary/5 p-2.5">
+                      <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                        Why this feedback
+                      </p>
+                      <div className="text-[13px] leading-relaxed">
+                        <Markdown>{explain.explanation}</Markdown>
+                      </div>
+                    </div>
+                  )}
+                  {improve && improve !== "loading" && improve !== "error" && "plan" in improve && (
+                    <div className="mt-2 rounded-md border border-primary/20 bg-primary/5 p-2.5">
+                      <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                        How to improve
+                      </p>
+                      <div className="text-[13px] leading-relaxed">
+                        <Markdown>{improve.plan}</Markdown>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            }),
+          )}
+        </div>
+      )}
+
+      {error && (
+        <p className="mt-2 rounded-md border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn-ink">
+          {error}
+        </p>
       )}
     </div>
   );

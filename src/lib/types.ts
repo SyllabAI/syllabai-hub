@@ -96,6 +96,23 @@ export interface StudentQuestionView {
   specPoints?: SpecPointRef[];
 }
 
+// ── Whole-question families (session-121 / core QuestionFamilyAssembler) ──
+
+/** One WHOLE SME question as the learner meets it on a set page — the demo's
+ *  serving unit, reassembled server-side by core so a part can never serve
+ *  without its family (the "orphaned stimulus" defect). */
+export interface QuestionFamilyView {
+  /** stable identity: the family base ref (sme-eq-…-qN), row id otherwise */
+  key: string;
+  ref: string | null;
+  marks: number;
+  difficulty: number;
+  type: "MCQ" | "STRUCTURED" | string;
+  multi: boolean;
+  /** member rows in SME part order (the first carries the shared stimulus) */
+  parts: StudentQuestionView[];
+}
+
 // ── SME-style mark-scheme reveal (policy-gated learner surface) ──
 
 // ── Servable-question taxonomy (session-112, mirrors core QuestionTopicTaxonomyView) ──

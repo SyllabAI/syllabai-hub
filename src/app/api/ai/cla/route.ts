@@ -46,77 +46,11 @@ const QuestionBody = z.object({
 
 const Body = z.discriminatedUnion("kind", [NoteBody, TopicBody, QuestionBody]);
 
-// ── core anchor resolution (cached per server process) ────────────────────
-
-interface SubjectView {
-  id: string;
-  code: string;
-  name: string;
-  knowledgeNodeId: string | null;
-}
-
-interface NodeView {
-  id: string;
-  code: string;
-  type: string;
-  title: string;
-  children?: NodeView[];
-}
-
-let subjectsCache: { at: number; subjects: SubjectView[] } | null = null;
-const subjectRootByCode = new Map<string, string | null>();
-const topicIdByCode = new Map<string, string>(); // `${rootId}:${code}` → nodeId
-
-async function fetchJson<T>(path: string, token: string | null): Promise<T | null> {
-  const base = coreBaseUrl();
-  if (!base) return null;
-  const headers: Record<string, string> = { Accept: "application/json" };
-  if (token) headers.Authorization = `Bearer ${token}`;
-  try {
-    const res = await fetch(`${base}${path}`, {
-      headers,
-      next: { revalidate: 300 },
-      signal: AbortSignal.timeout(30_000),
-    });
-    if (!res.ok) return null;
-    return (await res.json()) as T;
-  } catch {
-    return null;
-  }
-}
-
-async function rootIdForCourseCode(code: string, token: string | null): Promise<string | null> {
-  if (subjectRootByCode.has(code)) return subjectRootByCode.get(code) ?? null;
-  if (!subjectsCache || Date.now() - subjectsCache.at > 300_000) {
-    const subjects = await fetchJson<SubjectView[]>("/api/v1/curriculum/subjects", token);
-    if (subjects) subjectsCache = { at: Date.now(), subjects };
-  }
-  const hit = subjectsCache?.subjects.find((s) => s.code === code);
-  const rootId = hit?.knowledgeNodeId ?? null;
-  subjectRootByCode.set(code, rootId);
-  return rootId;
-}
-
-/** Walk the core tree once per root, indexing every node by code. */
-async function topicNodeIdForCode(
-  rootId: string,
-  code: string,
-  token: string | null,
-): Promise<string | null> {
-  const key = `${rootId}:${code}`;
-  if (topicIdByCode.has(key)) return topicIdByCode.get(key) ?? null;
-  const tree = await fetchJson<NodeView>(
-    `/api/v1/knowledge/nodes/${rootId}/tree?includeMisconceptions=false`,
-    token,
-  );
-  if (!tree) return null;
-  const walk = (node: NodeView) => {
-    topicIdByCode.set(`${rootId}:${node.code}`, node.id);
-    for (const child of node.children ?? []) walk(child);
-  };
-  walk(tree);
-  return topicIdByCode.get(key) ?? null;
-}
+// ── core anchor resolution — shared with the 4CH1 question bridge ──────────
+import {
+  rootIdForCourseCode,
+  topicNodeIdForCode,
+} from "@/lib/core-topics";
 
 // ── route ─────────────────────────────────────────────────────────────────
 

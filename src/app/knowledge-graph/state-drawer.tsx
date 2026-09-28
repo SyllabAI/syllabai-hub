@@ -142,7 +142,7 @@ function NoteLink({ noteId }: { noteId: string }) {
   );
 }
 
-function MisconceptionWatchCard({ watch }: { watch: MisconceptionWatch }) {
+function MisconceptionWatchCard({ watch, live = false }: { watch: MisconceptionWatch; live?: boolean }) {
   const active = watch.items.filter((m) => m.active);
   const watching = watch.items.filter((m) => !m.active);
   return (
@@ -154,7 +154,7 @@ function MisconceptionWatchCard({ watch }: { watch: MisconceptionWatch }) {
           {active.length} active · {watching.length} watching
         </Badge>
         <Badge variant="outline" className="ml-auto text-[10px] text-muted-foreground">
-          SIMULATED
+          {live ? "CORE_MEASURED" : "SIMULATED"}
         </Badge>
       </header>
       <div className="px-3 py-2">
@@ -199,10 +199,9 @@ function MisconceptionWatchCard({ watch }: { watch: MisconceptionWatch }) {
         <p className="flex items-start gap-1.5 text-[10px] leading-relaxed text-muted-foreground">
           <Info className="mt-0.5 size-3 shrink-0" aria-hidden />
           <span>
-            {watch.disclaimer ??
-              "Simulated demo learner state over the course misconception corpus."} The
-            patterns themselves are SME / mark-scheme-documented; the active / watching
-            state is a deterministic demo overlay, not measured evidence.
+            {live
+              ? "Probabilities from the backend's misconception model over your real attempt evidence — likelihoods update as you practise."
+              : `${watch.disclaimer ?? "Simulated demo learner state over the course misconception corpus."} The patterns themselves are SME / mark-scheme-documented; the active / watching state is a deterministic demo overlay, not measured evidence.`}
           </span>
         </p>
       </footer>
@@ -210,7 +209,7 @@ function MisconceptionWatchCard({ watch }: { watch: MisconceptionWatch }) {
   );
 }
 
-function StateTab({ drawer }: { drawer: LearnerDrawerState }) {
+function StateTab({ drawer, live = false }: { drawer: LearnerDrawerState; live?: boolean }) {
   const stats = drawer.stats;
   const exposureOnly = Math.max(0, stats.touched - stats.measured);
 
@@ -242,9 +241,59 @@ function StateTab({ drawer }: { drawer: LearnerDrawerState }) {
         />
       </div>
 
+      {/* topic mastery — the core path's measured topics (core's evidence
+          granularity for attempts). Absent on the simulated path. */}
+      {live && drawer.topicStates && drawer.topicStates.length > 0 && (
+        <section className="rounded-lg border">
+          <header className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
+            <Gauge className="size-4 text-primary" aria-hidden />
+            <h3 className="text-sm font-semibold">Topic mastery</h3>
+            <Badge variant="outline" className="font-mono text-[10px] text-muted-foreground">
+              {drawer.topicStates.length} measured
+            </Badge>
+            <Badge variant="outline" className="ml-auto text-[10px] text-muted-foreground">
+              CORE_MEASURED
+            </Badge>
+          </header>
+          <div className="px-3 py-2">
+            <ul className="divide-y">
+              {drawer.topicStates.map((t) => (
+                <li key={t.title} className="flex flex-wrap items-center gap-2 py-2 first:pt-0 last:pb-0">
+                  <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{t.title}</span>
+                  <span className="text-[11px] tabular-nums text-muted-foreground">
+                    {t.stored}% → {t.effective}%
+                  </span>
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "text-[10px]",
+                      t.band === "strong"
+                        ? "border-success/40 text-success"
+                        : t.band === "developing"
+                          ? "border-warn/40 text-warn"
+                          : "border-destructive/40 text-destructive",
+                    )}
+                  >
+                    {t.band ?? "low"}
+                  </Badge>
+                  <span className="text-[10px] text-muted-foreground">
+                    {t.attempts} attempt{t.attempts === 1 ? "" : "s"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="border-t pt-2 text-[10px] leading-relaxed text-muted-foreground">
+              Measured by the backend from your real attempts (Smart Mark and auto-marked
+              answers). Spec-point mastery appears in the graph as soon as evidence exists at
+              that granularity.
+            </p>
+          </div>
+        </section>
+      )}
+
       {/* misconception watch (phase 3) — only when the course corpus carries one */}
       {drawer.misconceptionWatch && drawer.misconceptionWatch.items.length > 0 && (
-        <MisconceptionWatchCard watch={drawer.misconceptionWatch} />
+        <MisconceptionWatchCard watch={drawer.misconceptionWatch} live={live} />
       )}
 
       {/* review queue */}
@@ -564,12 +613,17 @@ export function LearnerStateDrawer({
   onOpenChange,
   courseLabel,
   drawer,
+  source = "simulated",
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   courseLabel: string;
   drawer: LearnerDrawerState | null;
+  /** core = the pilot's real learner model from the backend; simulated = the
+   *  browser-local demo overlay. Only the provenance labels change. */
+  source?: "core" | "simulated";
 }) {
+  const live = source === "core";
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-xl">
@@ -577,11 +631,12 @@ export function LearnerStateDrawer({
           <div className="flex items-center gap-2">
             <Gauge className="size-4 shrink-0 text-primary" aria-hidden />
             <SheetTitle className="text-base">My learning state</SheetTitle>
-            <ProvenanceBadge tier="SIMULATED" />
+            <ProvenanceBadge tier={live ? "CORE_MEASURED" : "SIMULATED"} />
           </div>
           <SheetDescription className="text-xs">
-            Derived live from this browser&apos;s progress on {courseLabel} — simulated,
-            browser-local evidence. It never writes to course data.
+            {live
+              ? `Derived live from your SyllabAI account — real attempt evidence, Ebbinghaus decay and review scheduling computed on the backend for ${courseLabel}.`
+              : `Derived live from this browser's progress on ${courseLabel} — simulated, browser-local evidence. It never writes to course data.`}
           </SheetDescription>
         </SheetHeader>
 
@@ -596,7 +651,7 @@ export function LearnerStateDrawer({
             <div className="p-4">
               <TabsContent value="state" className="mt-0">
                 {drawer ? (
-                  <StateTab drawer={drawer} />
+                  <StateTab drawer={drawer} live={live} />
                 ) : (
                   <p className="text-xs text-muted-foreground">
                     The content bridge is still loading — the state view appears once it

@@ -47,6 +47,9 @@ import {
   type LearnerOverlayStats,
   type LearnerModel,
 } from "./learner-state";
+import { api, getToken } from "./api";
+import type { LearnerStateView, LearnerKnowledgeGraphView, AttemptHistoryView } from "./types";
+import { fetchPilotInfo } from "./attempt-bridge";
 
 // ── overlay (phase-1 shape, unchanged contract) ─────────────────────────
 
@@ -89,6 +92,18 @@ export interface ReviewItem {
 
 export type LearnerEventKind = "marked" | "awaiting" | "exposure";
 
+/** One TOPIC-level measured mastery (core path): core's assessment evidence
+ *  fires at topic granularity (the question's primary topic node), so the
+ *  honest core drawer shows these alongside the spec-point table. */
+export interface TopicMasteryState {
+  title: string;
+  stored: number;
+  effective: number;
+  band: MasteryBand | null;
+  attempts: number;
+  lastAt: number;
+}
+
 /** One sim-learner misconception state for the My State watch card
  *  (KG phase 3). Content = corpus; state = SIMULATED. */
 export interface MisconceptionWatchItem {
@@ -126,6 +141,10 @@ export interface LearnerEvent {
 export interface LearnerDrawerState {
   /** summary counts (same numbers the host chip and graph legend show) */
   stats: LearnerOverlayStats;
+  /** TOPIC-level mastery from core (core's evidence granularity for
+   *  attempts) — visible only on the core path; spec points stay the graph's
+   *  honest per-point surface */
+  topicStates?: TopicMasteryState[];
   /** every touched point, review-due first, then weakest effective first */
   pointStates: PointState[];
   /** decay-derived review queue — due now, stalest first */
@@ -399,15 +418,275 @@ export interface LearnerStateBundle {
   overlay: LearnerOverlayState | null;
   /** phase-2 drawer model — null while the bridge loads or failed */
   drawer: LearnerDrawerState | null;
+  /** where the model came from — core (real learner account) or simulated
+   *  (browser-local overlay, the demo default). Honest labels ride on it. */
+  source: "core" | "simulated";
+}
+
+// ── core-backed model (ADR-029 tranche 4: the 4CH1 bridge) ──────────────
+
+interface CoreModelData {
+  overlay: LearnerOverlayState;
+  drawer: LearnerDrawerState;
+}
+
+/** core band label → the demo's band vocabulary (hub paints 4 bands). */
+function coreBand(band: string | null | undefined): MasteryBand | null {
+  if (band === "LOW") return "low";
+  if (band === "DEVELOPING") return "developing";
+  if (band === "SECURE") return "strong";
+  return null;
 }
 
 /**
- * Live learner state for one course: derives the renderer overlay AND the
- * drawer model from the same pass, so the graph paint and the drawer can
- * never disagree. Re-derives live on every progress-store change.
+ * The pilot's REAL learner model, read from the learner's core account:
+ * GET /state (skills + misconceptions + review queue), GET /knowledge-graph
+ * (per-node codes → the spine join), GET /attempts (history events). When it
+ * resolves, it REPLACES the simulated derivation — same overlay contract, same
+ * drawer shapes, honest CORE provenance. Any negative (not the pilot, signed
+ * out, backend down) falls back to the simulated path without a word of
+ * complaint.
+ */
+function useCoreLearnerModel(course: string): CoreModelData | "off" | "loading" | null {
+  const [state, setState] = useState<CoreModelData | "off" | "loading" | null>("loading");
+
+  const load = useMemo(
+    () => async (): Promise<CoreModelData | "off" | null> => {
+      if (!getToken()) return "off";
+      const pilot = await fetchPilotInfo(course);
+      if (!pilot) return "off";
+      const bridge = await fetchBridge(course);
+      if (!bridge) return "off";
+      let coreState: LearnerStateView;
+      let coreKg: LearnerKnowledgeGraphView;
+      let history: AttemptHistoryView;
+      try {
+        [coreState, coreKg, history] = await Promise.all([
+          api.learnerState(),
+          api.learnerKnowledgeGraph(pilot.rootId),
+          api.learnerAttempts(50),
+        ]);
+      } catch {
+        return "off"; // core unreachable — simulated path takes over silently
+      }
+
+      const now = Date.now();
+
+      // nodeId → spine pointId (SUBTOPIC codes only; concepts/misconceptions
+      // have no spine counterpart and are filtered by the pointIds set anyway)
+      const pointIdByNodeId = new Map<string, string>();
+      for (const n of coreKg.nodes) {
+        const id = normalizeCode(n.code, bridge.codePrefix);
+        if (bridge.pointIds.includes(id)) pointIdByNodeId.set(n.id, id);
+      }
+      // spine statements (same source the sim path uses)
+      const titles = await fetchTitles(course);
+      // spec point → mapped revision notes (inverse of the bridge's noteCodes)
+      const noteIdsByPoint = new Map<string, string[]>();
+      for (const [noteId, codes] of Object.entries(bridge.noteCodes)) {
+        for (const raw of codes) {
+          const id = normalizeCode(raw, bridge.codePrefix);
+          const list = noteIdsByPoint.get(id) ?? [];
+          list.push(noteId);
+          noteIdsByPoint.set(id, list);
+        }
+      }
+
+      // skills → point states + overlay entries (mastery is 0..1 on core).
+      // Core's assessment evidence fires at TOPIC granularity (the question's
+      // primary topic node), so skills on topic/UNIT nodes are surfaced as
+      // topicStates — visible in the drawer, never painted as spec points
+      // (that would fabricate per-point precision core does not claim).
+      const nodeById = new Map(coreKg.nodes.map((n) => [n.id, n]));
+      const topicStates: TopicMasteryState[] = [];
+      const skillByPoint = new Map<
+        string,
+        LearnerStateView["skillStates"][number]
+      >();
+      for (const s of coreState.skillStates) {
+        const pointId = pointIdByNodeId.get(s.nodeId);
+        if (pointId) {
+          skillByPoint.set(pointId, s);
+          continue;
+        }
+        const node = nodeById.get(s.nodeId);
+        if (node && (node.type === "TOPIC" || node.type === "UNIT")) {
+          topicStates.push({
+            title: s.nodeName ?? node.title,
+            stored: Math.round(s.mastery * 100),
+            effective: Math.round(s.effectiveMastery * 100),
+            band: coreBand(s.band),
+            attempts: s.attempts,
+            lastAt: s.lastPracticedAt ? Date.parse(s.lastPracticedAt) : 0,
+          });
+        }
+      }
+      topicStates.sort((a, b) => b.attempts - a.attempts);
+      const reviewByPoint = new Map<string, LearnerStateView["pendingReviews"][number]>();
+      for (const r of coreState.pendingReviews) {
+        const pointId = pointIdByNodeId.get(r.nodeId);
+        if (pointId) reviewByPoint.set(pointId, r);
+      }
+      const misconceptionPointByNodeId = new Map<string, string>();
+      for (const n of coreKg.nodes) {
+        if (n.misconceptionActive && pointIdByNodeId.has(n.id)) {
+          misconceptionPointByNodeId.set(n.id, pointIdByNodeId.get(n.id)!);
+        }
+      }
+      const activeMisconceptionByPoint = new Map<string, string>();
+      for (const [nodeId, pointId] of misconceptionPointByNodeId) {
+        const node = coreKg.nodes.find((n) => n.id === nodeId);
+        if (node) activeMisconceptionByPoint.set(pointId, node.title);
+      }
+
+      const entries: Record<string, LearnerOverlayEntry> = {};
+      const pointStates: PointState[] = [];
+      let measured = 0;
+      let attemptsTotal = 0;
+      let reviewDue = 0;
+
+      for (const pointId of bridge.pointIds) {
+        const s = skillByPoint.get(pointId);
+        const r = reviewByPoint.get(pointId);
+        const misconception = activeMisconceptionByPoint.get(pointId) ?? null;
+        if (!s && !r && !misconception) continue; // untouched, stays "Not measured"
+        const stored = s?.mastery != null ? Math.round(s.mastery * 100) : null;
+        const effective =
+          s?.effectiveMastery != null ? Math.round(s.effectiveMastery * 100) : null;
+        const dueAt = r?.dueAt ? Date.parse(r.dueAt) : Number.POSITIVE_INFINITY;
+        const due = !!r && dueAt <= now;
+        if (s) {
+          attemptsTotal += s.attempts;
+          if (s.attempts > 0) measured += 1;
+        }
+        if (due) reviewDue += 1;
+        entries[pointId] = {
+          mastery: effective,
+          confidence: null,
+          fluency: null,
+          evidence: s?.attempts ?? 0,
+          reviewDue: due,
+          misconception,
+        };
+        pointStates.push({
+          pointId,
+          statement: titles[pointId] ?? null,
+          stored,
+          effective,
+          band: coreBand(s?.band) ?? (stored != null ? bandFor(stored) : null),
+          attempts: s?.attempts ?? 0,
+          exposure: s?.attempts ?? 0, // core counts attempt evidence only — honest
+          lastAt: s?.lastPracticedAt ? Date.parse(s.lastPracticedAt) : 0,
+          reviewDue: due,
+          dueAt: dueAt === Number.POSITIVE_INFINITY ? 0 : dueAt,
+          noteIds: noteIdsByPoint.get(pointId) ?? [],
+          misconception,
+        });
+      }
+      pointStates.sort((a, b) => {
+        if (a.reviewDue !== b.reviewDue) return a.reviewDue ? -1 : b.reviewDue ? 1 : 0;
+        return (a.effective ?? 200) - (b.effective ?? 200);
+      });
+
+      // review queue — due now first, then upcoming within the window
+      const due = pointStates.filter((p) => p.reviewDue && p.stored != null) as ReviewItem[];
+      const upcoming = pointStates
+        .filter((p) => !p.reviewDue && p.dueAt > now && p.dueAt - now < 90 * 86_400_000)
+        .slice(0, 5)
+        .map((p) => ({ ...p, stored: p.stored ?? 0 })) as ReviewItem[];
+
+      // misconception watch — core's evidence-gated BDT states (measured,
+      // not the seeded demo learner)
+      const watch: MisconceptionWatch | null =
+        coreState.misconceptionStates.length > 0
+          ? {
+              items: coreState.misconceptionStates.map((m, i) => ({
+                id: m.misconceptionNodeId,
+                title: m.misconceptionName ?? `Misconception ${i + 1}`,
+                label: (m.misconceptionName ?? "").slice(0, 48),
+                summary: null,
+                points: [],
+                probability: m.probability,
+                active: m.active,
+                evidenceCount: m.evidenceCount,
+              })),
+              disclaimer: null,
+            }
+          : null;
+
+      // history events — the learner's own attempts, newest first
+      const events: LearnerEvent[] = history.attempts
+        .map((a) => ({
+          id: a.attemptId,
+          at: Date.parse(a.attemptedAt),
+          kind: (a.marksAwarded != null ? "marked" : "awaiting") as LearnerEventKind,
+          label: a.topicTitle ?? a.topicCode ?? a.commandWord ?? "Question",
+          value: a.marksAwarded != null ? `${a.marksAwarded}/${a.marksTotal}` : null,
+          detail:
+            a.stemExcerpt?.slice(0, 160) ??
+            (a.marksAwarded != null ? "marked" : "awaiting marks"),
+          points: [],
+          href: null,
+        }))
+        .sort((x, y) => y.at - x.at);
+
+      const awaiting = events.filter((e) => e.kind === "awaiting").length;
+
+      const stats: LearnerOverlayStats = {
+        measured,
+        touched: measured,
+        total: bridge.totalPoints,
+        attempts: attemptsTotal,
+        notesRead: 0, // note views are core evidence but not part of this stat's
+        flashcards: 0, // contract yet (flashcard ratings are a tracked gap)
+        awaitingMarks: awaiting,
+        reviewDue,
+        misconceptions: coreState.misconceptionStates.filter((m) => m.active).length,
+      };
+
+      return {
+        overlay: { entries, stats, bridgeError: false },
+        drawer: {
+          stats,
+          topicStates,
+          pointStates,
+          reviewQueue: due,
+          upcoming,
+          misconceptionWatch: watch,
+          events: events.slice(0, 300),
+          eventCount: events.length,
+        },
+      };
+    },
+    [course],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    load().then((r) => !cancelled && setState(r));
+    // re-read when new core evidence lands anywhere (attempt submitted,
+    // smart mark run) — the model is server-derived, it must re-fetch
+    const refresh = () => load().then((r) => !cancelled && setState(r));
+    window.addEventListener("syllabai:core-evidence", refresh);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("syllabai:core-evidence", refresh);
+    };
+  }, [load]);
+
+  return state;
+}
+
+/**
+ * Live learner state for one course: the CORE model when the course is the
+ * pilot and the learner is signed in (real attempts, real decay, real review
+ * queue), else the simulated browser-local derivation. Both feed the same
+ * overlay contract and drawer shapes — the graph paint and the drawer can
+ * never disagree, and the source label keeps the honesty rule.
  */
 export function useLearnerState(course: string): LearnerStateBundle {
   const progress = useCourseProgress(course);
+  const core = useCoreLearnerModel(course);
   const [bridge, setBridge] = useState<LearnerBridge | null>(null);
   const [titles, setTitles] = useState<Record<string, string>>({});
   const [failed, setFailed] = useState(false);
@@ -445,7 +724,13 @@ export function useLearnerState(course: string): LearnerStateBundle {
     };
   }, [course]);
 
-  return useMemo(() => {
+  // core model wins whenever it resolved (pilot + signed in + reachable)
+  const coreResult = useMemo(() => {
+    if (core === "off" || core === "loading" || core === null) return null;
+    return { overlay: core.overlay, drawer: core.drawer, source: "core" as const };
+  }, [core]);
+
+  const simResult = useMemo(() => {
     // decay math uses the derivation moment; the drawer recomputes on every
     // progress change and course switch, which is the honest cadence for a
     // browser-local demo (no nightly job exists to recompute server-side)
@@ -454,15 +739,21 @@ export function useLearnerState(course: string): LearnerStateBundle {
       return {
         overlay: { entries: {}, stats: emptyStats, bridgeError: true },
         drawer: null,
+        source: "simulated" as const,
       };
     }
-    if (!bridge) return { overlay: null, drawer: null };
+    if (!bridge) return null;
     const model = buildOverlay(progress, bridge, now);
     return {
       overlay: { entries: model.entries, stats: model.stats, bridgeError: false },
       drawer: buildDrawerState(progress, bridge, model, titles, now),
+      source: "simulated" as const,
     };
   }, [progress, bridge, titles, failed]);
+
+  if (coreResult) return coreResult;
+  if (simResult) return simResult;
+  return { overlay: null, drawer: null, source: "simulated" };
 }
 
 // ── shared formatters ───────────────────────────────────────────────────
