@@ -85,6 +85,12 @@ export interface PointState {
   noteIds: string[];
   /** active simulated misconception label — display only, never mastery */
   misconception: string | null;
+  /** topic-derived mastery: the topic/unit whose skill down-propagated to this
+   *  point (operator decision, trace 1a0ea567a157e70d) — null = direct point
+   *  evidence (marked attempts on the mapped spec point). Display provenance
+   *  only; direct evidence always wins, derived rows never create review
+   *  scheduling and never claim attempts they do not have. */
+  derivedFrom: string | null;
 }
 
 export interface ReviewItem {
@@ -269,6 +275,9 @@ function buildDrawerState(
       dueAt: stored == null ? d.lastAt : reviewDueAt(stored, d.lastAttemptAt),
       noteIds: notesByPoint.get(d.pointId) ?? [],
       misconception: d.misconception,
+      // the sim path derives mastery directly from local marked attempts —
+      // nothing is topic-derived here
+      derivedFrom: null,
     };
   });
   // review-due first (stalest due date first), then measured rows weakest
@@ -515,10 +524,18 @@ function useCoreLearnerModel(course: string): CoreModelData | "off" | "loading" 
       }
 
       // skills → point states + overlay entries (mastery is 0..1 on core).
-      // Core's assessment evidence fires at TOPIC granularity (the question's
-      // primary topic node), so skills on topic/UNIT nodes are surfaced as
-      // topicStates — visible in the drawer, never painted as spec points
-      // (that would fabricate per-point precision core does not claim).
+      // Two evidence granularities meet here, both core-measured marked
+      // attempts: (1) SPEC-POINT skills — questions mapped via the T-C18
+      // question_spec_points contract fire their attempts on the SUBTOPIC
+      // nodes the KG paints (tranche 4.15) — these join 1:1 onto bridge
+      // pointIds; (2) TOPIC/UNIT skills — the question's primary/secondary
+      // topic nodes — surfaced as topicStates in the drawer AND, per the
+      // operator's down-propagation decision (trace 1a0ea567a157e70d), their
+      // mastery fills the descendant points that lack direct evidence, so the
+      // graph paints what the account honestly knows at the granularity it
+      // knows it. Direct point evidence always wins over derived; derived
+      // rows are tagged "via <topic>" in the drawer and never fabricate
+      // attempts or review scheduling.
       const nodeById = new Map(coreKg.nodes.map((n) => [n.id, n]));
       const topicStates: TopicMasteryState[] = [];
       const skillByPoint = new Map<
@@ -541,6 +558,65 @@ function useCoreLearnerModel(course: string): CoreModelData | "off" | "loading" 
             attempts: s.attempts,
             lastAt: s.lastPracticedAt ? Date.parse(s.lastPracticedAt) : 0,
           });
+        }
+      }
+
+      // down-propagation (operator decision, trace 1a0ea567a157e70d): a
+      // topic/unit skill fills its DESCENDANT spec points where no direct
+      // point skill exists. Precedence is deterministic: a nearer TOPIC
+      // ancestor beats a UNIT, then higher effective mastery, then more
+      // attempts, then lexicographic title — so the paint never depends on
+      // the order core happened to list the skills in.
+      interface Derived {
+        stored: number;
+        effective: number;
+        band: MasteryBand | null;
+        via: string;
+        attempts: number;
+        fromTopic: boolean;
+      }
+      const derivedByPoint = new Map<string, Derived>();
+      const consider = (pointId: string, cand: Derived) => {
+        const prev = derivedByPoint.get(pointId);
+        if (!prev) {
+          derivedByPoint.set(pointId, cand);
+          return;
+        }
+        const better =
+          cand.fromTopic !== prev.fromTopic
+            ? cand.fromTopic // a topic ancestor beats a unit ancestor
+            : cand.effective !== prev.effective
+              ? cand.effective > prev.effective
+              : cand.attempts !== prev.attempts
+                ? cand.attempts > prev.attempts
+                : cand.via < prev.via; // deterministic tie-break
+        if (better) derivedByPoint.set(pointId, cand);
+      };
+      for (const s of coreState.skillStates) {
+        if (pointIdByNodeId.has(s.nodeId)) continue; // direct evidence, not an ancestor
+        const node = nodeById.get(s.nodeId);
+        if (!node || (node.type !== "TOPIC" && node.type !== "UNIT")) continue;
+        // BFS the core view's subtree, collecting mapped spec-point nodes
+        const seen = new Set<string>([s.nodeId]);
+        const queue = [...(node.childIds ?? [])];
+        while (queue.length > 0) {
+          const id = queue.shift()!;
+          if (seen.has(id)) continue;
+          seen.add(id);
+          const child = nodeById.get(id);
+          if (!child) continue;
+          const pointId = pointIdByNodeId.get(id);
+          if (pointId && !skillByPoint.has(pointId)) {
+            consider(pointId, {
+              stored: Math.round(s.mastery * 100),
+              effective: Math.round(s.effectiveMastery * 100),
+              band: coreBand(s.band),
+              via: s.nodeName ?? node.title,
+              attempts: s.attempts,
+              fromTopic: node.type === "TOPIC",
+            });
+          }
+          for (const grandchild of child.childIds ?? []) queue.push(grandchild);
         }
       }
       topicStates.sort((a, b) => b.attempts - a.attempts);
@@ -589,18 +665,33 @@ function useCoreLearnerModel(course: string): CoreModelData | "off" | "loading" 
 
       for (const pointId of bridge.pointIds) {
         const s = skillByPoint.get(pointId);
+        const d = derivedByPoint.get(pointId); // topic-derived fill (no direct skill)
         const r = reviewByPoint.get(pointId);
         const misconception = activeMisconceptionByPoint.get(pointId) ?? null;
         const ratingExposure = ratingExposureByPoint.get(pointId);
-        if (!s && !r && !misconception && !ratingExposure) continue; // untouched
-        const stored = s?.mastery != null ? Math.round(s.mastery * 100) : null;
+        if (!s && !r && !misconception && !ratingExposure && !d) continue; // untouched
+        const stored =
+          s?.mastery != null
+            ? Math.round(s.mastery * 100)
+            : d
+              ? d.stored
+              : null;
         const effective =
-          s?.effectiveMastery != null ? Math.round(s.effectiveMastery * 100) : null;
+          s?.effectiveMastery != null
+            ? Math.round(s.effectiveMastery * 100)
+            : d
+              ? d.effective
+              : null;
         const dueAt = r?.dueAt ? Date.parse(r.dueAt) : Number.POSITIVE_INFINITY;
         const due = !!r && dueAt <= now;
         if (s) {
           attemptsTotal += s.attempts;
           if (s.attempts > 0) measured += 1;
+        } else if (d) {
+          // derived rows paint the graph and count as measured — the mastery
+          // shown IS core-measured (the covering topic's decayed skill), and
+          // the drawer tags the provenance "via <topic>"
+          measured += 1;
         } else if (ratingExposure) {
           exposureOnly += 1; // touched by self-report, never measured
         }
@@ -619,7 +710,7 @@ function useCoreLearnerModel(course: string): CoreModelData | "off" | "loading" 
           statement: titles[pointId] ?? null,
           stored,
           effective,
-          band: coreBand(s?.band) ?? (stored != null ? bandFor(stored) : null),
+          band: coreBand(s?.band) ?? (d ? d.band : null) ?? (stored != null ? bandFor(stored) : null),
           attempts: s?.attempts ?? 0,
           // attempts + flashcard rating exposure — self-report counts toward
           // evidence, never toward mastery (stored/effective stay null)
@@ -632,6 +723,7 @@ function useCoreLearnerModel(course: string): CoreModelData | "off" | "loading" 
           dueAt: dueAt === Number.POSITIVE_INFINITY ? 0 : dueAt,
           noteIds: noteIdsByPoint.get(pointId) ?? [],
           misconception,
+          derivedFrom: d?.via ?? null,
         });
       }
       pointStates.sort((a, b) => {

@@ -297,8 +297,9 @@ export function StateTab({
             </ul>
             <p className="border-t pt-2 text-[10px] leading-relaxed text-muted-foreground">
               Measured by the backend from your real attempts (Smart Mark and auto-marked
-              answers). Spec-point mastery appears in the graph as soon as evidence exists at
-              that granularity.
+              answers). Questions mapped to spec points measure those points directly;
+              topic-level mastery also fills its points in the graph (marked "via
+              topic" below) until direct point evidence exists.
             </p>
           </div>
         </section>
@@ -484,6 +485,15 @@ export function StateTab({
                       <span className="w-20 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
                         {p.stored}% → {p.effective}%
                       </span>
+                      {p.derivedFrom && (
+                        <Badge
+                          variant="outline"
+                          className="shrink-0 text-[10px] text-muted-foreground"
+                          title={`Topic-derived: the ${p.derivedFrom} topic's measured mastery fills this point until it has direct marked attempts of its own`}
+                        >
+                          via {p.derivedFrom}
+                        </Badge>
+                      )}
                       {p.misconception && (
                         <Badge
                           variant="outline"
