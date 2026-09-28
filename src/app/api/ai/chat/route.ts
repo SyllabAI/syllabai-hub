@@ -153,6 +153,15 @@ function pipeSse(upstream: Response): Response {
 
       const reader = upstream.body!.getReader();
       let buffer = "";
+      /** spec-compliant SSE field read: ONE optional leading space after the
+       *  colon — Spring's SseEmitter writes `event:name` (no space), our own
+       *  legacy fallback writes `event: name` (with space) */
+      const field = (frame: string, name: string): string | undefined => {
+        const line = frame.split("\n").find((l) => l.startsWith(`${name}:`));
+        if (line === undefined) return undefined;
+        const value = line.slice(name.length + 1);
+        return value.startsWith(" ") ? value.slice(1) : value;
+      };
       try {
         for (;;) {
           const { done, value } = await reader.read();
@@ -161,9 +170,8 @@ function pipeSse(upstream: Response): Response {
           const frames = buffer.split("\n\n");
           buffer = frames.pop() ?? "";
           for (const frame of frames) {
-            const lines = frame.split("\n");
-            const event = lines.find((l) => l.startsWith("event: "))?.slice(7);
-            const dataLine = lines.find((l) => l.startsWith("data: "))?.slice(6);
+            const event = field(frame, "event");
+            const dataLine = field(frame, "data");
             if (!event || !dataLine) continue; // comments / heartbeats
             let data: unknown;
             try {

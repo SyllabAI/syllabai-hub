@@ -209,9 +209,17 @@ export function TutorChat() {
           const events = buffer.split("\n\n");
           buffer = events.pop() ?? "";
           for (const evt of events) {
-            const lines = evt.split("\n");
-            const event = lines.find((l) => l.startsWith("event: "))?.slice(7);
-            const dataLine = lines.find((l) => l.startsWith("data: "))?.slice(6);
+            // spec-compliant field read: ONE optional leading space after the
+            // colon — core's SseEmitter writes `event:citations` (no space),
+            // the hub's legacy fallback writes `event: citations`
+            const field = (name: string): string | undefined => {
+              const line = evt.split("\n").find((l) => l.startsWith(`${name}:`));
+              if (line === undefined) return undefined;
+              const v = line.slice(name.length + 1);
+              return v.startsWith(" ") ? v.slice(1) : v;
+            };
+            const event = field("event");
+            const dataLine = field("data");
             if (!event || !dataLine) continue;
             const data = JSON.parse(dataLine);
             if (event === "citations") {
