@@ -72,7 +72,7 @@ interface QueuePayload {
 
 const VERDICT_META: Record<ReviewVerdict, { label: string; icon: typeof CheckCircle2; cls: string }> = {
   approved: { label: "approved", icon: CheckCircle2, cls: "text-primary" },
-  edited: { label: "edited & approved", icon: Pencil, cls: "text-amber-500" },
+  edited: { label: "edited & approved", icon: Pencil, cls: "text-warn" },
   rejected: { label: "rejected", icon: XCircle, cls: "text-destructive" },
 };
 

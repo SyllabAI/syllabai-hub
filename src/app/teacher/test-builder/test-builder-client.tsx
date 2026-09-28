@@ -278,14 +278,18 @@ function paperKey(name: string, ids: string[]): string {
   return `${name}::${ids.join(",")}`;
 }
 
+/* Difficulty + status chips ride the semantic slots as outline pills
+   (border + slot text — slot voices pass on card in every theme-mode,
+   while slot-on-self-wash fails for mid-tone voices; slots flip per
+   mode, no dark: overrides). Design-audit second pass (m5). */
 function difficultyBadgeClass(d: string | null): string {
   switch ((d ?? "").toLowerCase()) {
     case "easy":
-      return "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
+      return "border-success/40 text-success";
     case "medium":
-      return "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400";
+      return "border-warn/40 text-warn";
     case "hard":
-      return "border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-400";
+      return "border-destructive/40 text-destructive";
     default:
       return "";
   }
@@ -316,7 +320,7 @@ function ProgressRing({ value, max }: { value: number; max: number | null }) {
           strokeDasharray={c}
           strokeDashoffset={c * (1 - pct)}
           className={
-            max && value >= max ? "stroke-emerald-500" : "stroke-primary transition-[stroke-dashoffset] duration-500"
+            max && value >= max ? "stroke-success" : "stroke-primary transition-[stroke-dashoffset] duration-500"
           }
         />
       </svg>
@@ -1708,7 +1712,7 @@ export function TestBuilderClient({
                 Save
               </Button>
               {savedFlash && (
-                <span className="text-xs font-medium text-emerald-600" role="status">
+                <span className="text-xs font-medium text-success" role="status">
                   Saved
                 </span>
               )}
@@ -1747,7 +1751,7 @@ export function TestBuilderClient({
           </div>
 
           {stale && test && (
-            <Alert className="border-amber-500/40 bg-amber-500/5 print:hidden">
+            <Alert className="border-warn/40 bg-warn/5 print:hidden">
               <AlertTitle>Preview is out of date</AlertTitle>
               <AlertDescription>
                 The weak-area selection or target changed since this test was auto-built — press

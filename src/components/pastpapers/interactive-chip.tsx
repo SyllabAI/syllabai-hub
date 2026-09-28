@@ -53,7 +53,7 @@ export function InteractiveChip({
               className={
                 Number(coverageLabel.split("/")[0]) === Number(coverageLabel.split("/")[1])
                   ? "rounded-sm bg-primary/10 px-1 font-semibold"
-                  : "rounded-sm bg-amber-500/15 px-1 font-semibold text-amber-700 dark:text-amber-400"
+                  : "rounded-sm bg-warn/15 px-1 font-semibold text-warn-ink"
               }
             >
               {coverageLabel}

@@ -765,6 +765,29 @@
   box-shadow: none; /* the dark bg-primary glow belongs to accent fills */
 }
 
+/* --- second-pass audit (deferred items) ---
+   F8: the Fraunces voice reached h1 only (via the base rule) and explicit
+   font-display spans; content h2/h3 rendered Nunito. The spec assigns
+   Fraunces to the h1–h3 band — extend the display chain to both. --- */
+[data-theme="candy-shop"] :is(h2, h3) {
+  font-family: var(--app-font-display);
+}
+/* F9: Lucide icons ride the spec's chunky candy hand (stroke-width 2.25
+   vs the lucide default 2). CSS beats the svg presentation attribute,
+   so one rule covers every icon. --- */
+[data-theme="candy-shop"] svg.lucide {
+  stroke-width: 2.25;
+}
+/* Second-pass m2: candy dark danger TEXT voice. --destructive keeps the
+   spec's dark cherry #E61F5F for FILLS (white labels ride the /60
+   composite, 7.9), but the same value as 10-11px text on cards lands
+   3.85:1. The spec's hover-toward-viewer #FF5C8D is the dark cherry
+   text voice (5.84 on card / 6.46 on paper) — the candy mirror of
+   plum's §3.2 fill/text split. --- */
+[data-theme="candy-shop"].dark .text-destructive {
+  color: var(--accent-ink);
+}
+
 /* ====================================================================
    CHAT APP PLUM THEME (chat-app-plum-design-system, alpha) —
    data-theme="chat-app-plum"
@@ -1161,6 +1184,14 @@
 }
 [data-theme="chat-app-plum"].dark [data-slot="button"].hero-cta-inverse {
   box-shadow: none; /* the dark bg-primary glow belongs to accent fills */
+}
+
+/* --- second-pass audit (deferred items) ---
+   F9: tabular numerals. Inter is the one family (Law 8); the chat-app's
+   tick-voice — timestamps, counters, per-point score figures — aligns
+   digits with tnum. Set once on the theme root; everything inherits. --- */
+[data-theme="chat-app-plum"] {
+  font-variant-numeric: tabular-nums;
 }
 
 /* --- Past Papers viewer (pdf-pane v3): pdf.js text layer + find highlights ---

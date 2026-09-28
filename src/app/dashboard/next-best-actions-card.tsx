@@ -37,31 +37,36 @@ import {
 } from "@/lib/next-best-actions";
 import type { CourseMeta } from "@/lib/courses";
 
+/* Status chips ride the semantic slots (--success/warn/info/cat/destructive),
+   not hardcoded Tailwind hues — each theme resolves them into its own family
+   (SME emerald/amber/sky/violet; QG fern/clay/teal/violet; candy mulberry/
+   cherry/plum; plum violet/lavender/plum). The slots flip per mode, so no
+   dark: overrides are needed. Design-audit second pass (m2). */
 const typeConfig: Record<NbaActionType, { label: string; icon: typeof Compass; chip: string }> = {
   REMEDIATE_MISCONCEPTION: {
     label: "Fix misconception",
     icon: BookOpenCheck,
-    chip: "border-teal-500/40 text-teal-700 dark:text-teal-400",
+    chip: "border-warn/40 text-warn",
   },
   REVIEW_TOPIC: {
     label: "Review topic",
     icon: CalendarClock,
-    chip: "border-sky-500/40 text-sky-700 dark:text-sky-400",
+    chip: "border-info/40 text-info",
   },
   RETRY_PROBLEM_QUESTION: {
     label: "Retry question",
     icon: RotateCcw,
-    chip: "border-rose-500/40 text-rose-700 dark:text-rose-400",
+    chip: "border-destructive/40 text-destructive",
   },
   PRACTISE_QUESTIONS: {
     label: "Practise questions",
     icon: Target,
-    chip: "border-emerald-500/40 text-emerald-700 dark:text-emerald-400",
+    chip: "border-success/40 text-success",
   },
   UNCOVERED_NOTE: {
     label: "Cover new ground",
     icon: BookOpen,
-    chip: "border-violet-500/40 text-violet-700 dark:text-violet-400",
+    chip: "border-cat/40 text-cat",
   },
 };
 

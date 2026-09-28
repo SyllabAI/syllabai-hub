@@ -70,11 +70,15 @@ const QUEUE_STATES = [
 /** G-5: paper groups per queue-v2 page, fixed for Cycle 1 (the backend owns counts) */
 const QUEUE_PAGE_SIZE = 5;
 
+/* Status badges ride the semantic slots as outline pills (border + slot
+   text — the hub's status-chip pattern; slot text voices pass on card in
+   every theme-mode, while slot-on-self-wash fails for mid-tone voices).
+   Slots flip per mode — no dark: overrides. Design-audit second pass (m5). */
 const stateBadgeClass: Record<string, string> = {
-  PENDING: "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
-  SMART_MARKED: "bg-sky-100 text-sky-900 dark:bg-sky-950 dark:text-sky-200",
-  HUMAN_MARKED: "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200",
-  OVERRIDDEN: "bg-violet-100 text-violet-900 dark:bg-violet-950 dark:text-violet-200",
+  PENDING: "border border-warn/40 text-warn",
+  SMART_MARKED: "border border-info/40 text-info",
+  HUMAN_MARKED: "border border-success/40 text-success",
+  OVERRIDDEN: "border border-cat/40 text-cat",
 };
 
 function is404(e: unknown): boolean {
@@ -564,7 +568,10 @@ export function MarkingConsoleClient() {
           ) : kappa ? (
             <>
               <div className="flex items-center gap-2">
-                <Badge className={kappa.passed ? "bg-emerald-600" : "bg-rose-600"}>
+                <Badge
+                  variant={kappa.passed ? "outline" : "destructive"}
+                  className={kappa.passed ? "border-success/40 text-success" : ""}
+                >
                   κ {kappa.kappa.toFixed(2)}
                 </Badge>
                 <span className="text-sm text-muted-foreground">

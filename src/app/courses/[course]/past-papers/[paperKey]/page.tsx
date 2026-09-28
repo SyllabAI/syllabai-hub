@@ -80,7 +80,7 @@ export default async function PastPaperPage({
               variant="secondary"
               className={
                 coverage?.state === "partial"
-                  ? "max-w-full whitespace-normal text-left font-medium border border-amber-500/40 bg-amber-500/10"
+                  ? "max-w-full whitespace-normal text-left font-medium border border-warn/40 bg-warn/10"
                   : "max-w-full whitespace-normal text-left font-medium"
               }
             >

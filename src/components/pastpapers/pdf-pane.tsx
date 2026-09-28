@@ -1168,7 +1168,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
       )}
       {phase === "error" && (
         <div className="flex min-h-48 flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-          <AlertTriangle className="size-6 text-amber-500" aria-hidden />
+          <AlertTriangle className="size-6 text-warn" aria-hidden />
           <p className="max-w-xs text-sm text-muted-foreground">
             Couldn&apos;t load <span className="font-medium">{label}</span>
             {errorMsg ? ` — ${errorMsg}` : ""}. The archive may be briefly unavailable.

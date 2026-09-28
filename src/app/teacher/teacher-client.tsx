@@ -254,7 +254,7 @@ export function TeacherClient({
                 <span className="flex size-9 items-center justify-center rounded-md bg-primary/10">
                   <ClipboardCheck className="size-4 text-primary" aria-hidden />
                 </span>
-                <Badge className="bg-emerald-600/15 text-emerald-700 text-[10px] font-normal dark:text-emerald-400">
+                <Badge variant="outline" className="border-success/40 text-success text-[10px] font-normal">
                   live
                 </Badge>
               </div>
@@ -278,7 +278,7 @@ export function TeacherClient({
                 <span className="flex size-9 items-center justify-center rounded-md bg-primary/10">
                   <Network className="size-4 text-primary" aria-hidden />
                 </span>
-                <Badge className="bg-emerald-600/15 text-emerald-700 text-[10px] font-normal dark:text-emerald-400">
+                <Badge variant="outline" className="border-success/40 text-success text-[10px] font-normal">
                   live
                 </Badge>
               </div>

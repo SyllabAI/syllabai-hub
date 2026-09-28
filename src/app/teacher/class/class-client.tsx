@@ -673,7 +673,7 @@ export function ClassIntelligenceClient() {
                                     {e.correct ? (
                                       <Badge
                                         variant="secondary"
-                                        className="text-emerald-700 dark:text-emerald-400"
+                                        className="text-success"
                                       >
                                         correct
                                       </Badge>
@@ -915,14 +915,14 @@ function MasteryBadge({ band, mastery }: { band: string; mastery: number | null 
   }
   if (band === "SECURE") {
     return (
-      <Badge variant="secondary" className="text-emerald-700 dark:text-emerald-400">
+      <Badge variant="secondary" className="text-success">
         {(mastery * 100).toFixed(0)}% · secure
       </Badge>
     );
   }
   if (band === "DEVELOPING") {
     return (
-      <Badge variant="secondary" className="text-amber-700 dark:text-amber-400">
+      <Badge variant="secondary" className="text-warn">
         {(mastery * 100).toFixed(0)}% · developing
       </Badge>
     );

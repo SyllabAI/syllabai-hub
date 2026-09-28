@@ -698,7 +698,7 @@ export function AssignmentsClient({
                         )}
                         {r.state === "late" && (
                           <span className="flex items-center gap-1 text-xs">
-                            <CircleAlert className="size-3.5 text-amber-500" aria-hidden /> late
+                            <CircleAlert className="size-3.5 text-warn" aria-hidden /> late
                           </span>
                         )}
                         {r.state === "missing" && (

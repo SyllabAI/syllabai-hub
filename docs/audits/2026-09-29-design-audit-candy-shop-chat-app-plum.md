@@ -235,3 +235,49 @@ The batch above shipped with two execution-time corrections, verified against th
   spine, all `.text-primary` demoted per mode (candy `#D11450`/`#FF5C8D`, plum dark `#A678EE`),
   dropdown radius 24 → 14, dark glow suppressed on the inverse CTA; SME default byte-unchanged
   (hero 8px/violet fill), zero console errors.
+
+## Addendum 2 — deferred items applied (second pass, same day)
+
+The batch's explicitly deferred items shipped as a second commit:
+
+- **m2/m5 — hardcoded-hue chips → semantic slots.** Every remaining Tailwind
+  palette literal on learner/teacher/past-paper surfaces now rides the theme
+  slots (`--success/--warn/--warn-ink/--info/--cat/--destructive`):
+  dashboard next-best-actions chips (teal/sky/rose/emerald/violet →
+  warn/info/destructive/success/cat — `sim` was rejected because plum-light
+  sim is raw lavender, 3.97:1 as text, violating the spec's own
+  lavender-as-text law), marking queue state pills, κ gate badge, test-builder
+  difficulty chips + progress ring + saved flash + stale alert, class
+  intelligence bands, teacher-console live badges, assignments late/due-soon
+  voices, past-papers partial-coverage chip, interactive-chip coverage counter
+  and pdf-pane error icon. SME renders byte-identical (its slot raws are the
+  exact shades that were hardcoded) — probed live.
+- **Pattern correction the ledger forced:** slot-text-on-own-wash
+  (`bg-success/15 text-success`-style) FAILS AA wherever the slot voice is a
+  mid-tone (SME light 4.43, candy light 3.74, plum dark 4.21; difficulty
+  washes worse). Status chips/pills therefore ship as **outline pills**
+  (border-slot/40 + slot text on card — 4.53–17.44:1 across all 64 computed
+  pairs, `scripts/contrast_audit_second_pass.py`), matching the hub's own
+  status pattern (tutor/state-drawer/assistant). The two genuinely wash-based
+  voices keep their designed ink: coverage counter = `bg-warn/15` +
+  `text-warn-ink` (7.38–12.76), partial-coverage chip = `bg-warn/10` + theme
+  ink (12.16–17.27). κ badge: passed = outline success pill; failed = the
+  destructive variant, whose white label rides the engineered fills (4.76
+  SME light … 12.81 plum dark on the authored solid).
+- **Candy dark danger-text split (new authored rule).** `--destructive`
+  keeps the spec's dark cherry `#E61F5F` for fills (white labels ride the
+  /60 composite, 7.90), but as 10–11px text on cards it measured 3.85:1.
+  `.text-destructive` in candy dark now demotes to the accent-ink voice
+  `#FF5C8D` (5.84 on card / 6.46 on paper) — the candy mirror of plum's §3.2
+  fill/text split, using the spec's own hover-toward-viewer value.
+- **F8 — candy Fraunces h2/h3**: the display chain now covers the spec's
+  full h1–h3 band (theme-scoped `:is(h2, h3)`; SME/QG keep their own h2/h3
+  voices). Live-probed on landing h2s = Fraunces.
+- **F9 — micro-details**: candy `svg.lucide { stroke-width: 2.25 }` (the
+  chunky candy hand; CSS overrides the presentation attribute — probed
+  2.25px), plum `font-variant-numeric: tabular-nums` on the theme root
+  (Inter's tick-voice for timestamps/counters — probed live).
+- Verification: lint clean, build clean, standalone :3199 fresh build —
+  computed-style probes across sme/qg/candy/plum × light/dark confirm every
+  new utility resolves to the theme's own family value; SME byte-identical,
+  QG untouched; zero page errors; default restored to sme.

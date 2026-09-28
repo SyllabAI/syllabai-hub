@@ -239,7 +239,7 @@ export function AssignmentsTab() {
                       overdue
                     </Badge>
                   ) : dueSoon ? (
-                    <Badge variant="outline" className="text-[10px] font-normal text-amber-600">
+                    <Badge variant="outline" className="text-[10px] font-normal text-warn">
                       due soon
                     </Badge>
                   ) : null}
@@ -248,7 +248,7 @@ export function AssignmentsTab() {
                       <XCircle className="size-3" aria-hidden /> not handed in
                     </Badge>
                   ) : late ? (
-                    <Badge variant="outline" className="gap-1 text-[10px] font-normal text-amber-600">
+                    <Badge variant="outline" className="gap-1 text-[10px] font-normal text-warn">
                       <CircleAlert className="size-3" aria-hidden /> handed in late
                     </Badge>
                   ) : (
