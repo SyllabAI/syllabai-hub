@@ -204,6 +204,16 @@ interface KgJson {
   nodes?: SpecPointNode[];
 }
 
+/** raw bundle codes → the point ids the exported spine actually carries
+ *  (shared by the sim derivation and the core-state branch — V47 rating
+ *  exposure attribution rides the same join, so the two paths cannot drift) */
+function toPointIdsOf(bridge: LearnerBridge, rawCodes: string[] | undefined): string[] {
+  if (!rawCodes) return [];
+  const codeSet = new Set(bridge.pointIds);
+  return [...new Set(rawCodes.map((raw) => normalizeCode(raw, bridge.codePrefix)))
+    ].filter((c) => codeSet.has(c));
+}
+
 // ── derivation ──────────────────────────────────────────────────────────
 
 function buildDrawerState(
@@ -215,12 +225,8 @@ function buildDrawerState(
 ): LearnerDrawerState {
   const codeSet = new Set(bridge.pointIds);
   const normalize = (raw: string) => normalizeCode(raw, bridge.codePrefix);
-
-  /** raw bundle codes → the point ids the exported spine actually carries */
-  const toPointIds = (rawCodes: string[] | undefined): string[] => {
-    if (!rawCodes) return [];
-    return [...new Set(rawCodes.map(normalize).filter((c) => codeSet.has(c)))];
-  };
+  const toPointIds = (rawCodes: string[] | undefined): string[] =>
+    toPointIdsOf(bridge, rawCodes);
 
   // reverse map: point → revision notes covering it (for deep links)
   const notesByPoint = new Map<string, string[]>();
@@ -539,17 +545,38 @@ function useCoreLearnerModel(course: string): CoreModelData | "off" | "loading" 
         if (node) activeMisconceptionByPoint.set(pointId, node.title);
       }
 
+      // flashcard rating exposure (V47, tranche 4.4): the self-report evidence
+      // class. Attribution rides the bridge's flashcardCodes (cardId → spec
+      // points via the subtopic-anchor join); ratings ADD exposure and history
+      // but NEVER mastery — a rated point without marked attempts stays
+      // "Not measured" (the same honesty rule the sim path applies).
+      const ratingExposureByPoint = new Map<string, { count: number; lastAt: number }>();
+      let ratingEventCount = 0;
+      for (const r of coreState.flashcardRatings ?? []) {
+        ratingEventCount += 1;
+        const at = Date.parse(r.occurredAt);
+        for (const pid of toPointIdsOf(bridge, bridge.flashcardCodes[r.cardId])) {
+          const cur = ratingExposureByPoint.get(pid);
+          ratingExposureByPoint.set(pid, {
+            count: (cur?.count ?? 0) + 1,
+            lastAt: Math.max(cur?.lastAt ?? 0, at),
+          });
+        }
+      }
+
       const entries: Record<string, LearnerOverlayEntry> = {};
       const pointStates: PointState[] = [];
       let measured = 0;
       let attemptsTotal = 0;
       let reviewDue = 0;
+      let exposureOnly = 0;
 
       for (const pointId of bridge.pointIds) {
         const s = skillByPoint.get(pointId);
         const r = reviewByPoint.get(pointId);
         const misconception = activeMisconceptionByPoint.get(pointId) ?? null;
-        if (!s && !r && !misconception) continue; // untouched, stays "Not measured"
+        const ratingExposure = ratingExposureByPoint.get(pointId);
+        if (!s && !r && !misconception && !ratingExposure) continue; // untouched
         const stored = s?.mastery != null ? Math.round(s.mastery * 100) : null;
         const effective =
           s?.effectiveMastery != null ? Math.round(s.effectiveMastery * 100) : null;
@@ -558,13 +585,16 @@ function useCoreLearnerModel(course: string): CoreModelData | "off" | "loading" 
         if (s) {
           attemptsTotal += s.attempts;
           if (s.attempts > 0) measured += 1;
+        } else if (ratingExposure) {
+          exposureOnly += 1; // touched by self-report, never measured
         }
         if (due) reviewDue += 1;
+        const ratingCount = ratingExposure?.count ?? 0;
         entries[pointId] = {
           mastery: effective,
           confidence: null,
           fluency: null,
-          evidence: s?.attempts ?? 0,
+          evidence: (s?.attempts ?? 0) + ratingCount,
           reviewDue: due,
           misconception,
         };
@@ -575,8 +605,13 @@ function useCoreLearnerModel(course: string): CoreModelData | "off" | "loading" 
           effective,
           band: coreBand(s?.band) ?? (stored != null ? bandFor(stored) : null),
           attempts: s?.attempts ?? 0,
-          exposure: s?.attempts ?? 0, // core counts attempt evidence only — honest
-          lastAt: s?.lastPracticedAt ? Date.parse(s.lastPracticedAt) : 0,
+          // attempts + flashcard rating exposure — self-report counts toward
+          // evidence, never toward mastery (stored/effective stay null)
+          exposure: (s?.attempts ?? 0) + ratingCount,
+          lastAt: Math.max(
+            s?.lastPracticedAt ? Date.parse(s.lastPracticedAt) : 0,
+            ratingExposure?.lastAt ?? 0,
+          ),
           reviewDue: due,
           dueAt: dueAt === Number.POSITIVE_INFINITY ? 0 : dueAt,
           noteIds: noteIdsByPoint.get(pointId) ?? [],
@@ -615,8 +650,8 @@ function useCoreLearnerModel(course: string): CoreModelData | "off" | "loading" 
           : null;
 
       // history events — the learner's own attempts, newest first
-      const events: LearnerEvent[] = history.attempts
-        .map((a) => ({
+      const events: LearnerEvent[] = [
+        ...history.attempts.map((a) => ({
           id: a.attemptId,
           at: Date.parse(a.attemptedAt),
           kind: (a.marksAwarded != null ? "marked" : "awaiting") as LearnerEventKind,
@@ -627,18 +662,30 @@ function useCoreLearnerModel(course: string): CoreModelData | "off" | "loading" 
             (a.marksAwarded != null ? "marked" : "awaiting marks"),
           points: [],
           href: null,
-        }))
-        .sort((x, y) => y.at - x.at);
+        })),
+        // V47 (tranche 4.4): the append-only rating trail — every re-rate is
+        // its own history event, keyed by card + timestamp
+        ...(coreState.flashcardRatings ?? []).map((r) => ({
+          id: `card:${r.cardId}:${r.occurredAt}`,
+          at: Date.parse(r.occurredAt),
+          kind: "exposure" as LearnerEventKind,
+          label: "Flashcard rated",
+          value: null,
+          detail: r.rating === "know" ? 'rated "know"' : 'rated "still-learning"',
+          points: toPointIdsOf(bridge, bridge.flashcardCodes[r.cardId]),
+          href: null,
+        })),
+      ].sort((x, y) => y.at - x.at);
 
       const awaiting = events.filter((e) => e.kind === "awaiting").length;
 
       const stats: LearnerOverlayStats = {
         measured,
-        touched: measured,
+        touched: measured + exposureOnly,
         total: bridge.totalPoints,
         attempts: attemptsTotal,
-        notesRead: 0, // note views are core evidence but not part of this stat's
-        flashcards: 0, // contract yet (flashcard ratings are a tracked gap)
+        notesRead: 0, // note views are core evidence but not part of this stat's contract yet
+        flashcards: ratingEventCount, // V47: the self-report rating trail (state-view window)
         awaitingMarks: awaiting,
         reviewDue,
         misconceptions: coreState.misconceptionStates.filter((m) => m.active).length,

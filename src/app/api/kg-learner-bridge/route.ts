@@ -15,8 +15,12 @@ import { join } from "node:path";
  *   - questions.json      → partId   → specPointCodes,
  *                           questionId → union of its parts' codes,
  *                           partId → parent questionId (awaiting-marks join)
- *   - content-maps/*.json → flashcardId → mapped spine codes (unmapped cards
- *                           carry codes: [] and are simply omitted)
+ *   - content-maps/*.json → flashcardId → mapped spine codes; cards the map
+ *                           left unmapped fall back to the SUBTOPIC-ANCHOR
+ *                           join (flashcards.json subtopicCode "4CH1-S1-a" →
+ *                           pointSubtopics "1a" → spec points — exact shape
+ *                           only, slug-style deck codes stay honestly
+ *                           unmapped; tranche 4.4)
  *   - public/kg/data      → the exported spine's point ids (the overlay may
  *                           only reference points the renderer actually has)
  *                           + the curriculum code used as the "4CH1-" style
@@ -118,7 +122,12 @@ export function GET(request: Request) {
   const cached = cache.get(slug);
   if (cached) return NextResponse.json(cached);
 
-  const kg = safeRead<{ points?: { id?: string }[]; meta?: { code?: string } }>(
+  const kg = safeRead<{
+    points?: { id?: string }[];
+    meta?: { code?: string };
+    /** subtopic key → spec point ids (tranche 4.4 flashcard anchor join) */
+    pointSubtopics?: Record<string, string[]>;
+  }>(
     join(process.cwd(), "public", "kg", "data", `${slug}.json`),
   );
   if (!kg || !Array.isArray(kg.points)) {
@@ -175,10 +184,46 @@ export function GET(request: Request) {
   const map = safeRead<{ items?: Record<string, MapItem> }>(
     join(process.cwd(), "content-maps", `${slug}.json`),
   );
+  const unmappedCards: string[] = [];
   for (const [id, item] of Object.entries(map?.items ?? {})) {
     if (item?.kind !== "flashcard") continue;
     const codes = itemCodes(item);
     if (codes.length) flashcardCodes[id] = codes;
+    else unmappedCards.push(id);
+  }
+
+  // Subtopic-anchor fallback (tranche 4.4): the pilot's decks carry a spec
+  // STATEMENT anchor per card ("4CH1-S1-a" — the same anchor that drives deck
+  // placement), while the exported spine's pointSubtopics joins subtopic keys
+  // ("1a") to their spec points. Resolve ONLY that exact shape — other
+  // bundles' slug-style deck codes ("1-1-formulae-and-equations") carry no
+  // statement anchor and stay honestly unmapped rather than guessed.
+  if (unmappedCards.length && codePrefix) {
+    const cardsRaw = safeRead<
+      { id?: string; subtopicCode?: string | null }[] | { flashcards?: { id?: string; subtopicCode?: string | null }[] }
+    >(join(process.cwd(), "content", slug, "flashcards.json"));
+    const cardList = Array.isArray(cardsRaw)
+      ? cardsRaw
+      : (cardsRaw?.flashcards ?? []);
+    const anchorRe = new RegExp(`^${codePrefix}-S(\\d+)-([a-z])$`);
+    const pointsByAnchor = new Map<string, string[]>();
+    const cardAnchor = new Map<string, string>();
+    for (const card of cardList) {
+      if (!card?.id || !card.subtopicCode) continue;
+      const m = anchorRe.exec(card.subtopicCode);
+      if (m) cardAnchor.set(card.id, `${m[1]}${m[2]}`);
+    }
+    if (cardAnchor.size) {
+      for (const [key, pts] of Object.entries(kg.pointSubtopics ?? {})) {
+        const valid = (pts ?? []).map(String).filter((p) => pointIds.includes(p));
+        if (valid.length) pointsByAnchor.set(key, valid);
+      }
+      for (const id of unmappedCards) {
+        const key = cardAnchor.get(id);
+        const codes = key ? pointsByAnchor.get(key) : undefined;
+        if (codes?.length) flashcardCodes[id] = codes;
+      }
+    }
   }
 
   // ── misconceptions (KG phase 3) — corpus content × sim-learner state ──

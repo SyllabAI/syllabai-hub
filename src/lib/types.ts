@@ -309,6 +309,23 @@ export interface LearnerStateView {
   pendingReviews: ReviewView[];
   /** V21 (P7): topics the learner recently asked the Tutor about (last 30 days). */
   tutorEngagements?: TutorEngagementView[];
+  /**
+   * V47 (tranche 4.4): the learner's recent flashcard rating events
+   * (newest first, capped at 50) — the self-report evidence class.
+   * Optional: cores older than V47 serve the state view without it.
+   */
+  flashcardRatings?: FlashcardRatingView[];
+}
+
+/** One flashcard rating event (V47) — hub card id + the hub wire vocabulary. */
+export interface FlashcardRatingView {
+  cardId: string;
+  /** "still-learning" | "know" */
+  rating: string;
+  /** echoes the deck anchor on the POST response; null on the state slice */
+  subtopicCode: string | null;
+  nodeId: string;
+  occurredAt: string;
 }
 
 export interface TutorEngagementView {

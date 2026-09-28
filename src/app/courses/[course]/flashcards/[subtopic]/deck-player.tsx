@@ -3,10 +3,12 @@
 /**
  * Flashcard deck player — the SME loop (research §7.1, figure 12): flip
  * card, Still learning / Know rating, deck progress, shuffle + restart.
- * Ratings persist to the browser-local SIMULATED overlay and drive the
- * sub-topic rings in the sidebar.
+ * Ratings always persist to the browser-local SIMULATED overlay (rings,
+ * queue); on the pilot course, when signed in, they additionally record to
+ * the learner's core account as append-only self-report evidence
+ * (tranche 4.4 — lib/flashcard-bridge, never mastery, degrades silently).
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, RotateCcw, Shuffle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +16,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Markdown } from "@/components/markdown";
 import { rateFlashcard, useCourseProgress, type Course, type FlashcardRating } from "@/lib/progress";
+import { getToken } from "@/lib/api";
+import { PILOT_COURSE_SLUG } from "@/lib/attempt-bridge";
+import { submitFlashcardRating } from "@/lib/flashcard-bridge";
 import { cn } from "@/lib/utils";
 
 export interface DeckCard {
@@ -38,6 +43,21 @@ export function DeckPlayer({
   const [order, setOrder] = useState<string[]>(() => cards.map((c) => c.id));
   const [pos, setPos] = useState(0);
   const [flipped, setFlipped] = useState(false);
+  // tranche 4.4 honesty chip: does rating here also record to the account?
+  // Read after mount (async so SSR paint stays identical — the server never
+  // sees the token), then during-render adjustments are unnecessary: the
+  // session token doesn't change while a deck is open.
+  const [syncMode, setSyncMode] = useState<null | "account" | "device" | "offline">(null);
+  useEffect(() => {
+    if (course !== PILOT_COURSE_SLUG) return; // off-pilot: chip stays hidden
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (!cancelled) setSyncMode(getToken() ? "account" : "device");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [course]);
 
   const byId = useMemo(() => new Map(cards.map((c) => [c.id, c])), [cards]);
   const current = order.length > 0 ? byId.get(order[Math.min(pos, order.length - 1)]) : undefined;
@@ -49,7 +69,24 @@ export function DeckPlayer({
 
   const advance = (rating: FlashcardRating | null) => {
     if (!current) return;
-    if (rating) rateFlashcard(course, current.id, subtopicCode, rating);
+    if (rating) {
+      rateFlashcard(course, current.id, subtopicCode, rating);
+      // best-effort core mirror (pilot + signed in only); never blocks the
+      // deck — the local overlay already holds the rating
+      void submitFlashcardRating(course, current.id, rating, subtopicCode).then(
+        (outcome) => {
+          if (outcome.kind === "synced") {
+            setSyncMode((m) => (m === "device" ? "account" : m));
+          } else if (
+            syncMode === "account" &&
+            !/signed out|not the pilot/.test(outcome.reason)
+          ) {
+            // a real negative (core down / unknown anchor) — say it honestly
+            setSyncMode("offline");
+          }
+        },
+      );
+    }
     setFlipped(false);
     setPos((p) => (p + 1 < order.length ? p + 1 : 0));
   };
@@ -88,6 +125,30 @@ export function DeckPlayer({
         <span className="text-sm tabular-nums text-muted-foreground">
           {pos + 1}/{order.length}
         </span>
+        {syncMode && (
+          <Badge
+            variant="outline"
+            className={cn(
+              "text-[10px]",
+              syncMode === "account" && "border-success/30 text-success",
+              syncMode === "device" && "text-muted-foreground",
+              syncMode === "offline" && "border-destructive/30 text-destructive",
+            )}
+            title={
+              syncMode === "account"
+                ? "Ratings also record to your account as self-report evidence — they never change mastery."
+                : syncMode === "device"
+                  ? "Ratings stay on this device — sign in to record them to your account."
+                  : "Core unreachable — ratings stay on this device for now."
+            }
+          >
+            {syncMode === "account"
+              ? "saved to your account"
+              : syncMode === "device"
+                ? "local only — sign in to sync"
+                : "core unreachable — local only"}
+          </Badge>
+        )}
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <Badge variant="outline" className="border-destructive/30 text-[10px] text-destructive">
             {stillLearning} still learning

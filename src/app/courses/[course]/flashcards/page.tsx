@@ -36,7 +36,7 @@ export default async function FlashcardsIndexPage({
         meta={meta}
         title={`Edexcel ${meta.level} ${meta.label} Flashcards`}
         crumb="Flashcards"
-        description={`Per-sub-topic recall decks — ${stats.flashcards} cards. Rating a card (Still learning / Know) feeds your sub-topic rings in the local overlay.`}
+        description={`Per-sub-topic recall decks — ${stats.flashcards} cards. Rating a card (Still learning / Know) feeds your sub-topic rings in the local overlay; on the pilot course, signed-in learners also record ratings to their account as self-report evidence (never mastery).`}
       />
 
       <div className="mt-6 space-y-2">

@@ -8,8 +8,12 @@ import { useSyncExternalStore } from "react";
  * Research finding (§8): SME progress = per-sub-topic rings + marks, and
  * writing it needs an account. This demo has no accounts, so ALL progress is
  * a browser-local overlay, namespaced per course, and labelled SIMULATED
- * wherever it is shown. It never writes to canonical content, the learner
- * overlay JSON, or any server — refresh-safe via localStorage only.
+ * wherever it is shown. It never writes to canonical content or the learner
+ * overlay JSON — refresh-safe via localStorage only. (Tranche 4.4 exception:
+ * on the pilot course, when signed in, flashcard ratings ALSO mirror to the
+ * learner's core account as append-only self-report evidence — lib/
+ * flashcard-bridge.ts. The local overlay remains the source of truth for
+ * this store's rings; the mirror never mutates it.)
  *
  * Three primitives, mirroring the research:
  *   - note-read      (notes ring)

@@ -33,6 +33,7 @@ import type {
   AttemptHistoryView,
   ClaAnswerView,
   ClaMode,
+  FlashcardRatingView,
   TeacherAuditRowView,
   AuthResponse,
   AnswerMarkingView,
@@ -466,6 +467,20 @@ export const api = {
     ),
 
   learnerState: () => request<LearnerStateView>("/api/v1/learners/me/state"),
+
+  // Flashcard rating evidence (V47, ADR-029 tranche 4.4): one append-only
+  // rating event per call, attributed to the deck's subtopic anchor — core
+  // resolves the anchor against the curriculum and 404s an unknown one (the
+  // caller degrades to local-only). Self-report: NEVER mastery on core.
+  recordFlashcardRating: (body: {
+    cardId: string;
+    rating: "still-learning" | "know";
+    subtopicCode: string;
+  }) =>
+    request<FlashcardRatingView>("/api/v1/learners/me/flashcard-ratings", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 
   // Attempt history (Review Hub minimal slice) — read-only view over the
   // learner's own attempts/answers evidence rows. Default limit 50 (max 100).

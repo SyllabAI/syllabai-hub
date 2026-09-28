@@ -1,0 +1,55 @@
+"use client";
+
+/**
+ * flashcard-bridge — client half of the flashcard rating evidence class
+ * (ADR-029 tranche 4.4). Mirrors the attempt-bridge honesty rules:
+ *
+ *   - every negative (not the pilot / signed out / core down / unknown
+ *     anchor) degrades to the local experience — the deck never blocks,
+ *     never spins, the rating always lands in the browser-local overlay;
+ *   - ratings go to core ONLY as self-report evidence (append-only trail):
+ *     they never touch BKT/SkillState/misconceptions — mastery comes from
+ *     marked attempts only (the learner-model honesty rule);
+ *   - on success the `syllabai:core-evidence` event fires, so the KG / My
+ *     State surfaces re-derive from core promptly.
+ *
+ * No module state: the local overlay (lib/progress.ts) stays the source of
+ * truth for rings/queue; this helper is the core-side mirror, best-effort
+ * by design. Idempotence is event-level (append-only), not card-level — a
+ * re-rate is a new event, exactly what the future review scheduler wants.
+ */
+import { api, getToken } from "./api";
+import { PILOT_COURSE_SLUG } from "./attempt-bridge";
+
+export type FlashcardRatingSyncOutcome =
+  | { kind: "synced" }
+  | { kind: "local-only"; reason: string };
+
+/**
+ * Record one rating to the learner's core account when the full preflight
+ * passes (pilot course + signed in + core reachable). Resolves regardless —
+ * the caller must never await user-visible consequences from this.
+ */
+export async function submitFlashcardRating(
+  course: string,
+  cardId: string,
+  rating: "still-learning" | "know",
+  subtopicCode: string,
+): Promise<FlashcardRatingSyncOutcome> {
+  if (course !== PILOT_COURSE_SLUG) {
+    return { kind: "local-only", reason: "not the pilot course" };
+  }
+  if (!getToken()) {
+    return { kind: "local-only", reason: "signed out" };
+  }
+  try {
+    await api.recordFlashcardRating({ cardId, rating, subtopicCode });
+    window.dispatchEvent(new CustomEvent("syllabai:core-evidence"));
+    return { kind: "synced" };
+  } catch (err) {
+    // core down / 404 unknown anchor / expired session — the local overlay
+    // already holds the rating; core simply stays without this event
+    const reason = err instanceof Error ? err.message : "core unavailable";
+    return { kind: "local-only", reason };
+  }
+}
