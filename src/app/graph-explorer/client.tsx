@@ -172,7 +172,7 @@ export function GraphExplorerClient() {
         {/* about */}
         <Popover>
           <PopoverTrigger asChild>
-            <Button variant="outline" size="icon" className="size-8" aria-label="About this explorer">
+            <Button variant="outline" size="icon" aria-label="About this explorer">
               <Info className="size-3.5" aria-hidden />
             </Button>
           </PopoverTrigger>
@@ -232,7 +232,7 @@ export function GraphExplorerClient() {
           </PopoverContent>
         </Popover>
 
-        <Button asChild variant="outline" size="icon" className="size-8" aria-label="Open build full screen in a new tab">
+        <Button asChild variant="outline" size="icon" aria-label="Open build full screen in a new tab">
           <a href={BUILDS[build].file} target="_blank" rel="noreferrer">
             <ExternalLink className="size-3.5" aria-hidden />
           </a>
@@ -240,7 +240,6 @@ export function GraphExplorerClient() {
         <Button
           variant="outline"
           size="icon"
-          className="size-8"
           aria-label="Toggle fullscreen"
           onClick={toggleFullscreen}
         >

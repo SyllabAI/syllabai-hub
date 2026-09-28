@@ -343,7 +343,7 @@ export function TutorChat() {
   };
 
   const iconBtn =
-    "inline-flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground";
+    "inline-flex size-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground";
 
   return (
     <div className="flex h-[calc(100dvh-3.5rem)] overflow-hidden">

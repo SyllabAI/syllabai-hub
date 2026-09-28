@@ -7,6 +7,7 @@ import {
   corpusPapersForCourse,
   corpusSpecsForCourse,
   corpusIndex,
+  doubleAwardScopeNote,
   groupBySession,
   prettyBytes,
   sessionLabel,
@@ -90,6 +91,14 @@ export default async function PastPapersPage({
   const interactiveCount = matchKeys.size;
   // reconstructions with NO corpus PDF counterpart keep their own archive list
   const unmatchedReconstructions = reconstructions.filter((r) => !matchedReconKeys.has(r.key));
+  // of those, the ones whose provenance provably pins a paper OUTSIDE the
+  // qualification's assessed set (2-series surfacing decision) get a chip +
+  // note instead of an unexplained absence
+  const scopeNotes = new Map<string, { label: string; note: string }>();
+  for (const r of unmatchedReconstructions) {
+    const note = doubleAwardScopeNote(slug, r.date, r.number);
+    if (note) scopeNotes.set(r.key, note);
+  }
 
   const specNote =
     specMap == null
@@ -136,7 +145,7 @@ export default async function PastPapersPage({
             </CardContent>
           </Card>
           {unmatchedReconstructions.length > 0 && (
-            <ReconstructionArchive base={base} papers={unmatchedReconstructions} />
+            <ReconstructionArchive base={base} papers={unmatchedReconstructions} notes={scopeNotes} />
           )}
         </div>
       ) : (
@@ -276,7 +285,7 @@ export default async function PastPapersPage({
 
           {/* reconstructions with no PDF counterpart keep their honest archive */}
           {unmatchedReconstructions.length > 0 && (
-            <ReconstructionArchive base={base} papers={unmatchedReconstructions} />
+            <ReconstructionArchive base={base} papers={unmatchedReconstructions} notes={scopeNotes} />
           )}
         </div>
       )}
@@ -285,7 +294,15 @@ export default async function PastPapersPage({
 }
 
 /** Archive of interactive reconstructions that have no PDF counterpart. */
-function ReconstructionArchive({ base, papers }: { base: string; papers: PastPaper[] }) {
+function ReconstructionArchive({
+  base,
+  papers,
+  notes,
+}: {
+  base: string;
+  papers: PastPaper[];
+  notes: Map<string, { label: string; note: string }>;
+}) {
   return (
     <section aria-label="Interactive reconstructions" className="space-y-2">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
@@ -296,23 +313,42 @@ function ReconstructionArchive({ base, papers }: { base: string; papers: PastPap
         paper order). These predate the PDF archive and stay playable here.
       </p>
       <ul className="overflow-hidden rounded-xl border">
-        {papers.map((p, i) => (
-          <li key={p.key} className={i > 0 ? "border-t" : undefined}>
-            <Link
-              href={`${base}/past-papers/${p.key}`}
-              className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted"
-            >
-              <span className="min-w-0 flex-1">
-                <span className="block font-mono text-sm font-semibold">{p.number}</span>
-                <span className="block text-xs text-muted-foreground">
-                  {p.date} · {p.questions.length} question{p.questions.length === 1 ? "" : "s"} ·{" "}
-                  {p.totalMarks} marks · {paperEstTime(p.totalMarks)}
+        {papers.map((p, i) => {
+          const scope = notes.get(p.key);
+          return (
+            <li key={p.key} className={i > 0 ? "border-t" : undefined}>
+              <Link
+                href={`${base}/past-papers/${p.key}`}
+                className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-center gap-1.5">
+                    <span className="font-mono text-sm font-semibold">{p.number}</span>
+                    {scope && (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] text-muted-foreground"
+                        title={scope.note}
+                      >
+                        {scope.label}
+                      </Badge>
+                    )}
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    {p.date} · {p.questions.length} question{p.questions.length === 1 ? "" : "s"} ·{" "}
+                    {p.totalMarks} marks · {paperEstTime(p.totalMarks)}
+                  </span>
+                  {scope && (
+                    <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground/80">
+                      {scope.note}
+                    </span>
+                  )}
                 </span>
-              </span>
-              <ChevronRight className="size-4 shrink-0 text-muted-foreground/60" aria-hidden />
-            </Link>
-          </li>
-        ))}
+                <ChevronRight className="size-4 shrink-0 text-muted-foreground/60" aria-hidden />
+              </Link>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

@@ -78,10 +78,11 @@ export function AssignmentsClient({
   const [state, setState] = useState<{
     course: string;
     data?: TeacherCourseData;
-    error?: boolean;
+    error?: string;
   } | null>(null);
   const loading = course !== null && state?.course !== course;
   const data = state?.course === course ? state.data : undefined;
+  const loadError = state?.course === course ? state.error : undefined;
 
   const { assignments, create, setStatus, remove } = useAssignments();
   const { tests } = useSavedTests();
@@ -112,8 +113,12 @@ export function AssignmentsClient({
       .then((payload) => {
         if (!cancelled) setState({ course, data: payload });
       })
-      .catch(() => {
-        if (!cancelled) setState({ course, error: true });
+      .catch((err) => {
+        if (!cancelled)
+          setState({
+            course,
+            error: err instanceof Error ? err.message : "failed to load course data",
+          });
       });
     return () => {
       cancelled = true;
@@ -284,6 +289,15 @@ export function AssignmentsClient({
 
       <TeacherNav />
 
+      {loadError && (
+        <Alert variant="destructive">
+          <AlertTitle>Course data unavailable</AlertTitle>
+          <AlertDescription>
+            {loadError}. The builder needs the course payload — switch subject and back to retry.
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* subject selector */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative">
@@ -437,7 +451,7 @@ export function AssignmentsClient({
                         </span>
                       </label>
                     ))}
-                  {!loading && allSubtopics.length === 0 && (
+                  {!loading && !loadError && data && allSubtopics.length === 0 && (
                     <p className="p-2 text-xs text-muted-foreground">No subtopics for this course.</p>
                   )}
                 </div>

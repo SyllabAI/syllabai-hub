@@ -198,11 +198,11 @@ function SubjectCard({
         size="icon"
         aria-label={`Remove ${meta.label} from my subjects`}
         onClick={() => onRemove(meta.slug)}
-        className="absolute right-1.5 top-1.5 size-7 rounded-full text-muted-foreground hover:text-destructive"
+        className="absolute top-1 right-1 size-9 rounded-full text-muted-foreground hover:text-destructive"
       >
         <X className="size-4" aria-hidden />
       </Button>
-      <CardContent className="flex h-full flex-col gap-1 p-4 pr-9">
+      <CardContent className="flex h-full flex-col gap-1 p-4 pr-11">
         {/* eyebrow: board · level (SME: "IGCSE · Edexcel") */}
         <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           Edexcel · {meta.level}

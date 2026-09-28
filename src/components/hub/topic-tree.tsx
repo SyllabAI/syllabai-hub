@@ -254,7 +254,7 @@ export function TopicTree({
                               aria-label={`${subOpen ? "Hide" : "Show"} the ${nestedItems.length} ${
                                 variant === "notes" ? "notes" : "question sets"
                               } in ${sub.title}`}
-                              className="mr-1 shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                              className="mr-1 shrink-0 rounded p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                             >
                               <ChevronGlyph open={subOpen} />
                             </button>

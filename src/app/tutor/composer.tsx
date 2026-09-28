@@ -114,7 +114,7 @@ export function Composer({
           type="button"
           variant="ghost"
           size="icon"
-          className="size-9 shrink-0 text-muted-foreground"
+          className="size-10 shrink-0 text-muted-foreground"
           aria-label="Attach a file"
           onClick={() =>
             toast({
@@ -146,7 +146,7 @@ export function Composer({
             type="button"
             variant="ghost"
             size="icon"
-            className={cn("size-9 shrink-0", listening ? "text-destructive" : "text-muted-foreground")}
+            className={cn("size-10 shrink-0", listening ? "text-destructive" : "text-muted-foreground")}
             aria-label={listening ? "Stop dictation" : "Dictate your question"}
             aria-pressed={listening}
             onClick={toggleDictation}
@@ -155,11 +155,11 @@ export function Composer({
           </Button>
         )}
         {busy ? (
-          <Button variant="outline" onClick={onStop} className="h-9 shrink-0 gap-1.5 px-3">
+          <Button variant="outline" onClick={onStop} className="h-10 shrink-0 gap-1.5 px-3">
             <Square className="size-3.5 fill-current" aria-hidden /> Stop
           </Button>
         ) : (
-          <Button onClick={onSend} disabled={!value.trim()} className="h-9 shrink-0 gap-1.5 px-3">
+          <Button onClick={onSend} disabled={!value.trim()} className="h-10 shrink-0 gap-1.5 px-3">
             <Send className="size-4" aria-hidden />
             <span className="sr-only sm:not-sr-only">Send</span>
           </Button>

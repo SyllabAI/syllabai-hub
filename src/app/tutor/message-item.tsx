@@ -31,7 +31,7 @@ import {
 } from "lucide-react";
 
 const actionBtn =
-  "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10.5px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground";
+  "inline-flex min-h-8 items-center gap-1 rounded px-2 py-1.5 text-[10.5px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground";
 
 function TypingDots() {
   return (
@@ -117,7 +117,7 @@ export function MessageItem({
               <div className="rounded-lg rounded-br-sm bg-primary px-3.5 py-2 text-sm text-primary-foreground">
                 <p className="whitespace-pre-wrap leading-relaxed">{message.content || "…"}</p>
               </div>
-              <div className="flex items-center gap-0.5 pr-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+              <div className="flex items-center gap-0.5 pr-0.5 opacity-100 transition-opacity lg:opacity-0 lg:group-hover:opacity-100 lg:focus-within:opacity-100">
                 <span className="mr-1 text-[10px] tabular-nums text-muted-foreground/70">
                   {clockTime(message.at)}
                 </span>
@@ -184,7 +184,7 @@ export function MessageItem({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-7 shrink-0 gap-1.5 px-2 text-xs"
+                  className="h-9 shrink-0 gap-1.5 px-2 text-xs"
                   onClick={onRegenerate}
                   disabled={busy}
                 >
@@ -221,7 +221,7 @@ export function MessageItem({
                   )}
                   <div
                     className={cn(
-                      "ml-auto flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100",
+                      "ml-auto flex items-center gap-0.5 opacity-100 transition-opacity lg:opacity-0 lg:group-hover:opacity-100 lg:focus-within:opacity-100",
                       message.feedback && "opacity-100",
                     )}
                   >

@@ -87,7 +87,7 @@ export function AppShell({
   const bare = inCourse || inExplorer || inTutor;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-dvh bg-background">
       {/* solid header (SME parity): a translucent bar lets large H1 text bleed
           through on scroll and reads as a rendering glitch (UX audit 2026-09-19) */}
       <header className="sticky top-0 z-40 border-b bg-background print:hidden">
@@ -97,20 +97,24 @@ export function AppShell({
               <Atom className="size-4" aria-hidden />
             </span>
             <span className="font-display font-semibold tracking-tight">
-              SyllabAI<span className="text-muted-foreground"> Hub</span>
+              SyllabAI
+              {/* 375px fit (demo UI-fix wave): the " Hub" suffix returns at sm;
+                below that the wordmark alone keeps room for the identity cluster */}
+              <span className="hidden text-muted-foreground sm:inline"> Hub</span>
             </span>
           </Link>
 
           <DropdownMenu>
             <DropdownMenuTrigger
+              aria-label="Study tools"
               className={cn(
-                "inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm font-medium transition-colors",
+                "inline-flex h-10 items-center gap-1.5 rounded-md px-3 text-sm font-medium transition-colors",
                 "hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               )}
             >
               <Layers className="size-4 lg:hidden" aria-hidden />
+              <span className="hidden sm:inline lg:hidden">Menu</span>
               <span className="hidden lg:inline">Study tools</span>
-              <span className="lg:hidden">Menu</span>
               <ChevronDown className="size-3.5 text-muted-foreground" aria-hidden />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-64">
@@ -136,6 +140,24 @@ export function AppShell({
                   </Link>
                 </DropdownMenuItem>
               ))}
+
+              {/* Mobile UX audit (2026-09-28) P1, hub-adapted: the header
+                  "Sign in" button is `hidden sm:inline-flex`, so a signed-out
+                  phone had NO path into the app. Signed-in users don't need a
+                  mirror here — their identity dropdown (with Sign out) renders
+                  at every width. So: one sm:hidden Sign-in item, signed-out
+                  state only. */}
+              {!identity && (
+                <>
+                  <DropdownMenuSeparator className="sm:hidden" />
+                  <DropdownMenuItem asChild className="cursor-pointer sm:hidden">
+                    <Link href="/login">
+                      <LogIn className="size-4" aria-hidden />
+                      <span className="flex-1">Sign in</span>
+                    </Link>
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -156,7 +178,7 @@ export function AppShell({
                   )}
                 >
                   <User className="size-3.5" aria-hidden />
-                  <span className="max-w-28 truncate">{identity.name}</span>
+                  <span className="max-w-16 truncate sm:max-w-28">{identity.name}</span>
                   <ChevronDown className="size-3 text-muted-foreground" aria-hidden />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">

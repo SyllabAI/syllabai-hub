@@ -143,20 +143,34 @@ export default async function NoteReaderPage({
             </CardContent>
           </Card>
 
-          <nav className="flex items-center justify-between border-t pt-4" aria-label="Note pagination">
+          {/* Mobile UX audit (2026-09-28) P1: the two 24-char titles inside
+              whitespace-nowrap shrink-0 buttons overflowed the 343px article
+              column on phones — the "next note" button ran off-viewport and
+              was untappable (probe: nav scrollWidth 402-426px vs 343px). Cap
+              each button at 48% + truncate; flex-wrap catches pathological
+              cases; the 48% cap is a no-op on desktop where both titles fit. */}
+          <nav className="flex flex-wrap items-center justify-between gap-2 border-t pt-4" aria-label="Note pagination">
             {prev ? (
-              <Button asChild size="sm" variant="outline">
+              <Button asChild size="sm" variant="outline" className="max-w-[48%]">
                 <Link href={`${base}/revision-notes/${prev.noteId}`}>
-                  <ArrowLeft className="size-4" aria-hidden /> {prev.title.slice(0, 24)}
+                  <ArrowLeft className="size-4 shrink-0" aria-hidden />
+                  <span className="min-w-0 truncate">
+                    {prev.title.slice(0, 24)}
+                    {prev.title.length > 24 ? "…" : ""}
+                  </span>
                 </Link>
               </Button>
             ) : (
               <span />
             )}
             {next ? (
-              <Button asChild size="sm" variant="outline">
+              <Button asChild size="sm" variant="outline" className="max-w-[48%]">
                 <Link href={`${base}/revision-notes/${next.noteId}`}>
-                  {next.title.slice(0, 24)} <ArrowRight className="size-4" aria-hidden />
+                  <span className="min-w-0 truncate">
+                    {next.title.slice(0, 24)}
+                    {next.title.length > 24 ? "…" : ""}
+                  </span>
+                  <ArrowRight className="size-4 shrink-0" aria-hidden />
                 </Link>
               </Button>
             ) : (

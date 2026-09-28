@@ -43,11 +43,11 @@ export function ResourcePanel({ variant }: { variant: PanelVariant }) {
   if (hidden) {
     // collapsed rail — SME keeps a slim expand affordance at the panel edge
     return (
-      <div className="sticky top-14 hidden h-[calc(100vh-3.5rem)] w-11 shrink-0 flex-col items-center border-r bg-background pt-3 lg:flex">
+      <div className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-11 shrink-0 flex-col items-center border-r bg-background pt-3 lg:flex">
         <Button
           variant="ghost"
           size="icon"
-          className="size-8"
+          className="size-9"
           onClick={() => setHidden(false)}
           aria-label="Show topics"
         >
@@ -59,7 +59,7 @@ export function ResourcePanel({ variant }: { variant: PanelVariant }) {
 
   return (
     <aside
-      className="sticky top-14 hidden h-[calc(100vh-3.5rem)] w-72 shrink-0 border-r bg-background lg:block"
+      className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-72 shrink-0 border-r bg-background lg:block"
       aria-label={`${PANEL_TITLE[variant]} topic navigation`}
     >
       <div className="flex h-full flex-col">

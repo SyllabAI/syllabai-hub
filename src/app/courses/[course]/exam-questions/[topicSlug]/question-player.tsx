@@ -182,7 +182,7 @@ export function QuestionPlayer({
               aria-selected={difficulty === d}
               onClick={() => setDifficulty(d)}
               className={cn(
-                "rounded-md px-3 py-1.5 text-[13px] font-medium capitalize transition-colors",
+                "rounded-md px-3 py-2.5 text-[13px] font-medium capitalize transition-colors",
                 difficulty === d
                   ? "bg-primary/10 text-primary"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -207,7 +207,7 @@ export function QuestionPlayer({
             onClick={() => scrollTo(`q-${q.id}`)}
             aria-label={`Question ${i + 1}${isAttempted(q) ? " (attempted)" : ""}`}
             className={cn(
-              "flex size-9 items-center justify-center rounded-md border text-[13px] font-medium transition-colors",
+              "flex size-10 items-center justify-center rounded-md border text-[13px] font-medium transition-colors",
               isAttempted(q)
                 ? "border-primary bg-primary text-primary-foreground"
                 : "hover:border-primary/50 hover:text-primary",
@@ -241,7 +241,7 @@ export function QuestionPlayer({
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="h-8 gap-1.5 px-2 text-xs"
+                  className="h-9 gap-1.5 px-2 text-xs"
                   onClick={() => setFullFor(q)}
                 >
                   <Maximize2 className="size-3.5" aria-hidden /> Full screen
@@ -249,7 +249,7 @@ export function QuestionPlayer({
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="h-8 gap-1.5 px-2 text-xs"
+                  className="h-9 gap-1.5 px-2 text-xs"
                   onClick={() => toggleSavedQuestion(course, q.id, topicSlug, subtopicCode)}
                   aria-pressed={!!progress.saved[q.id]}
                 >
@@ -288,7 +288,7 @@ export function QuestionPlayer({
 
       {/* full-screen question */}
       <Dialog open={!!fullFor} onOpenChange={(o) => !o && setFullFor(null)}>
-        <DialogContent aria-describedby={undefined} className="max-h-[90vh] max-w-3xl overflow-y-auto">
+        <DialogContent aria-describedby={undefined} className="max-h-[90dvh] max-w-3xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               {topicName}
@@ -743,7 +743,7 @@ function TypedAnswerWorkspace({
               <Button
                 size="sm"
                 variant="outline"
-                className="ml-auto h-7 text-xs"
+                className="ml-auto h-9 text-xs"
                 onClick={() => {
                   recordSelfScore(course, question.id, topicSlug, subtopicCode, mark.score, mark.max);
                   setApplied(true);
@@ -1001,7 +1001,7 @@ function McqPart({
                     disabled={submitted}
                     onClick={() => setChosen(o.label)}
                     className={cn(
-                      "flex size-9 items-center justify-center rounded-full border text-sm font-semibold transition-colors",
+                      "flex size-11 items-center justify-center rounded-full border text-sm font-semibold transition-colors",
                       showWrong
                         ? "border-destructive/40 bg-destructive/15 text-destructive"
                         : showCorrect
@@ -1504,7 +1504,7 @@ function MarkSchemeDialog({
 
   return (
     <Dialog open={!!question} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent aria-describedby={undefined} className="h-[92vh] max-w-4xl overflow-y-auto sm:h-[92vh]">
+      <DialogContent aria-describedby={undefined} className="h-[92dvh] max-w-4xl overflow-y-auto sm:h-[92dvh]">
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2 text-base">
             <Badge variant="outline" className="rounded-full px-3 py-1 text-xs font-medium">
@@ -1535,7 +1535,7 @@ function MarkSchemeDialog({
                     )}
                   </div>
                   {longRestate && (
-                    <Button size="sm" variant="ghost" className="h-7 text-xs text-primary" onClick={() => setExpanded((v) => !v)}>
+                    <Button size="sm" variant="ghost" className="h-9 text-xs text-primary" onClick={() => setExpanded((v) => !v)}>
                       {expanded ? "Show less" : "Show more"}
                     </Button>
                   )}
@@ -1568,7 +1568,7 @@ function MarkSchemeDialog({
           </div>
         )}
         <button
-          className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100"
+          className="absolute top-4 right-4 -m-2.5 flex size-9 items-center justify-center rounded-md opacity-70 transition-opacity hover:bg-accent hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           onClick={onClose}
           aria-label="Close mark scheme"
         >

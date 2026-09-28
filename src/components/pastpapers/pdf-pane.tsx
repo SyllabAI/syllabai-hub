@@ -1003,7 +1003,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 px-1.5"
+              className="h-9 w-9 px-0"
               onClick={() => scrollToPage(Math.max(1, currentPage - 1))}
               disabled={currentPage <= 1}
               aria-label="Previous page"
@@ -1016,7 +1016,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 px-1.5"
+              className="h-9 w-9 px-0"
               onClick={() => scrollToPage(Math.min(numPages, currentPage + 1))}
               disabled={currentPage >= numPages}
               aria-label="Next page"
@@ -1027,7 +1027,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 px-1.5"
+              className="h-9 w-9 px-0"
               onClick={() => zoomBy(1 / 1.25)}
               aria-label="Zoom out"
               disabled={zoomPct <= 100}
@@ -1038,7 +1038,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 px-1.5"
+              className="h-9 w-9 px-0"
               onClick={() => zoomBy(1.25)}
               aria-label="Zoom in"
               title={`Zoom: ${zoomPct}% of fit width`}
@@ -1048,7 +1048,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 px-1.5"
+              className="h-9 w-9 px-0"
               onClick={resetFit}
               aria-label="Reset to fit width"
               disabled={zoomPct <= 100}
@@ -1059,7 +1059,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 px-1.5"
+              className="h-9 w-9 px-0"
               onClick={() => (findOpen ? closeFind() : openFindAndIndex())}
               aria-label="Find in document"
               aria-pressed={findOpen}
@@ -1071,7 +1071,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 px-1.5"
+                className="h-9 w-9 px-0"
                 onClick={toggleFullscreen}
                 aria-label="Fullscreen"
                 title="Fullscreen"
@@ -1086,7 +1086,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
             href={downloadUrl}
             target="_blank"
             rel="noreferrer"
-            className="ml-auto inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-xs font-medium text-primary hover:bg-muted"
+            className="ml-auto inline-flex h-9 shrink-0 items-center gap-1 rounded-md px-2 text-xs font-medium text-primary hover:bg-muted"
             aria-label={`Open or download ${label}`}
           >
             <Download className="size-3.5" aria-hidden />
@@ -1119,7 +1119,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
             placeholder="Find in document…"
             aria-label="Find in document"
             autoComplete="off"
-            className="h-7 w-32 bg-transparent text-xs outline-none placeholder:text-muted-foreground sm:w-44"
+            className="h-9 w-32 bg-transparent text-xs outline-none placeholder:text-muted-foreground sm:w-44"
           />
           <span
             className="whitespace-nowrap px-0.5 text-[11px] tabular-nums text-muted-foreground"
@@ -1130,7 +1130,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 w-7 px-0"
+            className="h-9 w-9 px-0"
             onClick={() => stepMatch(-1)}
             disabled={!matchInfo || matchInfo.count === 0}
             aria-label="Previous match"
@@ -1140,7 +1140,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 w-7 px-0"
+            className="h-9 w-9 px-0"
             onClick={() => stepMatch(1)}
             disabled={!matchInfo || matchInfo.count === 0}
             aria-label="Next match"
@@ -1150,7 +1150,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 w-7 px-0"
+            className="h-9 w-9 px-0"
             onClick={closeFind}
             aria-label="Close search"
           >

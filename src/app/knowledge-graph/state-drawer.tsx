@@ -131,7 +131,7 @@ function NoteLink({ noteId }: { noteId: string }) {
       asChild
       variant="ghost"
       size="icon"
-      className="size-6 shrink-0 text-muted-foreground"
+      className="size-9 shrink-0 text-muted-foreground"
       aria-label="Read the mapped revision note"
       title="Read the mapped revision note"
     >

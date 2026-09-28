@@ -23,6 +23,7 @@
  *     else gets the honest "parsing roadmap" state, never a fake player.
  */
 import indexJson from "@/data/pastpapers-index.json";
+import { parseReconstruction } from "@/lib/pastpapers-reconstruction";
 import {
   corpusRawPath,
   ialUnitTitle,
@@ -124,12 +125,26 @@ const COURSE_SPECS: Record<string, CourseSpecMap> = {
   // archive for this course is the 4ph0 spec's 1-series, badged "Legacy spec";
   // a 4sc0 spec folder would be fabrication (no such question papers exist).
   // 2-series 4PH0 papers (single-award extension) surface via igcse-physics-19.
+  //
+  // 2-SERIES SURFACING DECISION (2026-09-28): the double-award courses keep
+  // single-award papers OUT of Mode 1 on purpose. The Double Award assesses
+  // Paper 1 only — both generations (4SC0/4SD0) — so a 2-series paper in this
+  // archive would misrepresent the qualification. The recon rows that pin
+  // those papers stay honest-unmatched in the reconstruction archive, now
+  // labelled with a "Single-award paper" chip (doubleAwardScopeNote below);
+  // their official PDFs remain reachable through the single-subject courses,
+  // which already surface them (4PH0/2P via igcse-physics-19's legacySpecs,
+  // 4CH1/4BI1 2-series natively). Scope purity beats interactive counts.
   "igcse-science-double-award-17-biology": {
     specs: [`${IG}/science-double-award/4sd0`],
     variants: ["1B", "1BR"],
   },
   "igcse-science-double-award-17-chemistry": {
     specs: [`${IG}/science-double-award/4sd0`],
+    // retired 4SC0 line: its Chemistry Paper 1 = 4CH0 Paper 1 (1C/1CR,
+    // 2011-2019) — same covers-print-both-codes evidence as physics; unlocks
+    // the externally-verified January 2013 1C recon row (GKVQ 7a/7b).
+    legacySpecs: [`${IG}/chemistry/4ch0`],
     variants: ["1C", "1CR"],
   },
   "igcse-science-double-award-17-physics": {
@@ -170,6 +185,41 @@ const COURSE_SPECS: Record<string, CourseSpecMap> = {
 
 export function corpusSpecsForCourse(slug: string): CourseSpecMap | null {
   return COURSE_SPECS[slug] ?? null;
+}
+
+/**
+ * Why does an unmatched reconstruction have no PDF counterpart? Two honest
+ * reasons exist: the archive simply doesn't hold the paper, or the paper is
+ * OUTSIDE the qualification's assessed set. This helper proves the second
+ * case for the Double Award family (the 2-series surfacing decision,
+ * 2026-09-28): a recon whose parsed provenance pins a single-award paper —
+ * the 2-series extension papers (2P/2C/2B ± R), or rows that carry a full
+ * single-award reference (e.g. 4BI1/1B) — gets a "Single-award paper" chip
+ * instead of an unexplained absence. Everything else returns null: the
+ * platform never asserts a scope violation it cannot derive from the data.
+ */
+export function doubleAwardScopeNote(
+  slug: string,
+  date: string,
+  number: string,
+): { label: string; note: string } | null {
+  const map = COURSE_SPECS[slug];
+  if (!map || !map.specs[0]?.endsWith("/4sd0")) return null;
+  const parsed = parseReconstruction(date, number);
+  if (!parsed) return null;
+  const curUnit = map.specs[0].split("/").pop()!.toUpperCase();
+  const unitOut = parsed.unit != null && parsed.unit !== curUnit;
+  const variantOut = map.variants != null && !map.variants.includes(parsed.variant);
+  if (!unitOut && !variantOut) return null;
+  // "igcse-science-double-award-17-physics" -> "Physics" (only the three
+  // 2017 double-award courses pass the 4sd0 gate above)
+  const subjectWord = (slug.replace("igcse-science-double-award-17-", "").split("-")[0] ?? "").replace(/^./, (c) => c.toUpperCase());
+  const pinned = parsed.unit ? `${parsed.unit}/${parsed.variant}` : parsed.variant;
+  const archive = `The official PDF lives in the single-award ${subjectWord} archive; the reconstruction stays playable here.`;
+  const note = unitOut
+    ? `Provenance pins ${pinned} — a single-award ${subjectWord} paper, not a Double Award paper. ${archive}`
+    : `${parsed.variant} is the single-award extension paper — the Double Award has no Paper 2s. ${archive}`;
+  return { label: "Single-award paper", note };
 }
 
 // ── official exam durations (attested) ─────────────────────────────────────

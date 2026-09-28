@@ -62,20 +62,31 @@ export default async function RevisionNotePage({
 
       <Markdown>{note.bodyMd}</Markdown>
 
-      <nav className="flex items-center justify-between border-t pt-4" aria-label="Note pagination">
+      {/* Mobile UX audit (2026-09-28) P1: same overflow as the course note
+          reader — nowrap shrink-0 buttons with 24-char titles clip the
+          "next note" button off-viewport on phones. Same 48% cap + truncate. */}
+      <nav className="flex flex-wrap items-center justify-between gap-2 border-t pt-4" aria-label="Note pagination">
         {prev ? (
-          <Button asChild size="sm" variant="outline">
+          <Button asChild size="sm" variant="outline" className="max-w-[48%]">
             <Link href={`/revision-notes/${prev.noteId}`}>
-              <ArrowLeft className="size-4" aria-hidden /> {prev.title.slice(0, 24)}
+              <ArrowLeft className="size-4 shrink-0" aria-hidden />
+              <span className="min-w-0 truncate">
+                {prev.title.slice(0, 24)}
+                {prev.title.length > 24 ? "…" : ""}
+              </span>
             </Link>
           </Button>
         ) : (
           <span />
         )}
         {next ? (
-          <Button asChild size="sm" variant="outline">
+          <Button asChild size="sm" variant="outline" className="max-w-[48%]">
             <Link href={`/revision-notes/${next.noteId}`}>
-              {next.title.slice(0, 24)} <ArrowRight className="size-4" aria-hidden />
+              <span className="min-w-0 truncate">
+                {next.title.slice(0, 24)}
+                {next.title.length > 24 ? "…" : ""}
+              </span>
+              <ArrowRight className="size-4 shrink-0" aria-hidden />
             </Link>
           </Button>
         ) : (

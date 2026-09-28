@@ -451,7 +451,9 @@
    toolbar + scroll area flex to the full height. */
 .pp-pane:fullscreen {
   width: 100vw;
+  /* dvh cascade fallback: browsers without dvh keep 100vh above */
   height: 100vh;
+  height: 100dvh;
   max-width: none;
   max-height: none;
   border: 0;
@@ -462,4 +464,23 @@
 }
 .pp-pane:fullscreen::backdrop {
   background: var(--background);
+}
+
+/* Mobile UX audit (2026-09-28) P1: KaTeX display math and fenced code blocks
+   render with KaTeX's `white-space: nowrap` / the browser's `white-space: pre`
+   — with no scroll container a wide equation or code line overflows the 375px
+   article column and drags the ENTIRE page into sideways scrolling. Scroll in
+   place instead; the 2px vertical padding keeps fraction bars clear of the
+   scroll edge. */
+.katex-display {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 0;
+  scrollbar-width: thin;
+}
+.prose-sm pre {
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }

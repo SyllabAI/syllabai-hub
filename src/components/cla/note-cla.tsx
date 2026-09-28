@@ -390,7 +390,7 @@ export function NoteCla({
                 disabled={busy}
                 aria-label="Ask the contextual assistant about this note"
               />
-              <Button type="submit" size="icon" disabled={busy || !draft.trim()} aria-label="Send">
+              <Button type="submit" size="icon" className="size-10 shrink-0" disabled={busy || !draft.trim()} aria-label="Send">
                 {busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Send className="size-4" aria-hidden />}
               </Button>
             </form>

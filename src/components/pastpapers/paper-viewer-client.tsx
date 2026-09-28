@@ -323,7 +323,7 @@ export function PaperViewerClient({
                 const page = Number(e.target.value);
                 if (page >= 1) qpPaneRef.current?.scrollToPage(page);
               }}
-              className="h-8 rounded-md border bg-background px-1.5 text-xs"
+              className="h-9 rounded-md border bg-background px-1.5 text-xs"
             >
               <option value="">Jump to…</option>
               {qpQuestions.map((q) => (
@@ -336,7 +336,7 @@ export function PaperViewerClient({
           <Button
             size="sm"
             variant="ghost"
-            className="h-8 px-2"
+            className="size-9 px-0"
             onClick={() => endMock("exited")}
             aria-label="Exit mock without grading"
           >
@@ -457,7 +457,7 @@ export function PaperViewerClient({
                   auto-detected — check totals
                 </Badge>
               ) : null}
-              <Button size="sm" variant="ghost" className="ml-auto h-7 text-xs" onClick={addRow}>
+              <Button size="sm" variant="ghost" className="ml-auto h-9 text-xs" onClick={addRow}>
                 <Plus className="size-3.5" aria-hidden />
                 Add question
               </Button>
@@ -493,7 +493,7 @@ export function PaperViewerClient({
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-8 w-8 shrink-0 px-0 text-muted-foreground"
+                      className="size-9 shrink-0 px-0 text-muted-foreground"
                       onClick={() => removeRow(r.key)}
                       aria-label={`Remove question row ${i + 1}`}
                     >
@@ -512,7 +512,7 @@ export function PaperViewerClient({
                   <Button
                     size="sm"
                     variant="outline"
-                    className="ml-auto h-7 text-xs"
+                    className="ml-auto h-9 text-xs"
                     disabled={!rowSum?.complete}
                     onClick={() => {
                       if (rowSum?.complete) {
@@ -540,7 +540,7 @@ export function PaperViewerClient({
                min-height:auto lets the document content stretch the pane to
                its full 40k-page height (the page scrolled 43,380px in E2E).
                A plain h-[60vh] keeps the pane bounded with internal scroll. */
-            className="h-[60vh]"
+            className="h-[60dvh]"
           />
         ) : (
           <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
@@ -631,7 +631,7 @@ export function PaperViewerClient({
   // gone, and the mobile A/B pill floats over the pane instead of pushing it
   // down. Height numbers must stay in sync with the viewer page's padding.
   return (
-    <div className="flex h-[calc(100vh-7.5rem)] min-h-[420px] flex-col gap-2 lg:h-[calc(100vh-4.5rem)]">
+    <div className="flex h-[calc(100dvh-7.5rem)] min-h-[420px] flex-col gap-2 lg:h-[calc(100dvh-4.5rem)]">
       <div className="flex shrink-0 flex-wrap items-center gap-2">
         <Button asChild size="sm" variant="ghost" className="h-8">
           <Link href={backHref}>
@@ -652,8 +652,11 @@ export function PaperViewerClient({
         >
           AI-IDENTIFIED
         </Badge>
-        {/* doc switch — three states on desktop (QP | MS | Split) */}
-        <div className="ml-auto hidden items-center gap-1 rounded-lg border p-1 sm:flex" role="tablist" aria-label="Document view">
+        {/* doc switch — three states on desktop (QP | MS | Split). Gated to
+            lg+: the two-pane split grid only exists at lg, so exposing the
+            Split tab in the 640–1023px band made it a silent no-op. Below lg
+            the floating A/B pill is the doc switch (split falls back to QP). */}
+        <div className="ml-auto hidden items-center gap-1 rounded-lg border p-1 lg:flex" role="tablist" aria-label="Document view">
           <Button
             size="sm"
             variant={doc === "qp" ? "secondary" : "ghost"}
@@ -703,7 +706,7 @@ export function PaperViewerClient({
             zero vertical space; preserves each doc's scroll */}
         {isSplitCapable && (
           <div
-            className="absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-full border bg-background/95 p-1 shadow-md backdrop-blur sm:hidden"
+            className="absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-full border bg-background/95 p-1 shadow-md backdrop-blur lg:hidden"
             role="tablist"
             aria-label="Switch document"
           >

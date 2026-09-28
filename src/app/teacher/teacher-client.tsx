@@ -38,6 +38,7 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -97,9 +98,11 @@ export function TeacherClient({
   const [state, setState] = useState<{
     course: string;
     data?: TeacherCourseData;
-    error?: boolean;
+    error?: string;
   } | null>(null);
   const data = state?.course === course ? state.data : undefined;
+  const loadError = state?.course === course ? state.error : undefined;
+  const loading = course !== null && state?.course !== course;
 
   useEffect(() => {
     if (!course) return;
@@ -112,8 +115,15 @@ export function TeacherClient({
       .then((payload) => {
         if (!cancelled) setState({ course, data: payload });
       })
-      .catch(() => {
-        if (!cancelled) setState({ course, error: true });
+      .catch((err) => {
+        // P2 honesty fix (demo port): a swallowed fetch error used to render
+        // as a false empty state — the snapshot cards below would sit blank
+        // with no explanation. Surface the failure instead.
+        if (!cancelled)
+          setState({
+            course,
+            error: err instanceof Error ? err.message : "failed to load course data",
+          });
       });
     return () => {
       cancelled = true;
@@ -131,7 +141,10 @@ export function TeacherClient({
       {/* header */}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
+          {/* flex-wrap: the status badge's nowrap min-content is 260px; next to
+              "Teacher mode" it ran 11px past a 375px phone. It drops to its own
+              line below ~360px, no-op on desktop */}
+          <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline" className="gap-1 text-[10px] font-normal">
               <Atom className="size-3" aria-hidden />
               Teacher mode
@@ -151,9 +164,13 @@ export function TeacherClient({
           </p>
         </div>
 
+        {/* identity card — min-w-0 matters: without it the card's
+            min-width:auto is its full min-content (a nowrap email can't
+            shrink), pushing it 130px past a 375px viewport; with it the
+            card wraps + truncates instead */}
         {identity ? (
-          <div className="flex items-center gap-3 rounded-lg border bg-card px-3 py-2">
-            <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+          <div className="flex min-w-0 max-w-full items-center gap-3 rounded-lg border bg-card px-3 py-2">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
               {identity.name.slice(0, 2).toUpperCase()}
             </span>
             <div className="min-w-0">
@@ -165,7 +182,7 @@ export function TeacherClient({
             <Button
               variant="ghost"
               size="sm"
-              className="ml-2 h-8 text-xs text-muted-foreground"
+              className="ml-2 h-8 shrink-0 text-xs text-muted-foreground"
               onClick={() => clearIdentity()}
             >
               Sign out
@@ -182,6 +199,16 @@ export function TeacherClient({
       </div>
 
       <TeacherNav />
+
+      {loadError && (
+        <Alert variant="destructive">
+          <AlertTitle>Course data unavailable</AlertTitle>
+          <AlertDescription>
+            {loadError}. The snapshot cards below are blank because the request failed — switch
+            subject and back to retry.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* subject selector — teachers work subject-first (§3) */}
       <div className="flex flex-wrap items-center gap-3">
@@ -206,7 +233,7 @@ export function TeacherClient({
           </Badge>
         )}
         <span className="text-[11px] text-muted-foreground">
-          Class: {data?.class.className ?? "—"}
+          Class: {loading ? "…" : loadError ? "unavailable" : (data?.class.className ?? "—")}
         </span>
       </div>
 

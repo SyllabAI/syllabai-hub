@@ -113,7 +113,7 @@ export function ThreadSidebar({
               type="button"
               onClick={() => setQuery("")}
               aria-label="Clear search"
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              className="absolute top-1/2 right-1 flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
             >
               <X className="size-3.5" aria-hidden />
             </button>
@@ -159,7 +159,7 @@ export function ThreadSidebar({
                           <Button
                             size="icon"
                             variant="ghost"
-                            className="size-7 shrink-0"
+                            className="size-8 shrink-0"
                             aria-label="Save title"
                             onClick={() => {
                               renameThread(t.id, renameDraft);
@@ -287,8 +287,8 @@ function DropdownSlot({
         onClick={() => setOpen((v) => !v)}
         onBlur={() => setTimeout(() => setOpen(false), 120)}
         className={cn(
-          "flex size-6 items-center justify-center rounded text-muted-foreground transition-opacity hover:bg-background hover:text-foreground",
-          open ? "opacity-100" : "opacity-0 group-hover/item:opacity-100 focus-visible:opacity-100",
+          "flex size-8 items-center justify-center rounded text-muted-foreground transition-opacity hover:bg-background hover:text-foreground",
+          open ? "opacity-100" : "opacity-100 lg:opacity-0 lg:group-hover/item:opacity-100 lg:focus-visible:opacity-100",
         )}
       >
         <MoreHorizontal className="size-3.5" aria-hidden />

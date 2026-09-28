@@ -1974,7 +1974,9 @@ export function TestBuilderClient({
       {/* ── floating test summary while browsing the bank ── */}
       {view === "builder" && test && showFloat && (
         <div className="fixed inset-x-0 bottom-4 z-40 flex justify-center px-4 print:hidden">
-          <div className="flex max-w-full items-center gap-2 rounded-full border bg-background/95 py-1.5 pr-1.5 pl-4 shadow-lg backdrop-blur">
+          {/* flex-wrap + rounded-2xl: children are shrink-0, so on phones the
+              pill wraps into rows instead of spilling past the rounded edge */}
+          <div className="flex max-w-full flex-wrap items-center justify-center gap-2 rounded-2xl border bg-background/95 py-1.5 pr-1.5 pl-4 shadow-lg backdrop-blur">
             <ProgressRing value={test.totalMarks} max={ringMax} />
             <span
               key={test.questions.length}
@@ -1986,17 +1988,18 @@ export function TestBuilderClient({
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 gap-1 text-xs"
+                className="h-8 gap-1 text-xs"
+                aria-label="Undo remove"
                 onClick={undoRemove}
               >
                 <RotateCcw className="size-3" aria-hidden />
-                Undo remove
+                <span className="hidden sm:inline">Undo remove</span>
               </Button>
             )}
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 text-xs"
+              className="h-8 text-xs"
               onClick={() =>
                 resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
               }
@@ -2005,7 +2008,7 @@ export function TestBuilderClient({
             </Button>
             <Button
               size="sm"
-              className="h-7 gap-1 text-xs"
+              className="h-8 gap-1 text-xs"
               onClick={() => setDownloadOpen(true)}
             >
               <Download className="size-3" aria-hidden />
@@ -2049,7 +2052,7 @@ export function TestBuilderClient({
                   {viewing.subtopic.code} · {viewing.subtopic.title}
                 </span>
               </div>
-              <div className="max-h-[50vh] space-y-4 overflow-y-auto pr-1">
+              <div className="max-h-[50dvh] space-y-4 overflow-y-auto pr-1">
                 {viewing.parts.map((p) => (
                   <div key={p.id}>
                     <div className="flex items-baseline justify-between gap-3">
@@ -2356,7 +2359,7 @@ function TestQuestion({
 }) {
   return (
     <div className={noSplit ? "break-inside-avoid" : undefined}>
-      <div className="flex items-baseline justify-between gap-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <p className="text-sm font-semibold">
           Question {index + 1}
           <span className="ml-2 font-normal text-muted-foreground">
@@ -2375,7 +2378,7 @@ function TestQuestion({
           <Button
             variant="ghost"
             size="icon"
-            className="size-6"
+            className="size-8"
             aria-label={`Move question ${index + 1} up`}
             disabled={index === 0}
             onClick={() => onMove(index, -1)}
@@ -2385,7 +2388,7 @@ function TestQuestion({
           <Button
             variant="ghost"
             size="icon"
-            className="size-6"
+            className="size-8"
             aria-label={`Move question ${index + 1} down`}
             disabled={index === total - 1}
             onClick={() => onMove(index, 1)}
@@ -2395,7 +2398,7 @@ function TestQuestion({
           <Button
             variant="ghost"
             size="icon"
-            className="size-6 text-muted-foreground hover:text-destructive"
+            className="size-8 text-muted-foreground hover:text-destructive"
             aria-label={`Remove question ${index + 1}`}
             onClick={() => onRemove(index)}
           >

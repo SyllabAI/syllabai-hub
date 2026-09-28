@@ -99,13 +99,16 @@ export function ValidationClient({
   const [state, setState] = useState<{
     course: string;
     data?: QueuePayload;
-    error?: boolean;
+    error?: string;
   } | null>(null);
   const loading = course !== null && state?.course !== course;
   const data = state?.course === course ? state.data : undefined;
+  const loadError = state?.course === course ? state.error : undefined;
 
   const { reviews, add, remove } = useContentReviews();
-  const [comment, setComment] = useState("");
+  // Per-item comment drafts. A single shared string would leak one row's text
+  // into every other pending row (and into whatever verdict is committed next).
+  const [comments, setComments] = useState<Record<string, string>>({});
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [reviewedOpen, setReviewedOpen] = useState(true);
 
@@ -120,8 +123,12 @@ export function ValidationClient({
       .then((payload) => {
         if (!cancelled) setState({ course, data: payload });
       })
-      .catch(() => {
-        if (!cancelled) setState({ course, error: true });
+      .catch((err) => {
+        if (!cancelled)
+          setState({
+            course,
+            error: err instanceof Error ? err.message : "failed to load the validation queue",
+          });
       });
     return () => {
       cancelled = true;
@@ -147,6 +154,7 @@ export function ValidationClient({
   const verdict = useCallback(
     (item: QueueItem, v: ReviewVerdict) => {
       setPendingId(item.resourceId);
+      const rowComment = (comments[item.resourceId] ?? "").trim();
       // brief round-trip so the row's transition is perceptible, then commit
       window.setTimeout(() => {
         add({
@@ -155,14 +163,19 @@ export function ValidationClient({
           courseCode: item.courseCode,
           kind: item.kind,
           verdict: v,
-          comment: comment.trim(),
+          comment: rowComment,
           reviewer: identity?.name ?? "teacher",
         });
-        setComment("");
+        setComments((prev) => {
+          if (!(item.resourceId in prev)) return prev;
+          const next = { ...prev };
+          delete next[item.resourceId];
+          return next;
+        });
         setPendingId(null);
       }, 350);
     },
-    [add, comment, identity],
+    [add, comments, identity],
   );
 
   const current = courses.find((c) => c.slug === course) ?? null;
@@ -218,7 +231,11 @@ export function ValidationClient({
           </Badge>
         )}
         <span className="text-[11px] text-muted-foreground">
-          {loading ? "loading queue…" : `${pending.length} item${pending.length === 1 ? "" : "s"} pending`}
+          {loading
+            ? "loading queue…"
+            : loadError
+              ? "queue unavailable"
+              : `${pending.length} item${pending.length === 1 ? "" : "s"} pending`}
         </span>
       </div>
 
@@ -232,6 +249,16 @@ export function ValidationClient({
         </AlertDescription>
       </Alert>
 
+      {loadError && (
+        <Alert variant="destructive">
+          <XCircle className="size-4" aria-hidden />
+          <AlertTitle className="text-sm">Couldn&rsquo;t load the validation queue</AlertTitle>
+          <AlertDescription className="text-xs leading-relaxed">
+            {loadError}. Check the connection, then switch subject and back to retry.
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* queue */}
       <section aria-labelledby="vq-queue">
         <h2 id="vq-queue" className="text-sm font-semibold">
@@ -242,9 +269,9 @@ export function ValidationClient({
             <Loader2 className="size-3.5 animate-spin" aria-hidden /> loading queue…
           </p>
         )}
-        {!loading && pending.length === 0 && (
+        {!loading && !loadError && data && pending.length === 0 && (
           <p className="mt-3 rounded-lg border border-dashed bg-muted/30 p-4 text-xs text-muted-foreground">
-            {data && data.items.length === 0
+            {data.items.length === 0
               ? "This course has no AI-authored model solutions in the bank."
               : "Queue clear — every item for this subject has a verdict. Switch subject to review more."}
           </p>
@@ -295,8 +322,10 @@ export function ValidationClient({
                     </Label>
                     <Input
                       id={`cmt-${item.part.partId}`}
-                      value={comment}
-                      onChange={(e) => setComment(e.target.value)}
+                      value={comments[item.resourceId] ?? ""}
+                      onChange={(e) =>
+                        setComments((prev) => ({ ...prev, [item.resourceId]: e.target.value }))
+                      }
                       placeholder="Optional comment for the pipeline log…"
                       className="h-8 min-w-56 flex-1 text-xs"
                     />
@@ -385,7 +414,7 @@ export function ValidationClient({
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                        className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
                         aria-label="Withdraw verdict (item returns to the queue)"
                         onClick={() => remove(r.resourceId)}
                       >

@@ -75,7 +75,7 @@ export function SavedQuestionsList({
                   open set <ChevronRight className="size-3.5" aria-hidden />
                 </Link>
                 <button
-                  className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-destructive"
+                  className="inline-flex min-h-9 items-center gap-1 rounded-md px-2 py-2 text-xs text-muted-foreground transition-colors hover:text-destructive"
                   onClick={() => toggleSavedQuestion(course, q.questionId, q.topicSlug, q.subtopicCode)}
                   aria-label="Remove from saved"
                 >

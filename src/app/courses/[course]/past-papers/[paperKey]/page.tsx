@@ -8,7 +8,7 @@ import {
   blueprintFor,
   type ReconstructionCoverage,
 } from "@/lib/pastpapers-reconstruction";
-import { corpusPapersForCourse } from "@/lib/pastpapers-corpus";
+import { corpusPapersForCourse, doubleAwardScopeNote } from "@/lib/pastpapers-corpus";
 import { Breadcrumbs, ExamCodePill } from "@/components/hub/chrome";
 import { Badge } from "@/components/ui/badge";
 import { QuestionPlayer } from "@/app/courses/[course]/exam-questions/[topicSlug]/question-player";
@@ -42,6 +42,10 @@ export default async function PastPaperPage({
   if (corpusKey) coverage = computeCoverage(paper, blueprintFor(corpusKey));
 
   const { meta } = hub;
+  // 2-series surfacing decision: when this reconstruction's provenance pins a
+  // paper outside the qualification's assessed set, say so up front — the
+  // player has no PDF/mock pairing and the student deserves the reason.
+  const scopeNote = doubleAwardScopeNote(slug, paper.date, paper.number);
 
   return (
     // NOTE: no ResourcePanel here either — paper playback is linear, the
@@ -71,16 +75,28 @@ export default async function PastPaperPage({
             {paper.questions.length} questions · {paper.totalMarks} marks ·{" "}
             {paperEstTime(paper.totalMarks)}
           </p>
-          <Badge
-            variant="secondary"
-            className={
-              coverage?.state === "partial" ? "border border-amber-500/40 bg-amber-500/10 font-medium" : "font-medium"
-            }
-          >
-            {coverage
-              ? coverageTitle(coverage)
-              : `Reconstructed — ${paper.questions.length} question${paper.questions.length === 1 ? "" : "s"} held from this paper, in paper order`}
-          </Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge
+              variant="secondary"
+              className={
+                coverage?.state === "partial" ? "border border-amber-500/40 bg-amber-500/10 font-medium" : "font-medium"
+              }
+            >
+              {coverage
+                ? coverageTitle(coverage)
+                : `Reconstructed — ${paper.questions.length} question${paper.questions.length === 1 ? "" : "s"} held from this paper, in paper order`}
+            </Badge>
+            {scopeNote && (
+              <Badge variant="outline" className="font-medium text-muted-foreground">
+                {scopeNote.label}
+              </Badge>
+            )}
+          </div>
+          {scopeNote && (
+            <p className="max-w-2xl text-xs leading-relaxed text-muted-foreground">
+              {scopeNote.note}
+            </p>
+          )}
         </header>
 
         <QuestionPlayer
