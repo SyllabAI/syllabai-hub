@@ -404,6 +404,27 @@ export interface LearnerAssignmentView {
   mySubmission: AssignmentSubmissionView | null;
 }
 
+/**
+ * Course-wide coverage aggregates (course-stats contract, ADR-029 tranche
+ * 4.11): the learner's account trail computed server-side over the FULL
+ * evidence tables — the state view's 50-event windows and the windowed
+ * attempt history cannot give honest course-wide counts. Coverage is
+ * exposure, never mastery (the same honesty rule as ratings/votes).
+ * Optional everywhere: cores older than the contract serve nothing and
+ * consumers fall back to the local overlay without a word.
+ */
+export interface CourseStatsView {
+  learnerId: string;
+  /** every attempt row on the account (retries included — practice volume) */
+  attempts: number;
+  /** distinct questions attempted (a retried question counts once) */
+  distinctQuestions: number;
+  /** distinct revision notes opened (the view marker is idempotent per note) */
+  notesViewed: number;
+  /** distinct flashcards rated, any rating (re-ratings count once) */
+  flashcardsRated: number;
+}
+
 export interface TutorEngagementView {
   nodeId: string;
   /** Human KG title (backend-resolved); null → callers fall back to the graph/code. */

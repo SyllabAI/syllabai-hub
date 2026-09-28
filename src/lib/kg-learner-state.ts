@@ -49,7 +49,12 @@ import {
 } from "./learner-state";
 import { api, getToken } from "./api";
 import { summarizeCardReviews, type CardReviewSummary } from "./flashcard-review";
-import type { LearnerStateView, LearnerKnowledgeGraphView, AttemptHistoryView } from "./types";
+import type {
+  LearnerStateView,
+  LearnerKnowledgeGraphView,
+  AttemptHistoryView,
+  CourseStatsView,
+} from "./types";
 import { fetchPilotInfo } from "./attempt-bridge";
 
 // ── overlay (phase-1 shape, unchanged contract) ─────────────────────────
@@ -472,6 +477,11 @@ function useCoreLearnerModel(course: string): CoreModelData | "off" | "loading" 
       let coreState: LearnerStateView;
       let coreKg: LearnerKnowledgeGraphView;
       let history: AttemptHistoryView;
+      // course-stats (tranche 4.11): full-trail coverage aggregates. Tolerant
+      // fetch — a core one contract behind must not take the whole core path
+      // down; the drawer falls back to its own derivations (deploy-skew safe
+      // both directions, the same ruling as the V47/V48 additive view fields).
+      const courseStatsP = api.learnerCourseStats().catch(() => null);
       try {
         [coreState, coreKg, history] = await Promise.all([
           api.learnerState(),
@@ -699,13 +709,25 @@ function useCoreLearnerModel(course: string): CoreModelData | "off" | "loading" 
 
       const awaiting = events.filter((e) => e.kind === "awaiting").length;
 
+      // Course-stats (tranche 4.11): the three coverage stats come from the
+      // server-side FULL-trail aggregates when the contract is served — the
+      // honest numbers. Fallbacks on deploy skew (core one contract behind)
+      // keep the old derivations rather than fabricating zeros:
+      //   - attempts: the true attempt-row total (the skill-state sum counts
+      //     only point-level skills — TOPIC-granular assessment evidence,
+      //     which is what core actually fires, was invisible to it);
+      //   - notesRead: note views ARE core evidence (the idempotent view
+      //     marker) — previously pinned 0 for want of a contract;
+      //   - flashcards: DISTINCT cards rated over the whole trail (the
+      //     state view serves only the latest 50 events).
+      const courseStats: CourseStatsView | null = await courseStatsP;
       const stats: LearnerOverlayStats = {
         measured,
         touched: measured + exposureOnly,
         total: bridge.totalPoints,
-        attempts: attemptsTotal,
-        notesRead: 0, // note views are core evidence but not part of this stat's contract yet
-        flashcards: ratingEventCount, // V47: the self-report rating trail (state-view window)
+        attempts: courseStats ? courseStats.attempts : attemptsTotal,
+        notesRead: courseStats ? courseStats.notesViewed : 0,
+        flashcards: courseStats ? courseStats.flashcardsRated : ratingEventCount,
         awaitingMarks: awaiting,
         reviewDue,
         misconceptions: coreState.misconceptionStates.filter((m) => m.active).length,

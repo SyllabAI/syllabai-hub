@@ -40,6 +40,7 @@ import type {
   AttemptResultView,
   ConceptGraphEdgesView,
   ConceptGraphSeedSummary,
+  CourseStatsView,
   NoteVoteView,
   AssignmentRosterView,
   AssignmentSummaryView,
@@ -481,6 +482,13 @@ export const api = {
     ),
 
   learnerState: () => request<LearnerStateView>("/api/v1/learners/me/state"),
+
+  // course-stats contract (ADR-029 tranche 4.11): full-trail coverage
+  // aggregates — attempts volume + distinct questions/notes/cards. Fails
+  // (rejects) on cores older than the contract; every consumer treats that
+  // as "no account stats" and falls back to the local overlay silently.
+  learnerCourseStats: () =>
+    request<CourseStatsView>("/api/v1/learners/me/course-stats"),
 
   // Flashcard rating evidence (V47, ADR-029 tranche 4.4): one append-only
   // rating event per call, attributed to the deck's subtopic anchor — core

@@ -10,7 +10,14 @@
  *        "Continue revising" · per-resource rows with corpus counts AND
  *        live progress % (SME ProgressBarGroup parity) computed from the
  *        browser-local activity overlay (notes read, questions attempted,
- *        flashcards rated) — real activity, honestly 0% before you start
+ *        flashcards rated) — real activity, honestly 0% before you start.
+ *        On the pilot card, signed-in learners also get an ACCOUNT strip
+ *        (course-stats contract, ADR-029 tranche 4.11): full-trail coverage
+ *        from the core account — attempts volume + distinct questions /
+ *        notes / cards — shown as its own honest element BESIDE the device
+ *        rows, never replacing them (self-marked answers and pre-account
+ *        activity are device-local by design; core counts can only be a
+ *        subset of what this device shows).
  *   3. Next best actions — ranked advice from the learner's own evidence
  *        (lib/next-best-actions.ts): misconception watch, review-due topics,
  *        problem-question retries, low-mastery practice, note coverage
@@ -29,6 +36,7 @@ import {
   BookOpen,
   ChevronRight,
   CircleHelp,
+  CloudCheck,
   FileQuestion,
   GraduationCap,
   Plus,
@@ -43,9 +51,12 @@ import { useMySubjects } from "@/lib/my-subjects";
 import { useIdentity } from "@/lib/identity";
 import { useLastOpened, resourceLabel } from "@/lib/last-opened";
 import { useCourseProgress } from "@/lib/progress";
+import { api, getToken } from "@/lib/api";
+import { fetchPilotInfo, PILOT_COURSE_SLUG } from "@/lib/attempt-bridge";
 import { NextBestActionsCard } from "./next-best-actions-card";
 import { AddCourseOverlay } from "./add-course-overlay";
 import type { CourseMeta } from "@/lib/courses";
+import type { CourseStatsView } from "@/lib/types";
 
 interface CourseStat {
   slug: string;
@@ -80,6 +91,49 @@ function percentOf(done: number, total: number | undefined): number | undefined 
 function formatPercent(percent: number): string {
   if (percent <= 0) return "0%";
   return percent >= 1 ? `${Math.round(percent)}%` : `${percent.toFixed(1)}%`;
+}
+
+function plural(n: number, unit: string): string {
+  return `${n} ${unit}${n === 1 ? "" : "s"}`;
+}
+
+/**
+ * Pilot account coverage (course-stats contract, ADR-029 tranche 4.11):
+ * the learner's FULL-trail aggregates from their core account. Additive by
+ * design — every negative (signed out, roster without the pilot, core
+ * behind the contract or down) degrades to null without a word and the
+ * card keeps its device rows. Re-reads when new core evidence lands
+ * (attempt / rating / vote events fire `syllabai:core-evidence`).
+ */
+function usePilotAccountStats(enabled: boolean): CourseStatsView | null {
+  const [stats, setStats] = useState<CourseStatsView | null>(null);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    const load = () => {
+      if (!getToken()) return; // signed out — no account trail to show
+      fetchPilotInfo(PILOT_COURSE_SLUG)
+        .then((pilot) => {
+          if (!pilot || cancelled) return; // not the pilot — nothing to say
+          return api
+            .learnerCourseStats()
+            .then((s) => {
+              if (!cancelled) setStats(s);
+            })
+            .catch(() => {}); // core behind the contract or down — silent
+        })
+        .catch(() => {});
+    };
+    load();
+    window.addEventListener("syllabai:core-evidence", load);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("syllabai:core-evidence", load);
+    };
+  }, [enabled]);
+
+  return stats;
 }
 
 /** SME ProgressBarGroup parity: title row + percent, thin rounded bar underneath. */
@@ -166,11 +220,16 @@ function SubjectCard({
   stat,
   isLastViewed,
   onRemove,
+  accountStats,
 }: {
   meta: CourseMeta;
   stat: CourseStat | undefined;
   isLastViewed: boolean;
   onRemove: (slug: string) => void;
+  /** pilot-only account coverage (course-stats contract) — null = not
+   *  signed in / not the pilot / core unreachable; the card is identical
+   *  to every other card in that case */
+  accountStats?: CourseStatsView | null;
 }) {
   const base = `/courses/${meta.slug}`;
   const counts =
@@ -281,6 +340,33 @@ function SubjectCard({
             )}
           </div>
         )}
+
+        {/* ACCOUNT strip (course-stats contract, tranche 4.11) — the pilot
+            card's second truth: what the learner's SyllabAI account holds,
+            full trail, cross-device. Deliberately BESIDE the device rows,
+            never instead of them: self-marked answers and pre-account
+            activity are device-local, so the account counts can only be a
+            subset of what this device shows — replacing the rows would
+            erase real progress. */}
+        {accountStats && (
+          <p
+            className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 border-t pt-2 text-[11px] text-muted-foreground"
+            title="Counted from your SyllabAI account — it follows you across devices. The progress bars above track this device's activity, including self-marked answers that stay local."
+          >
+            <Badge
+              variant="outline"
+              className="gap-1 px-1.5 py-0 text-[10px] font-medium text-primary"
+            >
+              <CloudCheck className="size-3" aria-hidden /> Live
+            </Badge>
+            <span className="tabular-nums">
+              {plural(accountStats.attempts, "attempt")} ·{" "}
+              {plural(accountStats.distinctQuestions, "question")} ·{" "}
+              {plural(accountStats.notesViewed, "note")} ·{" "}
+              {plural(accountStats.flashcardsRated, "card")} on your account
+            </span>
+          </p>
+        )}
       </CardContent>
     </Card>
   );
@@ -327,6 +413,11 @@ export function DashboardClient({ courses }: { courses: CourseMeta[] }) {
     lastOpened && bySlug.has(lastOpened.slug)
       ? { course: bySlug.get(lastOpened.slug) as CourseMeta, resource: lastOpened.resource }
       : null;
+
+  // pilot card only — the account strip needs the pilot's core join AND the
+  // learner's roster to actually hold the course
+  const pilotInRoster = mySubjects.some((c) => c.slug === PILOT_COURSE_SLUG);
+  const accountStats = usePilotAccountStats(pilotInRoster);
 
   return (
     <div className="space-y-8">
@@ -396,6 +487,7 @@ export function DashboardClient({ courses }: { courses: CourseMeta[] }) {
                 stat={stats[c.slug]}
                 isLastViewed={lastOpened?.slug === c.slug}
                 onRemove={remove}
+                accountStats={c.slug === PILOT_COURSE_SLUG ? accountStats : null}
               />
             ))}
             {/* SME's trailing slot cell: "Got another course?" — opens the
