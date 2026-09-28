@@ -11,8 +11,11 @@ import "server-only";
  *
  *   - subjects list: 5 min TTL (curriculum identity is deploy-immutable in
  *     practice; the TTL only exists so a redeploy of core is picked up
- *     without a hub restart)
- *   - rootId by code: memoized forever per process after first hit
+ *     without a hub restart); a failed refetch falls back to the stale list
+ *   - rootId by code: positive hits memoized per process; MISSES ARE NEVER
+ *     memoized — a Render cold start (fetch timeout/non-200) must poison
+ *     neither the next request on this instance nor, via a cached null,
+ *     the question bridge for its lifetime
  *   - topic tree: fetched once per root, every node indexed by code
  *
  * All fetches forward the CALLER's bearer token (these read models are
@@ -66,14 +69,18 @@ export async function rootIdForCourseCode(
   code: string,
   token: string | null,
 ): Promise<string | null> {
-  if (subjectRootByCode.has(code)) return subjectRootByCode.get(code) ?? null;
-  if (!subjectsCache || Date.now() - subjectsCache.at > 300_000) {
+  const memoized = subjectRootByCode.get(code);
+  if (memoized) return memoized;
+  const stale = !subjectsCache || Date.now() - subjectsCache.at > 300_000;
+  if (stale) {
     const subjects = await fetchCoreJson<SubjectView[]>("/api/v1/curriculum/subjects", token);
     if (subjects) subjectsCache = { at: Date.now(), subjects };
   }
+  // A failed refetch deliberately falls through to the stale list: curriculum
+  // identity is deploy-immutable, so a stale root beats a fabricated null.
   const hit = subjectsCache?.subjects.find((s) => s.code === code);
   const rootId = hit?.knowledgeNodeId ?? null;
-  subjectRootByCode.set(code, rootId);
+  if (rootId) subjectRootByCode.set(code, rootId);
   return rootId;
 }
 
