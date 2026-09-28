@@ -1,4 +1,3 @@
-import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { loadHubCourse } from "@/lib/courses";
 import { hasPastPapers } from "@/lib/past-papers";
@@ -13,6 +12,13 @@ export const dynamic = "force-dynamic";
  * SaveMyExams model, research §4 + flow crawl 2026-09-19). Resource detail
  * pages additionally mount the topic panel (resource-panel.tsx) as SME's
  * second column; hub/index pages have sidebar-only chrome.
+ *
+ * Deliberately NO <Suspense> around {children}: a boundary here lets the
+ * shell (sidebar + fallback) flush with 200 before the page's notFound()
+ * resolves, turning every unknown slug under /courses/[course]/… into a
+ * soft-404 (200 + not-found UI, s133). Pages must be able to 404 pre-flush;
+ * loadHubCourse is request-deduped (React cache) so the page rides the
+ * layout's data instead of paying a second bundle read.
  */
 export default async function CourseLayout({
   children,
@@ -44,12 +50,10 @@ export default async function CourseLayout({
   };
 
   return (
-    <Suspense fallback={<div className="p-8 text-sm text-muted-foreground">Loading course…</div>}>
-      <CourseShell data={data}>
-        {/* records real navigation for the dashboard's Last viewed / Jump back in */}
-        <LastOpenedTracker />
-        {children}
-      </CourseShell>
-    </Suspense>
+    <CourseShell data={data}>
+      {/* records real navigation for the dashboard's Last viewed / Jump back in */}
+      <LastOpenedTracker />
+      {children}
+    </CourseShell>
   );
 }

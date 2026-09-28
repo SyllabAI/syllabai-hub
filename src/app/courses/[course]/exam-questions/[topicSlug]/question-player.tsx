@@ -288,7 +288,10 @@ export function QuestionPlayer({
 
       {/* full-screen question */}
       <Dialog open={!!fullFor} onOpenChange={(o) => !o && setFullFor(null)}>
-        <DialogContent aria-describedby={undefined} className="max-h-[90dvh] max-w-3xl overflow-y-auto">
+        {/* sm:max-w-3xl (not max-w-3xl): an unprefixed max-w override beats the
+            base DialogContent's mobile cap max-w-[calc(100%-2rem)] in
+            tailwind-merge, going full-bleed on phones (s133) */}
+        <DialogContent aria-describedby={undefined} className="max-h-[90dvh] sm:max-w-3xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               {topicName}
@@ -1504,7 +1507,10 @@ function MarkSchemeDialog({
 
   return (
     <Dialog open={!!question} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent aria-describedby={undefined} className="h-[92dvh] max-w-4xl overflow-y-auto sm:h-[92dvh]">
+      {/* sm:max-w-4xl: keep the base's mobile cap max-w-[calc(100%-2rem)] —
+          an unprefixed max-w override wins the tailwind-merge conflict and
+          renders full-bleed on phones (s133) */}
+      <DialogContent aria-describedby={undefined} className="h-[92dvh] sm:max-w-4xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2 text-base">
             <Badge variant="outline" className="rounded-full px-3 py-1 text-xs font-medium">

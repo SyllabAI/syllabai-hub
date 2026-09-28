@@ -15,6 +15,7 @@ import "server-only";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { cache } from "react";
 import { z } from "zod";
 import {
   ConceptGraph,
@@ -184,8 +185,15 @@ export interface HubCourse {
  * hrefs (sidebar rows deep-link to the right resource). Resolves content
  * through the DemoDataProvider seam for the pilot (ladder: mock → neon →
  * core-api), and through committed bundles for any future course.
+ *
+ * Request-deduped with React cache(): the course layout AND each page both
+ * call this per render — without the dedupe the page re-reads the whole
+ * bundle after the layout already did, doubling TTFB and (critically)
+ * delaying the page's notFound() until after the shell has flushed, which
+ * turned unknown slugs into soft-404s (200 + not-found UI, s133).
  */
-export async function loadHubCourse(slug: string): Promise<HubCourse | null> {
+export const loadHubCourse = cache(
+  async function loadHubCourse(slug: string): Promise<HubCourse | null> {
   const { buildSpecTreeIndex, resourceCounts, subtopicOfNote, subtopicOfQuestionSet, subtopicOfFlashcard } =
     await import("@/lib/spec-tree");
 
@@ -300,7 +308,8 @@ export async function loadHubCourse(slug: string): Promise<HubCourse | null> {
       specPoints: index.tree.topics.reduce((a, t) => a + t.specPointCount, 0),
     },
   };
-}
+  },
+);
 
 function emptyIndex(code: string, subject: string) {
   // structural placeholder for courses without a parsed specification yet

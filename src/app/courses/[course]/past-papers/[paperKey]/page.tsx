@@ -76,10 +76,14 @@ export default async function PastPaperPage({
             {paperEstTime(paper.totalMarks)}
           </p>
           <div className="flex flex-wrap items-center gap-2">
+            {/* long sentence, not a chip — the Badge base's whitespace-nowrap
+                blew the row past 375px (s133); wrap it like text instead */}
             <Badge
               variant="secondary"
               className={
-                coverage?.state === "partial" ? "border border-amber-500/40 bg-amber-500/10 font-medium" : "font-medium"
+                coverage?.state === "partial"
+                  ? "max-w-full whitespace-normal text-left font-medium border border-amber-500/40 bg-amber-500/10"
+                  : "max-w-full whitespace-normal text-left font-medium"
               }
             >
               {coverage
@@ -87,7 +91,7 @@ export default async function PastPaperPage({
                 : `Reconstructed — ${paper.questions.length} question${paper.questions.length === 1 ? "" : "s"} held from this paper, in paper order`}
             </Badge>
             {scopeNote && (
-              <Badge variant="outline" className="font-medium text-muted-foreground">
+              <Badge variant="outline" className="max-w-full whitespace-normal text-left font-medium text-muted-foreground">
                 {scopeNote.label}
               </Badge>
             )}

@@ -484,3 +484,16 @@
   overflow-x: auto;
   scrollbar-width: thin;
 }
+
+/* Polish (2026-09-28, s133): exam-paper answer-line conventions survive into
+   the corpus as literal dot-leader runs ("1..............2.............."),
+   12–135 dots long, 153 questions affected. A dot run has no break
+   opportunity, so the paragraph's min-content width balloons to 1200px+ and
+   drags the whole page sideways at 375px (worst measured po=884).
+   `overflow-wrap: anywhere` (not `break-word`) also shrinks intrinsic
+   min-content, so flex/grid ancestors can't be blown out either. Applies to
+   every <Markdown> consumer (question bodies, mark schemes, notes). */
+.prose-sm p,
+.prose-sm li {
+  overflow-wrap: anywhere;
+}

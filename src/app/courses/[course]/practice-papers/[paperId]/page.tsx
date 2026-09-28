@@ -57,7 +57,9 @@ export default async function PracticePaperPage({
             {paperEstTime(paper.totalMarks)} · spans {paper.coveredTopics} of {paper.totalTopics}{" "}
             topics
           </p>
-          <Badge variant="secondary" className="font-medium">
+          {/* long sentence, not a chip — the Badge base's whitespace-nowrap
+              blew the row past 375px (s133); wrap it like text instead */}
+          <Badge variant="secondary" className="max-w-full whitespace-normal text-left font-medium">
             Assembled from the topic question banks — not an official Edexcel paper
           </Badge>
         </header>
