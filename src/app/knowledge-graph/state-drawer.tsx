@@ -209,7 +209,9 @@ function MisconceptionWatchCard({ watch, live = false }: { watch: MisconceptionW
   );
 }
 
-function StateTab({ drawer, live = false }: { drawer: LearnerDrawerState; live?: boolean }) {
+/** Exported for reuse by /learner (My Progress) — one derivation, one UI,
+ * so the KG drawer and the page can never disagree (ADR-029 tranche 4.1). */
+export function StateTab({ drawer, live = false }: { drawer: LearnerDrawerState; live?: boolean }) {
   const stats = drawer.stats;
   const exposureOnly = Math.max(0, stats.touched - stats.measured);
 
@@ -459,7 +461,9 @@ function StateTab({ drawer, live = false }: { drawer: LearnerDrawerState; live?:
         <span>
           Effective mastery = stored mastery × Ebbinghaus retention (τ = 30/90/365 days by band;
           review when it decays below its threshold). Bands mirror the graph: low &lt;55 ·
-          developing 55–69 · good 70–79 · strong ≥80. Demo model — simulated parameters.
+          developing 55–69 · good 70–79 · strong ≥80.
+          {live ? " Decay and review scheduling are computed on the backend from your real attempts."
+                : " Demo model — simulated parameters."}
         </span>
       </p>
     </div>
@@ -521,7 +525,7 @@ function dayLabel(at: number, now: number): string {
   return a.toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
-function HistoryTab({ drawer }: { drawer: LearnerDrawerState }) {
+export function HistoryTab({ drawer }: { drawer: LearnerDrawerState }) {
   if (drawer.events.length === 0) {
     return (
       <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed px-6 py-10 text-center">

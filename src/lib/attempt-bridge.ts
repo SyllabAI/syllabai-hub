@@ -25,6 +25,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { getToken } from "./api";
 
+/** The 4CH1 pilot's hub course slug — the only course whose learner model is
+ *  core-backed today (attempts, Smart Mark, decay, review queue). My Progress
+ *  and other learner-model surfaces scope to this course until more courses
+ *  get a real join. Keep in sync with DEFAULT_COURSE in the KG host and the
+ *  redirects in next.config.ts. */
+export const PILOT_COURSE_SLUG = "igcse-chemistry-19";
+
 export interface BridgeMcqPart {
   questionId: string;
   options: Record<string, string>;

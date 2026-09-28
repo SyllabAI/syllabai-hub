@@ -1,148 +1,102 @@
 "use client";
 
 /**
- * Learner Overlay — the SIMULATED learner model viewer.
+ * My Progress — the real learner model viewer (ADR-029 tranche 4.1).
  *
- * Conceptual model preserved (brief §27): raw conversation → extracted
- * evidence → patterns → governed model → recommendations. The demo can only
- * SHOW the last two stages over simulated data; AI/chat output never mutates
- * anything here. Bands mirror production vocabulary (LOW/DEVELOPING/SECURE).
+ * Renders the same derivation that paints the Knowledge Graph and feeds its
+ * drawer (lib/kg-learner-state.ts — one pass, one UI): stat tiles, topic
+ * mastery (core granularity), the decay-derived review queue, the spec-point
+ * mastery table and the attempt-history stream, reusing the drawer's tab
+ * components so the surfaces can never disagree.
+ *
+ * Provenance rules (the honesty contract):
+ *   - CORE model (4CH1 pilot + signed in + core reachable): CORE_MEASURED —
+ *     real attempt evidence, backend-computed decay and review scheduling.
+ *   - Anything else: SIMULATED — the browser-local progress overlay, never
+ *     written to course data, labelled on every section.
+ *   - Bridge failure: an honest unavailable panel — no fabricated numbers.
  */
-import { useMemo, useState } from "react";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import { User } from "lucide-react";
-import type { SimLearnerState } from "@/lib/contracts";
-import { SimulatedBanner } from "@/components/provenance";
+import { Badge } from "@/components/ui/badge";
+import { ProvenanceBadge } from "@/components/provenance";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useLearnerState } from "@/lib/kg-learner-state";
+import { PILOT_COURSE_SLUG } from "@/lib/attempt-bridge";
+import { HistoryTab, StateTab } from "../knowledge-graph/state-drawer";
 
-const bandClass: Record<string, string> = {
-  SECURE: "bg-success",
-  DEVELOPING: "bg-warn",
-  LOW: "bg-destructive",
-};
+export function LearnerClient() {
+  // the 4CH1 pilot — the only course with a core-backed learner model today
+  const { overlay, drawer, source } = useLearnerState(PILOT_COURSE_SLUG);
+  const live = source === "core";
 
-export function LearnerClient({ state }: { state: SimLearnerState }) {
-  const [sort, setSort] = useState<"mastery" | "code">("mastery");
-
-  const skills = useMemo(() => {
-    const list = [...state.skillStates];
-    list.sort((a, b) =>
-      sort === "mastery"
-        ? a.effectiveMastery - b.effectiveMastery
-        : a.code.localeCompare(b.code),
+  if (overlay?.bridgeError) {
+    return (
+      <div className="space-y-4">
+        <Header live={false} />
+        <div className="rounded-lg border border-dashed px-6 py-10 text-center">
+          <p className="text-sm font-medium">Learner state unavailable right now</p>
+          <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
+            The bridge that maps your progress onto the 4CH1 specification could not be
+            loaded, so nothing can be shown honestly. Your recorded answers are safe —
+            retry in a moment.
+          </p>
+        </div>
+      </div>
     );
-    return list;
-  }, [state, sort]);
+  }
 
-  const mean =
-    state.skillStates.length > 0
-      ? state.skillStates.reduce((a, s) => a + s.effectiveMastery, 0) / state.skillStates.length
-      : 0;
-  const active = state.misconceptionStates.filter((m) => m.active);
+  if (!drawer) {
+    return (
+      <div className="space-y-4">
+        <Header live={live} />
+        <div className="flex min-h-[40vh] items-center justify-center">
+          <div
+            className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground/25 border-t-primary"
+            role="status"
+            aria-label="Loading your learner model"
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
-          <User className="size-5 text-primary" aria-hidden />
-          Learner Overlay
-        </h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          BKT-style mastery + misconception states displayed as an <em>overlay</em> on curriculum
-          truth. In production this read model is served by{" "}
-          <span className="font-mono text-xs">/api/v1/learners/me/state</span> from governed
-          evidence; here it is a deterministic simulation so dashboard/UX experiments can run
-          offline.
-        </p>
-      </div>
+      <Header live={live} />
+      <Tabs defaultValue="state">
+        <TabsList>
+          <TabsTrigger value="state">My state</TabsTrigger>
+          <TabsTrigger value="history">History</TabsTrigger>
+        </TabsList>
+        <div className="mt-3">
+          <TabsContent value="state" className="mt-0">
+            <StateTab drawer={drawer} live={live} />
+          </TabsContent>
+          <TabsContent value="history" className="mt-0">
+            <HistoryTab drawer={drawer} />
+          </TabsContent>
+        </div>
+      </Tabs>
+    </div>
+  );
+}
 
-      <SimulatedBanner>
-        {state.disclaimer} Learner id <span className="font-mono">{state.learnerId}</span> ·
-        deterministic seed — the same overlay on every load.
-      </SimulatedBanner>
-
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Card className="py-4">
-          <CardContent className="px-4">
-            <p className="text-2xl font-bold tabular-nums">{Math.round(mean * 100)}%</p>
-            <p className="text-xs text-muted-foreground">mean effective mastery</p>
-          </CardContent>
-        </Card>
-        <Card className="py-4">
-          <CardContent className="px-4">
-            <p className="text-2xl font-bold tabular-nums">
-              {state.skillStates.filter((s) => s.band === "SECURE").length}
-            </p>
-            <p className="text-xs text-muted-foreground">secure spec points</p>
-          </CardContent>
-        </Card>
-        <Card className="py-4">
-          <CardContent className="px-4">
-            <p className="text-2xl font-bold tabular-nums">{active.length}</p>
-            <p className="text-xs text-muted-foreground">active misconceptions</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <div>
-            <CardTitle className="text-sm">Skill states</CardTitle>
-            <CardDescription>
-              {state.skillStates.length} spec points · {sort === "mastery" ? "weakest first" : "by code"}
-            </CardDescription>
-          </div>
-          <button
-            onClick={() => setSort((s) => (s === "mastery" ? "code" : "mastery"))}
-            className="rounded border px-2 py-1 text-xs transition-colors hover:bg-muted"
-          >
-            sort: {sort}
-          </button>
-        </CardHeader>
-        <CardContent className="space-y-2.5">
-          {skills.map((s) => (
-            <div key={s.nodeId} className="flex items-center gap-3">
-              <span className="w-24 shrink-0 font-mono text-xs">{s.code}</span>
-              <Progress value={s.effectiveMastery * 100} className="h-2 flex-1" aria-label={`${s.code} mastery`} />
-              <span className="w-10 text-right text-xs tabular-nums text-muted-foreground">
-                {Math.round(s.effectiveMastery * 100)}%
-              </span>
-              <span className="flex w-24 items-center justify-end gap-1.5 text-xs">
-                <span className={`size-2 rounded-full ${bandClass[s.band] ?? "bg-muted-foreground/40"}`} aria-hidden />
-                {s.band.toLowerCase()}
-              </span>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Misconception states</CardTitle>
-          <CardDescription>
-            T-C11 misconception nodes with simulated BDT-style probabilities
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-2 sm:grid-cols-2">
-          {state.misconceptionStates.map((m) => (
-            <div key={m.misconceptionNodeId} className="rounded-md border p-2.5 text-xs">
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-medium leading-snug">{m.title}</span>
-                {m.active && (
-                  <Badge variant="outline" className="shrink-0 border-destructive/30 text-[10px] text-destructive">
-                    active
-                  </Badge>
-                )}
-              </div>
-              <p className="mt-1 flex items-center gap-2 font-mono text-[10px] text-muted-foreground">
-                {m.code} · p={m.probability.toFixed(2)} · {m.evidenceCount} evidence
-              </p>
-              <Progress value={m.probability * 100} className="mt-1.5 h-1.5" aria-label={`${m.code} probability`} />
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+function Header({ live }: { live: boolean }) {
+  return (
+    <div>
+      <h1 className="flex flex-wrap items-center gap-2 text-2xl font-bold tracking-tight">
+        <User className="size-5 text-primary" aria-hidden />
+        My Progress
+        <ProvenanceBadge tier={live ? "CORE_MEASURED" : "SIMULATED"} />
+        <Badge variant="outline" className="font-mono text-[10px]">
+          4CH1 · pilot
+        </Badge>
+      </h1>
+      <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+        {live
+          ? "Measured live from your SyllabAI account — real attempts, Smart Mark evidence, Ebbinghaus decay and review scheduling computed on the backend. The same model paints the Knowledge Graph."
+          : "Derived from this browser's practice on the 4CH1 pilot — a simulated, browser-local overlay that never writes to course data. Sign in on the pilot course to switch to the measured model."}
+      </p>
     </div>
   );
 }

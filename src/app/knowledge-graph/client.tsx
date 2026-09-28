@@ -1,26 +1,29 @@
 "use client";
 
 /**
- * Knowledge Graph host chrome — per-course.
+ * Knowledge Graph host chrome — single-course scoped (ADR-029 tranche 4.1).
  *
- * A single data-decoupled loader build (public/kg/openhuman-course-explorer.html,
- * forked from the byte-faithful v77 renderer) renders whichever course's
- * canonicalKG JSON it is pointed at via ?course=<slug>. The JSON files are
- * generated from each course's curriculum bundle by scripts/kg_export.py and
- * contract-validated twice: exporter-side, and again in-build before the
- * renderer's makeBase() rebuild.
+ * A data-decoupled loader build (public/kg/openhuman-course-explorer.html,
+ * forked from the byte-faithful v77 renderer) renders ONE course's canonicalKG
+ * JSON — the course this page was opened for (?course=<slug>, deep-linked from
+ * that course's page; the pilot by default). There is deliberately NO course
+ * switcher here: the graph is a property of the subject you selected, not a
+ * browsing surface (operator decision, trace 1a0e8568eb6bb545).
  *
  * The iframe reports back over postMessage (syllabai-kg:ready / :error), so
- * the counts chip shows the live data path on every course switch.
+ * the counts chip shows the live data path. Learner state is pushed IN over
+ * postMessage (syllabai-kg:learner) — always, once resolved, so the renderer's
+ * embedded sample map can never resurface; the payload carries a provenance
+ * flag so the renderer's legend/peek text stays honest (measured vs simulated
+ * vs unavailable).
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
-  ChevronDown,
   ExternalLink,
   FlaskConical,
   Gauge,
@@ -29,6 +32,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLearnerState } from "@/lib/kg-learner-state";
+import { PILOT_COURSE_SLUG } from "@/lib/attempt-bridge";
 import { LearnerStateDrawer } from "./state-drawer";
 
 interface CourseLite {
@@ -45,15 +49,14 @@ interface KgCounts {
   specPoints: number;
 }
 
-const DEFAULT_COURSE = "igcse-chemistry-19"; // the 4CH1 pilot — richest cross-checked data
+const DEFAULT_COURSE = PILOT_COURSE_SLUG; // the 4CH1 pilot — richest cross-checked data
 const PROTO_URL = "/graph-explorer";
 
 export function KnowledgeGraphClient({ courses }: { courses: CourseLite[] }) {
   const searchParams = useSearchParams();
-  const [course, setCourse] = useState<string>(() => {
-    const q = searchParams.get("course");
-    return q ?? DEFAULT_COURSE;
-  });
+  // derived, not state: the course is a property of the URL (deep links stay
+  // reactive when a course page navigates here with a different ?course=)
+  const course = searchParams.get("course") ?? DEFAULT_COURSE;
   const [ready, setReady] = useState(false);
   const [counts, setCounts] = useState<KgCounts | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -62,6 +65,17 @@ export function KnowledgeGraphClient({ courses }: { courses: CourseLite[] }) {
 
   // invalid or missing deep links fall back to the pilot course
   const activeCourse = courses.some((c) => c.slug === course) ? course : DEFAULT_COURSE;
+
+  // reset loader-chrome state when the course changes during render (react.dev
+  // — "adjusting state when a prop changes"); key={activeCourse} remounts the
+  // iframe, whose loader re-posts its status
+  const [prevCourse, setPrevCourse] = useState(activeCourse);
+  if (prevCourse !== activeCourse) {
+    setPrevCourse(activeCourse);
+    setReady(false);
+    setCounts(null);
+    setError(null);
+  }
 
   // learner state (KG phases 1 + 2): the CORE model when the course is the
   // pilot and the learner is signed in (real attempts, real decay, real
@@ -72,29 +86,26 @@ export function KnowledgeGraphClient({ courses }: { courses: CourseLite[] }) {
   const { overlay: learner, drawer, source } = useLearnerState(activeCourse);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
+  // ALWAYS post once resolved — including the bridge-error case (empty
+  // entries): the renderer's embedded sample map must never resurface, and
+  // the provenance flag keeps its legend and node-peek text honest.
   const postLearnerOverlay = useCallback(() => {
-    if (!learner || learner.bridgeError) return;
+    if (!learner) return; // still loading — the renderer defaults to no state
     frameRef.current?.contentWindow?.postMessage(
       {
         type: "syllabai-kg:learner",
         course: activeCourse,
-        overlay: learner.entries,
+        overlay: learner.entries, // {} on bridge error — honest emptiness
+        provenance: learner.bridgeError ? "unavailable" : source,
       },
       "*",
     );
-  }, [activeCourse, learner]);
+  }, [activeCourse, learner, source]);
 
   // (re-)post whenever the iframe (re)becomes ready or the derivation changes
   useEffect(() => {
     if (ready) postLearnerOverlay();
   }, [ready, postLearnerOverlay]);
-
-  const switchCourse = useCallback((slug: string) => {
-    setCourse(slug);
-    setReady(false);
-    setCounts(null);
-    setError(null);
-  }, []);
 
   // keep the address bar deep-linkable (external system, no state here)
   useEffect(() => {
@@ -136,16 +147,6 @@ export function KnowledgeGraphClient({ courses }: { courses: CourseLite[] }) {
     );
   }, []);
 
-  const grouped = useMemo(() => {
-    const by = new Map<string, CourseLite[]>();
-    for (const c of courses) {
-      const list = by.get(c.subject) ?? [];
-      list.push(c);
-      by.set(c.subject, list);
-    }
-    return [...by.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [courses]);
-
   const current = courses.find((c) => c.slug === activeCourse);
   const iframeSrc = `/kg/openhuman-course-explorer.html?course=${encodeURIComponent(activeCourse)}`;
 
@@ -167,10 +168,17 @@ export function KnowledgeGraphClient({ courses }: { courses: CourseLite[] }) {
       <div className="flex h-12 shrink-0 items-center gap-2 border-b px-3 sm:gap-3 sm:px-4">
         <Network className="size-4 shrink-0 text-primary" aria-hidden />
         <h1 className="truncate text-sm font-semibold tracking-tight">Knowledge Graph</h1>
+        {/* the course this graph belongs to — a label, not a switcher: the
+            graph shows only the selected subject (no browsing other courses) */}
         {current && (
-          <Badge variant="outline" className="hidden font-mono text-[10px] md:inline">
-            {current.code} · {current.level}
-          </Badge>
+          <>
+            <Badge variant="outline" className="hidden max-w-[15rem] truncate font-medium sm:inline-flex">
+              {current.label}
+            </Badge>
+            <Badge variant="outline" className="hidden font-mono text-[10px] md:inline">
+              {current.code}
+            </Badge>
+          </>
         )}
         {counts && (
           <Badge
@@ -206,30 +214,6 @@ export function KnowledgeGraphClient({ courses }: { courses: CourseLite[] }) {
         )}
 
         <span className="ml-auto" />
-
-        {/* course switcher (one graph per course) */}
-        <div className="relative">
-          <select
-            aria-label="Course knowledge graph"
-            value={activeCourse}
-            onChange={(e) => switchCourse(e.target.value)}
-            className="h-8 max-w-[13rem] appearance-none rounded-md border bg-background pr-7 pl-2.5 text-xs font-medium sm:max-w-[17rem]"
-          >
-            {grouped.map(([subject, list]) => (
-              <optgroup key={subject} label={subject}>
-                {list.map((c) => (
-                  <option key={c.slug} value={c.slug}>
-                    {c.label} ({c.code})
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-          <ChevronDown
-            className="pointer-events-none absolute top-1/2 right-2 size-3.5 -translate-y-1/2 text-muted-foreground"
-            aria-hidden
-          />
-        </div>
 
         {/* prototype lab cross-link */}
         <Button
@@ -318,9 +302,10 @@ export function KnowledgeGraphClient({ courses }: { courses: CourseLite[] }) {
       <div className="flex items-center gap-1.5 border-t px-4 py-1.5 text-[10px] text-muted-foreground">
         <Network className="size-3 shrink-0" aria-hidden />
         <span>
-          One graph per course — canonicalKG JSON exported from each course&apos;s curriculum
-          bundle (<span className="font-mono">scripts/kg_export.py</span>), loaded by the
-          OpenHuman renderer fork. v1 ships hierarchy edges only; prerequisite/paper edges land
+          {current?.label ?? "This course"}&apos;s specification graph — canonicalKG JSON
+          exported from its curriculum bundle (<span className="font-mono">scripts/kg_export.py</span>),
+          loaded by the OpenHuman renderer fork. One graph per course: open it from that
+          course&apos;s page. v1 ships hierarchy edges only; prerequisite/paper edges land
           when the data does. Prototype builds:{" "}
           <span className="font-mono">/graph-explorer</span>.
         </span>

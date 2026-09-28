@@ -264,7 +264,7 @@ export default async function CourseHubPage({
                   Specification tree
                 </Link>
                 <Link
-                  href="/knowledge-graph"
+                  href={`/knowledge-graph?course=${meta.slug}`}
                   className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
                 >
                   View parsed spec <ArrowRight className="size-4" aria-hidden />

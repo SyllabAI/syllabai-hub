@@ -65,7 +65,7 @@ export default async function HubPage() {
       href: "/knowledge-graph",
       icon: Network,
       title: "Knowledge Graph",
-      desc: "Official spec anchor + the T-C11 concept web (provenance-shown). Graph → resource → question navigation.",
+      desc: "The 4CH1 specification as an explorable graph — your measured mastery painted onto the spec points it belongs to.",
     },
     {
       href: "/practice",
@@ -82,8 +82,8 @@ export default async function HubPage() {
     {
       href: "/learner",
       icon: User,
-      title: "Learner Overlay",
-      desc: "Simulated BKT-style state over curriculum truth — clearly separated from canonical data.",
+      title: "My Progress",
+      desc: "Your measured mastery, review queue and attempt history — live from your SyllabAI account on the 4CH1 pilot.",
     },
     {
       href: "/experiments",
