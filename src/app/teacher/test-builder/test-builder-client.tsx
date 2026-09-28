@@ -1897,7 +1897,7 @@ export function TestBuilderClient({
 
                 {pdf.copy === "teacher" && (
                   <footer className="border-t pt-2 text-[10px] leading-relaxed text-muted-foreground">
-                    Assembled by the syllabai-demo Test Builder from the committed, validated
+                    Assembled by the SyllabAI Hub Test Builder from the committed, validated
                     question corpus — every part cites its spec points and source paper. No
                     AI-generated content is included. Assembled{" "}
                     {new Date(test.generatedAt).toLocaleString()}.

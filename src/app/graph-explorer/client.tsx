@@ -56,7 +56,7 @@ const BUILD_KEYS: BuildKey[] = ["v75", "v76", "v77"];
 
 const DATA_URL = "/kg/data/canonicalKG.edexcel-chemistry-4ch1.json";
 const PLAN_URL =
-  "https://github.com/SyllabAI/syllabai-demo/blob/main/docs/KNOWLEDGE_GRAPH_VISUALIZER_INTEGRATION.md";
+  "https://github.com/SyllabAI/syllabai-hub/blob/main/docs/KNOWLEDGE_GRAPH_VISUALIZER_INTEGRATION.md";
 const SOURCE_URL =
   "https://github.com/nawaf-al-hussain/FileUpload/tree/main/syllabai-openhuman-edexcel-chemistry-kg";
 

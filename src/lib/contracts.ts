@@ -1,5 +1,5 @@
 /**
- * syllabai-demo semantic contracts.
+ * SyllabAI Hub semantic contracts.
  *
  * Lightweight domain contracts (Zod + inferred TS types) for the objects the
  * demo actually needs. These ALIGN with SyllabAI's canonical semantics — they

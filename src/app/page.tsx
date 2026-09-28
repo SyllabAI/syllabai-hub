@@ -101,14 +101,6 @@ export default async function HubPage() {
           <Badge variant="secondary" className="font-mono text-[11px]">
             {provider.displayName}
           </Badge>
-          <Badge variant="outline" className="font-mono text-[11px]">
-            ai: {cfg.aiProviderId}
-          </Badge>
-          {cfg.neonConfigured && (
-            <Badge variant="outline" className="font-mono text-[11px]">
-              neon ✓
-            </Badge>
-          )}
           {cfg.coreConfigured && (
             <Badge variant="outline" className="font-mono text-[11px]">
               core-api ✓

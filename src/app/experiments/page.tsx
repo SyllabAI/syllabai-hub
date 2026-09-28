@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/card";
 
 export const metadata = {
-  title: "Experiments — syllabai-demo",
+  title: "Experiments — SyllabAI Hub",
 };
 
 const EXPERIMENTS = [

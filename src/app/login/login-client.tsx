@@ -255,7 +255,7 @@ export function LoginClient() {
             Mockup only — nothing is sent to a server and any credentials sign you in locally.
             Real authentication is planned (see the{" "}
             <Link
-              href="https://github.com/SyllabAI/syllabai-demo/blob/main/docs/TEACHER_MODE_PLAN.md"
+              href="https://github.com/SyllabAI/syllabai-hub/blob/main/docs/TEACHER_MODE_PLAN.md"
               target="_blank"
               rel="noreferrer"
               className="font-medium text-foreground underline underline-offset-2"

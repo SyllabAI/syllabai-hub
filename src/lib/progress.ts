@@ -44,7 +44,7 @@ export const emptyProgress = (): CourseProgress => ({
   typedAnswers: {},
 });
 
-const keyFor = (course: string) => `syllabai-demo:progress:${course}`;
+const keyFor = (course: string) => `syllabai-hub:progress:${course}`;
 const isBrowser = typeof window !== "undefined";
 
 // module-level cache so every hook instance sees the same object graph

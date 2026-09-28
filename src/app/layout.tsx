@@ -71,9 +71,9 @@ d.style.colorScheme=dark?"dark":"light";
 }catch(e){}})();`;
 
 export const metadata: Metadata = {
-  title: "syllabai-demo — experimental playground",
+  title: "SyllabAI Hub — IGCSE & IAL revision",
   description:
-    "A fast, disposable experimental shell around SyllabAI: prototype learning surfaces on the real 4CH1 pilot corpus without touching production.",
+    "Spec-anchored revision for Edexcel IGCSE & IAL: notes, exam questions, flashcards, past papers and a grounded AI tutor — mapped to your syllabus.",
 };
 
 export default function RootLayout({

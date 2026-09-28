@@ -15,7 +15,7 @@ import {
   Atom,
   BookOpen,
   BookOpenCheck,
-  BrainCircuit,
+
   ChevronDown,
   CircleHelp,
   Database,
@@ -56,13 +56,13 @@ const TOOLS = [
   { href: "/flashcards", label: "Flashcards", icon: CircleHelp },
 ] as const;
 
-const DEMO_TOOLS = [
+const MORE_TOOLS = [
   { href: "/tutor", label: "AI Tutor", icon: Sparkles },
   { href: "/assistant", label: "Assistant", icon: BookOpenCheck },
   { href: "/practice", label: "Practice", icon: Zap },
   { href: "/knowledge-graph", label: "Knowledge Graph", icon: Network },
-  { href: "/graph-explorer", label: "Graph Explorer (OpenHuman)", icon: Waypoints },
-  { href: "/learner", label: "Learner Overlay", icon: User },
+  { href: "/graph-explorer", label: "Graph Explorer", icon: Waypoints },
+  { href: "/learner", label: "My Progress", icon: User },
   { href: "/experiments", label: "Experiments", icon: FlaskConical },
 ] as const;
 
@@ -97,7 +97,7 @@ export function AppShell({
               <Atom className="size-4" aria-hidden />
             </span>
             <span className="font-display font-semibold tracking-tight">
-              syllabai<span className="text-muted-foreground">-demo</span>
+              SyllabAI<span className="text-muted-foreground"> Hub</span>
             </span>
           </Link>
 
@@ -127,8 +127,8 @@ export function AppShell({
                 </DropdownMenuItem>
               ))}
               <DropdownMenuSeparator />
-              <DropdownMenuLabel>Demo prototypes</DropdownMenuLabel>
-              {DEMO_TOOLS.map((t) => (
+              <DropdownMenuLabel>More tools</DropdownMenuLabel>
+              {MORE_TOOLS.map((t) => (
                 <DropdownMenuItem key={t.href} asChild>
                   <Link href={t.href} className="cursor-pointer">
                     <t.icon className="size-4" aria-hidden />
@@ -140,23 +140,51 @@ export function AppShell({
           </DropdownMenu>
 
           <span className="ml-1 hidden text-xs text-muted-foreground xl:inline">
-            experimental playground · 4CH1 pilot corpus
+            IGCSE &amp; IAL revision · 4CH1 pilot
           </span>
 
-          {/* SME header parity: persistent primary CTA (Task 21-b) + mock
-              identity (TEACHER-1) + dual-theme toggle */}
+          {/* SME header parity: persistent primary CTA + session identity
+              (core-auth-backed) + dual-theme toggle */}
           <div className="ml-auto flex items-center gap-1.5">
             <ThemeToggle />
             {identity ? (
-              <Button
-                variant="outline"
-                size="sm"
-                className="hidden gap-1.5 sm:inline-flex"
-                onClick={() => clearIdentity()}
-              >
-                <LogOut className="size-3.5" aria-hidden />
-                Sign out
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  className={cn(
+                    "inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors",
+                    "hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  )}
+                >
+                  <User className="size-3.5" aria-hidden />
+                  <span className="max-w-28 truncate">{identity.name}</span>
+                  <ChevronDown className="size-3 text-muted-foreground" aria-hidden />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuLabel className="text-xs">
+                    {identity.email} · {identity.role === "teacher" ? "Teacher" : "Student"}
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/dashboard" className="cursor-pointer">
+                      <LayoutDashboard className="size-4" aria-hidden />
+                      Dashboard
+                    </Link>
+                  </DropdownMenuItem>
+                  {identity.role === "teacher" && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/teacher" className="cursor-pointer">
+                        <GraduationCap className="size-4" aria-hidden />
+                        Teacher workspace
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => clearIdentity()} className="cursor-pointer">
+                    <LogOut className="size-4" aria-hidden />
+                    Sign out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             ) : (
               <Button asChild variant="outline" size="sm" className="hidden gap-1.5 sm:inline-flex">
                 <Link href="/login">
@@ -180,8 +208,8 @@ export function AppShell({
         {bare ? children : <div className="mx-auto w-full max-w-6xl">{children}</div>}
       </main>
 
-      {/* footer — provenance + demo discipline live here, not in the learner
-          path. On document-focus routes (paper viewer / player) it is omitted
+      {/* footer — provenance lives here, not in the learner path. On
+          document-focus routes (paper viewer / player) it is omitted
           entirely: the panes fill the viewport exactly, and a footer below the
           fold would create a pointless 200px page scroll. Immersive app
           surfaces (tutor) omit it for the same viewport reason. */}
@@ -193,19 +221,15 @@ export function AppShell({
             <Database className="size-3" aria-hidden />
             {config.dataMode}
           </Badge>
-          <Badge variant="outline" className="gap-1 text-[10px] font-normal">
-            <BrainCircuit className="size-3" aria-hidden />
-            {config.aiProviderId}
-          </Badge>
           <span className="text-[11px] text-muted-foreground">
-            demo discipline: canonical educational truth lives in{" "}
-            <span className="font-mono">syllabai-core</span> + the operator corpora; everything
-            simulated here is labelled <span className="font-mono">SIMULATED</span>; everything
+            canonical educational truth lives in{" "}
+            <span className="font-mono">syllabai-core</span>; everything simulated on this
+            surface is labelled <span className="font-mono">SIMULATED</span>; everything
             AI-suggested keeps its provenance.
           </span>
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
-          syllabai-demo — a disposable experimental shell around SyllabAI. Canonical semantics:
+          SyllabAI Hub — the SyllabAI product frontend. Canonical semantics:
           <span className="font-mono"> syllabai/syllabai</span> · content:
           <span className="font-mono"> syllabai-resources</span> (pilot-licensed, SME attestation
           2026-09-17).

@@ -6,7 +6,7 @@ import { KnowledgeGraphClient } from "./client";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Knowledge Graph — syllabai-demo",
+  title: "Knowledge Graph — SyllabAI Hub",
   description:
     "Per-course knowledge graphs (OpenHuman visualizer): every registered course explores its own specification graph — Subject → Sections → SubTopics → SpecificationPoints — rendered from curriculum truth with the GRAPH_CONTRACT v1.0 data path.",
 };

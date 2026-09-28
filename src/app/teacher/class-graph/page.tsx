@@ -5,7 +5,7 @@ import { ClassGraphClient } from "./class-graph-client";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Class knowledge graph — syllabai-demo teacher workspace",
+  title: "Class knowledge graph — SyllabAI Hub teacher workspace",
   description:
     "Teacher lens over the same subject graph (TEACHER_ARCHITECTURE §13): teaching-coverage overlay × class understanding bands, distributions instead of averages, drill-down to resources and a remediation test.",
 };

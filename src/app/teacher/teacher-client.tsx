@@ -439,7 +439,7 @@ export function TeacherClient({
             replacing the localStorage progress overlay, and write APIs in the read-only
             data-provider seam. Full plan in{" "}
             <a
-              href="https://github.com/SyllabAI/syllabai-demo/blob/main/docs/TEACHER_MODE_PLAN.md"
+              href="https://github.com/SyllabAI/syllabai-hub/blob/main/docs/TEACHER_MODE_PLAN.md"
               target="_blank"
               rel="noreferrer"
               className="font-medium text-foreground underline underline-offset-2"

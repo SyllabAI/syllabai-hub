@@ -4,12 +4,13 @@ import "katex/dist/katex.min.css";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { normalizeCorpusMath, sanitizeMathTex } from "@/lib/math-fix";
 import { normalizeCorpusEmphasis } from "@/lib/emphasis-fix";
+import { rehypeKatexMhchem } from "@/lib/rehypeKatexMhchem";
 
 /**
  * Markdown renderer for corpus content (SME notes, questions, solutions,
@@ -17,10 +18,24 @@ import { normalizeCorpusEmphasis } from "@/lib/emphasis-fix";
  *   - inline/display LaTeX in $…$ / $$…$$ (converted from Wiris MathML
  *     upstream) → rendered with KaTeX;
  *   - light inline HTML (<sub>/<sup> for chemical formulae, <br/>, tables)
- *     → rehype-raw (content is operator-imported, not user input);
+ *     → rehype-raw (content is operator-imported) then SANITIZED — the
+ *       allow-list pass (s144 import hardening) closes the stored-XSS
+ *       surface the demo carried: corpus HTML may only produce the
+ *       harmless-inline subset, never script/onegai/event handlers;
  *   - images hotlinked from the public syllabai-resources repo;
  *   - `> **Exam Hint**` / `> **Worked Example**` / `> **Case Study**` /
  *     `> **Top Tip**` blockquote callouts → SME-style tinted boxes.
+ *
+ * Web adaptation (2026-09-28 import): rehype-katex is replaced by the LOCAL
+ * rehypeKatexMhchem (s142) — the upstream plugin can land on a different
+ * katex module instance than `katex/contrib/mhchem` registers on, which
+ * rendered every \ce{} as red error text. Both are imported side by side
+ * here so renderer and macro registration share one instance everywhere.
+ *
+ * Plugin order matters: rehype-raw (parse embedded HTML) → rehype-sanitize
+ * (allow-list the result) → math-value repair → KaTeX (generates its own
+ * trusted HTML downstream of the sanitizer). remark-math's code classNames
+ * (language-math / math-inline / math-display) survive the default schema.
  */
 
 type HastNode = {
@@ -91,12 +106,12 @@ function isMathElement(n: HastLike): boolean {
 }
 
 /**
- * rehype plugin: repair the math source text right before rehype-katex reads it.
+ * rehype plugin: repair the math source text right before KaTeX reads it.
  *
  * NOTE: repairing at the remark (mdast) level does NOT work — remark-math
  * pre-builds `node.data.hChildren` at parse time and remark-rehype renders
  * from that embedded copy, silently ignoring transformer mutations of
- * `node.value`. The hast text is the last stop before rehype-katex, so it is
+ * `node.value`. The hast text is the last stop before KaTeX, so it is
  * patched here: glued macros (`\capB` → `\cap B`), stray `$$` → `\quad`,
  * bare `%` and `____` runs.
  */
@@ -121,6 +136,16 @@ function rehypeFixMathValues() {
   return (tree: HastLike) => walk(tree);
 }
 
+/**
+ * Sanitize schema — the default allow-list is exactly right for the corpus
+ * (audited 2026-09-28: the bundles carry only <sub>/<sup>/<br>/<u>/<a>/<b>/<p>
+ * inline HTML; sub/sup/tables/spans/emphasis are all permitted, and the
+ * remark-math code classNames survive). Today's corpus carries no script or
+ * event-handler content; the gate exists so a FUTURE corpus import can never
+ * introduce stored XSS against learners.
+ */
+const CORPUS_SCHEMA = defaultSchema;
+
 /** Markdown renderer for corpus content (SME notes, questions, solutions). */
 export function Markdown({
   children,
@@ -144,8 +169,9 @@ export function Markdown({
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[
           rehypeRaw,
+          [rehypeSanitize, CORPUS_SCHEMA],
           rehypeFixMathValues,
-          [rehypeKatex, { throwOnError: false, errorColor: "#b91c1c", strict: "ignore" }],
+          [rehypeKatexMhchem, { errorColor: "#b91c1c", strict: "ignore" }],
         ]}
         components={{
           h1: ({ children }) => (

@@ -5,7 +5,7 @@ import { ValidationClient } from "./validation-client";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Validation — syllabai-demo teacher workspace",
+  title: "Validation — SyllabAI Hub teacher workspace",
   description:
     "AI-content validation queue (Phase 2): teacher verdicts on AI-authored model solutions before they count — demo-truth on real corpus items.",
 };

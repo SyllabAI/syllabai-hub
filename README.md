@@ -1,128 +1,94 @@
-# syllabai-demo
+# SyllabAI Hub
 
-**Status: IMPLEMENTED (initial shell + SaveMyExams-style Learning Hubs) — a fast, disposable experimental application around SyllabAI.**
+**Status: PRODUCTION TRACK (v1.0) — the SyllabAI product frontend.** Promoted from
+`syllabai-demo` on 2026-09-28 (operator decision, ADR-029 in `SyllabAI/syllabai`).
 
-This is **not** a second production frontend. It is the playground where learning-surface ideas
-get prototyped in hours against **real** SyllabAI content, tested with real learners/agents, and
-promoted into the production architecture (`syllabai-web` / `syllabai-core`) only if the evidence
-supports it. Failed experiments should be deletable in minutes.
+The Hub is the student- and teacher-facing web app: SaveMyExams-style per-subject
+Learning Hubs across the registered Edexcel IGCSE/IAL course registry, a
+spec-anchored grounded tutor, and the teacher workspace — connected to
+[`syllabai-core`](https://github.com/SyllabAI/syllabai-core) for identity,
+learner state, evidence and all AI.
 
-## What is inside
+## Architecture
 
-| Surface | Route | What it demonstrates |
-|---|---|---|
-| Courses directory | `/courses` | All **39 Edexcel IAL/IGCSE courses** in the registry; each gets its own Learning Hub |
-| Learning Hub (per course) | `/courses/igcse-chemistry` | SaveMyExams-style per-subject hub: persistent sidebar, numbered spec topic tree with progress rings, resource cards, Strengths & Weaknesses tab |
-| Revision Notes (hub) | `/courses/igcse-chemistry/revision-notes` | Numbered topic accordion index → note reader (provenance block, helpfulness vote, build-on-this-topic cross-links) with the **note-anchored CLA** overlay — floating CLA button + guided-study banner open the Contextual Learning Assistant, grounded in the note being read with 4 quick actions (Definitions / Summary / Pitfalls / Exam help), citation chips, and an honest refusal when the note doesn't cover the ask (`/api/ai/cla`; see `docs/CLA.md`) |
-| Exam Questions (hub) | `/courses/igcse-chemistry/exam-questions` | Bank index → set page with difficulty tabs + question grid → player with Save, full screen, self-score "How did you do?", full-screen mark-scheme modal (`[N mark]` AND-joined points), MCQ instant marking where option text exists |
-| Flashcards (hub) | `/courses/igcse-chemistry/flashcards` | Per-sub-topic decks with the flip / Still learning / Know loop |
-| Knowledge Graph | `/knowledge-graph?course=igcse-chemistry-19` | **One graph per course**: every registered course explores its own spec graph (Subject → Sections → SubTopics → SpecificationPoints) in the OpenHuman visualizer — a data-decoupled fork of v77 loading `public/kg/data/<slug>.json` (exported from each curriculum bundle by `scripts/kg_export.py`, GRAPH_CONTRACT v1.0) |
-| Graph Explorer (OpenHuman) | `/graph-explorer` | Prototype build lab: the operator's OpenHuman interaction-grammar visualizer hosted **byte-faithful** (v75 default: edge explainer, lasso selection, minimap; v76/v77 switcher) + decoupled `canonicalKG` data artifact — see `docs/KNOWLEDGE_GRAPH_VISUALIZER_INTEGRATION.md` |
-| Practice | `/practice` | Part-level player with confidence/self-doubt telemetry (production attempt shape) |
-| Tutor | `/tutor?q=…&spec=4CH1-1.1` | Grounded AI tutor: retrieval → sufficiency gate → cited answer / honest refusal; **anchored** entry points from notes ("Ask about this") and questions ("Question help") |
-| Learner Overlay | `/learner` | **SIMULATED** BKT-style state over curriculum truth |
-| Experiments | `/experiments` | Isolated, deletable prototypes (`kg-navigation`, `semantic-search`) |
-
-Legacy top-level routes (`/revision-notes`, `/exam-questions`, `/flashcards`) redirect into the
-pilot course's hub with query strings (`?spec=4CH1-1.1`) preserved.
-
-### The Learning Hub model (ported from SaveMyExams UX research)
-
-`research/sme/` holds the 25-screenshot live walkthrough of savemyexams.com behind the design
-(full report: `download/SaveMyExams_UX_Feature_Research.docx`). Key ported decisions:
-
-- **One canonical tree.** SME's numbered topic tree is, in SyllabAI terms, the official
-  specification tree (`src/lib/spec-tree.ts` builds it from the imported curriculum — no second
-  taxonomy). It drives the sidebar, the URLs, the index pages and the progress rings.
-- **Progress is a browser-local overlay** (`src/lib/progress.ts`, labelled `SIMULATED`): notes
-  read, question self-scores / MCQ marks, and flashcard ratings live in `localStorage` per
-  course. SME gates progress writes behind accounts; the demo is honest about having none.
-  Nothing ever writes to canonical content.
-- **39-course registry, one pilot.** `content/courses.json` registers all 39 subjects (mirroring
-  what is downloaded in `syllabai-resources`); only the 4CH1 pilot has a committed bundle, and
-  every other hub renders an honest "import pending" state instead of fake content. Drop a
-  validated bundle under `content/<slug>/` and the hub activates with no code changes.
-
-The bundled corpus (committed under `content/`) is a curated subset of
-[`SyllabAI/syllabai-resources`](https://github.com/SyllabAI/syllabai-resources) imported by
-`scripts/import_content.py`: **215 curriculum nodes · 396 skeleton edges · 113 T-C11 graph nodes ·
-275 concept edges · 9 revision notes · 58 exam questions · 39 flashcards**, with provenance tiers
-(`RULE_DERIVED`, `AI_SUGGESTED`, `DEMO_DERIVED`, `SIMULATED`) preserved end-to-end.
-
-## Why this repository exists
-
-The production system is sophisticated and multi-agent, which creates friction for rapid
-experimentation (Render cold starts, production iteration costs, coordination overhead).
-`syllabai-demo` deliberately optimizes for **speed of experimentation, visual quality,
-integration flexibility, and low friction** — see `docs/ARCHITECTURE.md`.
-
-## Run it
-
-```bash
-pnpm install        # or bun install / npm install
-pnpm dev            # http://localhost:3000  (or: bun run dev)
+```
+browser ──► syllabai-hub (this repo, Next.js 16, Vercel)
+              │  content: committed corpus bundles (39 courses, read-only resources)
+              │  AI:      /api/ai/* server-side proxies → core (learner JWT forwarded)
+              │
+              └────► syllabai-core (Spring Boot, Render) — auth, BKT/BDT learner
+                     state, attempt evidence, tutor/CLA generation, RBAC
 ```
 
-Zero configuration is required to start: the app boots in `mock` data mode (the bundled real
-corpus) with the sandbox-default AI provider. Configure integrations via env vars when you want
-them — see `.env.example`.
+- **All AI flows through core** (`R3`): no LLM keys in this repo or its Vercel env.
+  `/api/ai/chat` proxies `POST /api/v1/tutor/ask` (SSE-adapted),
+  `/api/ai/cla` proxies `POST /api/v1/learners/me/cla/ask`,
+  `/api/ai/mark` is inert pending core question-ID mapping (self-mark is the path).
+- **Identity is core's**: login/register hit core `AuthController`; the session
+  token lives in `localStorage` (`syllabai.token`) for the v0 pilot; teacher
+  surfaces gate on the core-issued `TEACHER` role (server-enforced).
+- **Learner state**: the pilot subject (IGCSE Chemistry 4CH1) drives the real
+  core learner model; progress surfaces on other subjects remain the labelled
+  `SIMULATED` local overlay until the evidence bridge lands (see ADR-029
+  follow-up tranches).
+- **Content**: 39 read-only course hubs from the committed corpus
+  (`content/`, ~80 MB) per the operator's ADR-019 scope waiver (ADR-028);
+  past-paper PDFs stream from the public `syllabai-pastpapers` repo.
+- **Math rendering**: KaTeX 0.16 with the local `rehypeKatexMhchem` plugin (s142
+  mhchem hardening) and a `rehype-sanitize` allow-list after `rehype-raw`
+  (corpus HTML is operator-imported but gated against stored XSS).
 
-### Environment variables (all optional)
+## Routes
 
-| Variable | Effect |
+| Surface | Route |
 |---|---|
-| `DEMO_DATA_MODE` | Force a data source: `mock` \| `neon` \| `core-api` |
-| `NEON_DATABASE_URL` / `DATABASE_URL` | Postgres URL → activates the `neon` provider (Drizzle read models) |
-| `SYLLABAI_CORE_BASE_URL` | e.g. `https://syllabai-core.onrender.com` → activates the `core-api` provider |
-| `SYLLABAI_CORE_TOKEN` | Optional pilot JWT for authenticated core reads |
-| `DEMO_AI_PROVIDER` | Force a provider: `groq` \| `openrouter` \| `gemini` \| `freellm` \| `zai` \| `mock` |
-| `GROQ_API_KEY` / `OPENROUTER_API_KEY` / `GEMINI_API_KEY` / `FREELLM_API_KEY` | Provider keys (server-only, never bundled) |
-| `GROQ_API_KEY_MODEL` etc. | Optional per-provider model override |
+| Courses directory | `/courses` |
+| Learning Hub (per course) | `/courses/[course]` — notes, exam questions, flashcards, past papers, specification, strengths, practice papers |
+| Dashboard | `/dashboard` |
+| AI Tutor (core-grounded, sign-in required) | `/tutor` |
+| Assistant (CLA, sign-in required) | `/assistant` |
+| Practice | `/practice` |
+| Knowledge Graph / Graph Explorer | `/knowledge-graph`, `/graph-explorer` |
+| Learner overlay | `/learner` |
+| Teacher workspace (TEACHER role) | `/teacher` — assignments, class graph, test builder, validation |
+| Experiments | `/experiments` |
 
-Provider resolution is automatic: the first configured provider wins, with a deterministic
-offline `mock` fallback so the demo never breaks.
+Legacy top-level routes (`/revision-notes`, `/exam-questions`, `/flashcards`)
+redirect into the pilot course's hub.
 
-## The experiment ladder
+## Environment
 
-Every surface reads through the `DemoDataProvider` seam (`src/lib/data/`), so the same UI runs
-against progressively richer backends without rewrites:
+| Variable | Where | Purpose |
+|---|---|---|
+| `NEXT_PUBLIC_API_BASE_URL` | client | core origin, e.g. `https://syllabai-core.onrender.com` (browser→core direct) |
+| `SYLLABAI_CORE_BASE_URL` | server | same origin for the `/api/ai/*` proxies |
+| `HUB_DATA_MODE` | server | `mock` (default, bundled corpus) \| `core-api` |
 
-```text
-Mock data → Local/static data → Neon-backed data → syllabai-core API → AI-enhanced
-```
+**Deployment prerequisite:** core's CORS allow-list
+(`SYLLABAI_CORS_ORIGINS` on the Render service) must include this app's
+production origin — e.g. `https://<hub-domain>.vercel.app` alongside the
+existing entries.
 
-```tsx
-// anywhere in a page or experiment
-const provider = getDataProvider();     // server-side
-const notes = await provider.revisionNotes();
-```
-
-## Adding an experiment
-
-Create `src/app/experiments/<your-idea>/page.tsx`, use the provider seam + contracts, keep
-writes confined to the SIMULATED overlay, and delete it when the question is answered.
-Full guide: `docs/EXPERIMENTS.md`.
-
-## Deployment (Vercel)
+## Development
 
 ```bash
-git push        # → Vercel → live demo
+bun install
+bun run dev        # http://localhost:3000 (core CORS already allows localhost:3000)
+bun run lint       # eslint
+bun run build      # type-checked production build (+ corpus verify prebuild gate)
 ```
 
-No special infrastructure: Next.js App Router + Neon HTTP driver + server-side AI calls all run
-on the standard Vercel Node runtime. Set env vars in the Vercel dashboard; never commit keys.
+`prebuild` runs `scripts/verify_corpus_23a.ts` — the corpus integrity gate —
+before every production build (CI included).
 
-## Non-negotiable boundaries
+## Provenance & governance
 
-- syllabai-core + the operator corpora remain the **only** canonical educational truth
-- `SpecificationPoint` codes (e.g. `4CH1-1.25`) are first-class anchors — never reinvented
-- retrieval-derived graphs (T-C11) are shown with their real provenance, never silently promoted
-- learner state is an overlay; the demo's overlay is explicitly `SIMULATED`
-- chat/AI output never mutates canonical KG or mastery
-- provider infrastructure never leaks into the semantic contract
-
-## Docs
-
-- `docs/ARCHITECTURE.md` — how the demo connects to syllabai-core / Neon / providers / the graph
-- `docs/REPOSITORY_MAP.md` — where the relevant implementations live across the SyllabAI org
-- `docs/EXPERIMENTS.md` — the experiment protocol
+- Canonical semantics: [`SyllabAI/syllabai`](https://github.com/SyllabAI/syllabai)
+  (master spec, ADRs, task registry). Promotion decision: ADR-029.
+- Content: `syllabai-resources` (SME-derived, pilot-licensed — operator
+  attestation 2026-09-17, contract on file).
+- Everything simulated on this surface is labelled `SIMULATED`; everything
+  AI-suggested keeps its provenance and citations.
+- History: this repo was cloned from `SyllabAI/syllabai-demo` at `a8f8fba`
+  (full history preserved); the demo repo is now frozen as the prototype
+  playground. Promotion hardening landed in the commits that follow.
