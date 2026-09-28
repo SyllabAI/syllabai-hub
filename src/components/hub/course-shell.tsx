@@ -64,6 +64,10 @@ export function CourseShell({
     if (focusRoute) {
       if (!autoCollapsedRef.current) {
         autoCollapsedRef.current = true;
+        // one-time init sync with the route (auto-collapse on document-focus
+        // routes) — ported pattern from the demo; restructure in the
+        // hardening tranche if the rule fires on new code
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setHidden(true);
       }
     } else if (autoCollapsedRef.current) {

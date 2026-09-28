@@ -733,6 +733,12 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
 
   /** Hard teardown — only on url/retry change or unmount (NOT on toggles). */
   useEffect(() => {
+    /* eslint-disable react-hooks/exhaustive-deps -- teardown reads the LATEST
+       ref state by design (the unmount sweep of every tracked render
+       layers, tasks and caches must all be torn down); snapshotting
+       ref.current into effect-body locals — the rule's suggested pattern —
+       would capture EMPTY mount-time containers and leak every render since.
+       Ported verbatim from the demo's verified pdf.js lifecycle. */
     return () => {
       cancelAnimationFrame(rafRef.current);
       if (sweepTimerRef.current !== null) {

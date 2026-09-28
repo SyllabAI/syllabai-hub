@@ -38,6 +38,7 @@ import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Markdown } from "@/components/markdown";
 import type { TutorCitation } from "@/lib/contracts";
+import { getToken } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 type NoteMode = "EXPLAIN" | "SUMMARIZE";
@@ -133,9 +134,13 @@ export function NoteCla({
     setBusy(true);
     setError(null);
     try {
+      const token = getToken();
       const res = await fetch("/api/ai/cla", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ course, noteId, mode, question: question.trim(), history, isQuickAction }),
       });
       const data = await res.json();

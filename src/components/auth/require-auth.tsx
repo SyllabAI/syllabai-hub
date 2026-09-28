@@ -11,12 +11,24 @@
  * already holds. Signed-out visitors get a friendly sign-in prompt that
  * preserves where they were heading.
  */
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { LogIn, Loader2, ShieldAlert, GraduationCap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useIdentity } from "@/lib/identity";
+
+const noopSubscribe = () => () => {};
+
+/** Hydration flag without setState-in-effect: false on the server + first
+ *  hydration render, true on every settled client render. */
+function useSettled(): boolean {
+  return useSyncExternalStore(
+    noopSubscribe,
+    () => true,
+    () => false,
+  );
+}
 
 export function RequireAuth({
   children,
@@ -27,16 +39,11 @@ export function RequireAuth({
   role?: "teacher";
 }) {
   const identity = useIdentity();
-  // settle after mount: useSyncExternalStore hydrates with the server
-  // snapshot (null), then flips to the real client value. Until the first
-  // effect runs we cannot tell "not yet read" from "read, signed out" —
-  // a quiet loader avoids both the blank-forever bug and the sign-in flash.
-  const [resolved, setResolved] = useState(false);
-  useEffect(() => {
-    setResolved(true);
-  }, []);
-
-  if (!resolved) {
+  // settle after hydration: useIdentity hydrates with the server snapshot
+  // (null), then flips to the real client value. Until then a quiet loader
+  // avoids both the blank-forever bug and a sign-in flash for signed-in
+  // users.
+  if (!useSettled()) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center" aria-hidden>
         <Loader2 className="size-5 animate-spin text-muted-foreground" />

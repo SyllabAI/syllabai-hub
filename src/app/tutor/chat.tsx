@@ -32,6 +32,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { getToken } from "@/lib/api";
 import { Composer, QUESTION_CAP } from "./composer";
 import { MessageItem } from "./message-item";
 import { SidebarBrand, ThreadSidebar } from "./thread-sidebar";
@@ -181,9 +182,13 @@ export function TutorChat() {
         patchLastMessage(threadId, (m) => ({ ...m, ...patch }));
 
       try {
+        const token = getToken();
         const res = await fetch("/api/ai/chat", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
           body: JSON.stringify({
             question: `${trimmed}${anchorSuffix}`.slice(0, QUESTION_CAP),
             history,
@@ -257,6 +262,10 @@ export function TutorChat() {
       const thread = ensureActiveThread();
       void ask(thread.id, bootQuestion);
     }
+    // one-shot deep-link boot: `ask` is deliberately absent — the guard ref
+    // makes this fire once per bootQuestion, and re-subscribing to ask's
+    // identity would re-arm the boot on every render (demo-verified behavior)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bootQuestion]);
 
   const busyHere = streamingId !== null && streamingId === activeId;

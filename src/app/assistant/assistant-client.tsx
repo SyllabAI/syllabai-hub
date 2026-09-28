@@ -49,6 +49,7 @@ import { Markdown } from "@/components/markdown";
 import { useCourseProgress } from "@/lib/progress";
 import type { TutorCitation } from "@/lib/contracts";
 import { cn } from "@/lib/utils";
+import { getToken } from "@/lib/api";
 
 type ContextKind = "SPEC_TOPIC" | "EXAM_QUESTION";
 type Mode = "EXPLAIN" | "SUMMARIZE" | "HINT" | "CHECK";
@@ -185,9 +186,13 @@ export function AssistantClient({
     setBusy(true);
     setError(null);
     try {
+      const token = getToken();
       const res = await fetch("/api/ai/cla", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify(
           kind === "SPEC_TOPIC"
             ? { kind: "topic", course: course.slug, topicCode, mode, question: text, history }

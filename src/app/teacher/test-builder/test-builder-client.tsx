@@ -563,6 +563,9 @@ export function TestBuilderClient({
       }
     }, 250);
     return () => window.clearTimeout(timer);
+    // draft autosave: re-arms only when the ASSEMBLY inputs change; omitting
+    // the debounce internals is deliberate (they are stable locals)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [course, view, selected, mode, targetMarks, maxQuestions, difficulty, testName, stale, pdf, test]);
 
   // load the course payload (bank stats + class evidence) per course switch;
@@ -635,6 +638,7 @@ export function TestBuilderClient({
       window.clearTimeout(timer);
     };
     // bankKey is the canonical filter signature (course | topics | difficulty)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bankKey]);
 
   function loadMoreBank() {
