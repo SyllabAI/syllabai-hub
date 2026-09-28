@@ -33,6 +33,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Lightbulb,
   Loader2,
   Maximize2,
   MinusCircle,
@@ -42,6 +43,11 @@ import {
   X,
   XCircle,
 } from "lucide-react";
+import {
+  EMPTY_CLA_MESSAGES,
+  QuestionClaOverlay,
+  type QuestionClaMessage,
+} from "@/components/cla/question-cla-overlay";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -137,8 +143,13 @@ export function QuestionPlayer({
   const progress = useCourseProgress(course);
   const [difficulty, setDifficulty] = useState<Difficulty>("all");
   const [schemeFor, setSchemeFor] = useState<ExamQuestion | null>(null);
-  const [fullFor, setFullFor] = useState<ExamQuestion | null>(null);
+  const [fullFor, setFullFor] = useState<{ q: ExamQuestion; index: number } | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
+  // question-anchored CLA (web s129 parity): which question's panel is open
+  // and which Approach target it pre-aims at; transcripts lifted here, one
+  // per whole question, surviving tab switches and full-screen round trips
+  const [claFor, setClaFor] = useState<{ q: ExamQuestion; index: number; targetId: string | null } | null>(null);
+  const [claTranscripts, setClaTranscripts] = useState<Record<string, QuestionClaMessage[]>>({});
   // 4CH1 bridge — resolves this set's corpus questions to core identity when
   // the course is the pilot and the learner is signed in (ADR-029 tranche 4)
   const bridge = useAttemptBridge(course, topicSlug);
@@ -162,6 +173,13 @@ export function QuestionPlayer({
 
   const isAttempted = (q: ExamQuestion) =>
     !!progress.selfScores[q.id] || q.parts.some((p) => !!progress.mcqAnswers[p.id]);
+
+  /** the CLA anchors resolve ONLY through the verified join — an unverified
+   *  question gets no entries at all (same honesty rule as attempts) */
+  const openCla = (q: ExamQuestion, index: number, targetId: string | null) => {
+    if (bridge.kind !== "ready" || !bridge.data.questions[q.id]) return;
+    setClaFor({ q, index, targetId });
+  };
 
   const scrollTo = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -238,11 +256,23 @@ export function QuestionPlayer({
                 </Badge>
               )}
               <div className="ml-auto flex items-center gap-1">
+                {bridge.kind === "ready" && bridge.data.questions[q.id] && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-9 gap-1.5 px-2 text-xs"
+                    onClick={() => openCla(q, qi, null)}
+                    aria-haspopup="dialog"
+                    title="Ask the contextual assistant about this question"
+                  >
+                    <Sparkles className="size-3.5 text-primary" aria-hidden /> Ask CLA
+                  </Button>
+                )}
                 <Button
                   size="sm"
                   variant="ghost"
                   className="h-9 gap-1.5 px-2 text-xs"
-                  onClick={() => setFullFor(q)}
+                  onClick={() => setFullFor({ q, index: qi })}
                 >
                   <Maximize2 className="size-3.5" aria-hidden /> Full screen
                 </Button>
@@ -275,6 +305,8 @@ export function QuestionPlayer({
                 subtopicTitle={subtopicTitle}
                 onViewModel={() => setSchemeFor(q)}
                 bridge={bridge}
+                onAskCla={() => openCla(q, qi, null)}
+                onAskClaPart={(partId) => openCla(q, qi, partId)}
               />
             </div>
           </article>
@@ -295,20 +327,22 @@ export function QuestionPlayer({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               {topicName}
-              {fullFor && <Badge variant="outline" className="text-[10px]">{fullFor.totalMarks} marks</Badge>}
+              {fullFor && <Badge variant="outline" className="text-[10px]">{fullFor.q.totalMarks} marks</Badge>}
             </DialogTitle>
           </DialogHeader>
           {fullFor && (
             <QuestionBody
               course={course}
-              question={fullFor}
+              question={fullFor.q}
               topicSlug={topicSlug}
               subtopicCode={subtopicCode}
               subtopicTitle={subtopicTitle}
               onViewModel={() => {
-                setSchemeFor(fullFor);
+                setSchemeFor(fullFor.q);
               }}
               bridge={bridge}
+              onAskCla={() => openCla(fullFor.q, fullFor.index, null)}
+              onAskClaPart={(partId) => openCla(fullFor.q, fullFor.index, partId)}
             />
           )}
         </DialogContent>
@@ -321,6 +355,35 @@ export function QuestionPlayer({
         subtopicTitle={subtopicTitle}
         onClose={() => setSchemeFor(null)}
       />
+
+      {/* the question-anchored CLA overlay (web s129 parity) — ONE instance
+          for the whole player; the anchor is captured at open and the
+          transcript is per whole question (lifted above, survives tab
+          switches). Rendered LAST so the Sheet portals above the
+          full-screen Dialog. */}
+      {bridge.kind === "ready" && (
+        <QuestionClaOverlay
+          open={claFor !== null}
+          onOpenChange={(o) => {
+            if (!o) setClaFor(null);
+          }}
+          rootId={bridge.data.rootId}
+          question={claFor?.q ?? null}
+          join={claFor ? (bridge.data.questions[claFor.q.id] ?? null) : null}
+          questionNumber={claFor ? claFor.index + 1 : null}
+          initialTargetId={claFor?.targetId ?? null}
+          messages={claFor ? (claTranscripts[claFor.q.id] ?? EMPTY_CLA_MESSAGES) : EMPTY_CLA_MESSAGES}
+          setMessages={(update) => {
+            if (!claFor) return;
+            const key = claFor.q.id;
+            setClaTranscripts((prev) => {
+              const current = prev[key] ?? [];
+              const next = typeof update === "function" ? update(current) : update;
+              return { ...prev, [key]: next };
+            });
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -373,6 +436,8 @@ function QuestionBody({
   subtopicTitle,
   onViewModel,
   bridge,
+  onAskCla,
+  onAskClaPart,
 }: {
   course: Course;
   question: ExamQuestion;
@@ -381,6 +446,11 @@ function QuestionBody({
   subtopicTitle: string | null;
   onViewModel: () => void;
   bridge: AttemptBridgeStatus;
+  /** whole-question CLA entry (join-verified callers only) */
+  onAskCla: () => void;
+  /** per-answer-box CLA entry: each box's lightbulb opens the
+   *  question-anchored overlay with Approach aimed at that part */
+  onAskClaPart: (partId: string) => void;
 }) {
   const progress = useCourseProgress(course);
   const [scoreDraft, setScoreDraft] = useState<string>("");
@@ -416,6 +486,8 @@ function QuestionBody({
               optionsVisible={mcqOptionsVisible(question, idx)}
               onViewModel={onViewModel}
               coreJoin={coreJoin?.mcq[p.id] ?? null}
+              partLabel={question.parts.length > 1 ? String.fromCharCode(97 + idx) : null}
+              onAskClaPart={coreJoin ? () => onAskClaPart(p.id) : undefined}
             />
           );
         }
@@ -428,7 +500,9 @@ function QuestionBody({
             topicSlug={topicSlug}
             subtopicCode={subtopicCode}
             showPartBadge={question.parts.length > 1}
+            partLabel={question.parts.length > 1 ? String.fromCharCode(97 + idx) : null}
             coreLive={coreLive}
+            onAskClaPart={coreJoin ? () => onAskClaPart(p.id) : undefined}
           />
         );
       })}
@@ -519,7 +593,9 @@ function StructuredPart({
   topicSlug,
   subtopicCode,
   showPartBadge,
+  partLabel,
   coreLive,
+  onAskClaPart,
 }: {
   course: Course;
   question: ExamQuestion;
@@ -527,18 +603,38 @@ function StructuredPart({
   topicSlug: string;
   subtopicCode: string | null;
   showPartBadge: boolean;
+  /** a/b/c… label for the CLA lightbulb's aria text (never rendered as a chip) */
+  partLabel: string | null;
   coreLive: boolean;
+  /** question-anchored CLA per-part entry (join-verified questions only) */
+  onAskClaPart?: () => void;
 }) {
   return (
     <div className="space-y-2">
       {/* SME (figure 16): per-part marks right-aligned, no chips/spec codes on
           the learner face. Single-part questions dedupe — the header badge
-          already carries the total (figure 24). */}
-      {showPartBadge && (
-        <div className="flex items-center">
-          <span className="ml-auto text-xs text-muted-foreground">
-            {part.marks} mark{part.marks === 1 ? "" : "s"}
-          </span>
+          already carries the total (figure 24). The lightbulb rides the same
+          row (the web s129 parity entry — scaffolded help, never the answer). */}
+      {(showPartBadge || onAskClaPart) && (
+        <div className="flex items-center justify-end gap-1.5">
+          {showPartBadge && (
+            <span className="text-xs text-muted-foreground">
+              {part.marks} mark{part.marks === 1 ? "" : "s"}
+            </span>
+          )}
+          {onAskClaPart && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-6 text-muted-foreground hover:text-primary"
+              onClick={onAskClaPart}
+              aria-haspopup="dialog"
+              aria-label={`Ask CLA for help with part ${partLabel ?? ""} — scaffolded, never the answer`}
+              title="Ask CLA — scaffolded help with this part, never the answer"
+            >
+              <Lightbulb className="size-3.5" aria-hidden />
+            </Button>
+          )}
         </div>
       )}
       <PartProblem md={part.problemMd} />
@@ -904,6 +1000,8 @@ function McqPart({
   optionsVisible,
   onViewModel,
   coreJoin,
+  partLabel,
+  onAskClaPart,
 }: {
   course: Course;
   part: ExamQuestion["parts"][number];
@@ -914,6 +1012,11 @@ function McqPart({
   onViewModel: () => void;
   /** core identity for this part, when the 4CH1 bridge verified the join */
   coreJoin: BridgeMcqPart | null;
+  /** a/b/c… label for the CLA lightbulb's aria text (never rendered as a chip) */
+  partLabel: string | null;
+  /** question-anchored CLA per-part entry — an MCQ row IS the part, so the
+   *  lightbulb anchors the row itself (PAST_PAPER_QUESTION, web s129 parity) */
+  onAskClaPart?: () => void;
 }) {
   const progress = useCourseProgress(course);
   // 182 questions carry more than one MCQ part — key attempts by part id
@@ -989,6 +1092,21 @@ function McqPart({
 
   return (
     <div className="space-y-3">
+      {onAskClaPart && (
+        <div className="flex items-center justify-end">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-6 text-muted-foreground hover:text-primary"
+            onClick={onAskClaPart}
+            aria-haspopup="dialog"
+            aria-label={`Ask CLA for help with ${partLabel ? `part ${partLabel}` : "this question"} — scaffolded, never the answer`}
+            title="Ask CLA — scaffolded help with this question, never the answer"
+          >
+            <Lightbulb className="size-3.5" aria-hidden />
+          </Button>
+        </div>
+      )}
       <PartProblem
         md={keyedText || letterOnly ? part.problemMd : stripOptionLines(part.problemMd)}
       />
