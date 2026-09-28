@@ -991,4 +991,23 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ noteId }),
     }),
+
+  // ── answer-input transcription (HUB-ANSWER-BOX wave 3) ──────────────────
+  // The learner's ink pad / photo is read by the core's vision-capable chain
+  // member and returned as PLAIN TEXT (Unicode math + linear notation — the
+  // answer format contract is unchanged). The image itself is never stored;
+  // nothing persists until the learner's own autosave carries the text.
+
+  transcribeHandwriting: (imageBase64: string, mimeType: string) =>
+    request<HandwritingTranscription>("/api/v1/learners/me/answer-input/transcribe", {
+      method: "POST",
+      body: JSON.stringify({ imageBase64, mimeType }),
+    }),
+};
+
+export type HandwritingTranscription = {
+  text: string;
+  provider: string;
+  model: string;
+  latencyMs: number;
 };

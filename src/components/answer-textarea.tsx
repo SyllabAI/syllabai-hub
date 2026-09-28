@@ -25,10 +25,11 @@
  * save indicator at all.
  */
 import { useRef, useState } from "react";
-import { ChevronDown, ChevronUp, Type } from "lucide-react";
+import { ChevronDown, ChevronUp, PenLine, Type } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { AnswerInkPad, useHasLearnerSession } from "@/components/answer-ink-pad";
 
 /**
  * localStorage key follows the syllabai-hub: namespacing convention
@@ -38,11 +39,16 @@ const SYMBOLS_PREF_KEY = "syllabai-hub:answer-symbols-open";
 
 /**
  * Notation typed IGCSE answers actually need: sub/superscripts, charges,
- * the equilibrium/direction arrows, degree, delta, multiplication sign.
- * Inserted as plain text — the answer stays a plain-text contract
- * end-to-end (core submitStructuredAttempt and the legacy /api/ai/mark).
+ * the equilibrium/direction arrows, degree, delta, multiplication sign —
+ * plus the wave-3 maths group (roots, inequalities, integrals, sums) so
+ * equations no longer force students onto ASCII approximations. Inserted
+ * as plain text — the answer stays a plain-text contract end-to-end
+ * (core submitStructuredAttempt and the legacy /api/ai/mark).
  */
-const ANSWER_SYMBOLS = ["₂", "₃", "₄", "⁺", "⁻", "²", "³", "→", "⇌", "°", "Δ", "×"] as const;
+const ANSWER_SYMBOLS = [
+  "₂", "₃", "₄", "⁺", "⁻", "²", "³", "→", "⇌", "°", "Δ", "×",
+  "√", "π", "≤", "≥", "≠", "≈", "±", "÷", "∫", "Σ", "∞", "⁄",
+] as const;
 
 /**
  * Answer-shape-aware placeholder derived ONLY from the stem's imperative
@@ -94,12 +100,14 @@ export function AnswerTextarea({
       return false;
     }
   });
+  const [padOpen, setPadOpen] = useState(false);
+  const hasSession = useHasLearnerSession();
   const taRef = useRef<HTMLTextAreaElement>(null);
   const wordCount = value.trim() ? value.trim().split(/\s+/).length : 0;
 
   /** insert at the caret; focus + caret placement restored after React
    *  commits the controlled value */
-  const insertSymbol = (ch: string) => {
+  const insertAtCaret = (ch: string) => {
     const el = taRef.current;
     const start = el?.selectionStart ?? value.length;
     const end = el?.selectionEnd ?? start;
@@ -119,7 +127,6 @@ export function AnswerTextarea({
       // private mode — the preference is session-only, palette still works
     }
   };
-
   return (
     <>
       <Textarea
@@ -159,12 +166,36 @@ export function AnswerTextarea({
             <ChevronDown className="size-3" aria-hidden />
           )}
         </Button>
+        {/* wave 3: ink pad / photo → core transcription → plain text at the
+            caret (SaveMyExams-parity "Write"/"Upload", free/no-card route).
+            Hidden without a learner session — the spend is authenticated and
+            per-learner, and a button that always 401s would be dishonest. */}
+        {hasSession && (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => setPadOpen((v) => !v)}
+            aria-expanded={padOpen}
+            className="h-7 gap-1.5 px-2 text-[11px] text-muted-foreground"
+          >
+            <PenLine className="size-3.5" aria-hidden /> write
+            {padOpen ? (
+              <ChevronUp className="size-3" aria-hidden />
+            ) : (
+              <ChevronDown className="size-3" aria-hidden />
+            )}
+          </Button>
+        )}
         {wordCount > 0 && (
           <span className="ml-auto text-[11px] tabular-nums text-muted-foreground">
             {wordCount} word{wordCount === 1 ? "" : "s"}
           </span>
         )}
       </div>
+      {padOpen && hasSession && (
+        <AnswerInkPad onInsert={insertAtCaret} />
+      )}
       {symOpen && (
         <div
           className="mt-1 flex flex-wrap gap-1"
@@ -175,7 +206,7 @@ export function AnswerTextarea({
             <button
               key={ch}
               type="button"
-              onClick={() => insertSymbol(ch)}
+              onClick={() => insertAtCaret(ch)}
               className="h-7 min-w-8 rounded-md border bg-background px-1.5 font-mono text-[13px] leading-none text-foreground/90 hover:bg-muted"
               aria-label={`Insert ${ch}`}
             >
