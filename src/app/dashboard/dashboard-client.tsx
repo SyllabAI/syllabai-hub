@@ -11,12 +11,17 @@
  *        live progress % (SME ProgressBarGroup parity) computed from the
  *        browser-local activity overlay (notes read, questions attempted,
  *        flashcards rated) — real activity, honestly 0% before you start
- *   3. "Got another course?" slot card (SME's trailing grid cell)
- *   4. "Jump back in" — resume card from the last-opened store
- *   5. Add course — searchable catalogue over the course registry
+ *   3. Next best actions — ranked advice from the learner's own evidence
+ *        (lib/next-best-actions.ts): misconception watch, review-due topics,
+ *        problem-question retries, low-mastery practice, note coverage
+ *   4. "Got another course?" slot card (SME's trailing grid cell) — opens
+ *        the cascading board → level → subject add-course overlay
+ *   5. "Jump back in" — resume card from the last-opened store
  *
- * The roster + last-opened persist client-side (no auth in the demo);
- * resource counts come from /api/course-stats (committed bundles).
+ * The dashboard lists ONLY the learner's own subjects (no full-registry
+ * catalogue — discovery lives in the overlay). The roster + last-opened
+ * persist client-side (no auth in the demo); resource counts come from
+ * /api/course-stats (committed bundles).
  */
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -28,19 +33,18 @@ import {
   GraduationCap,
   Plus,
   RotateCcw,
-  Sparkles,
   X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMySubjects } from "@/lib/my-subjects";
 import { useIdentity } from "@/lib/identity";
-import { duplicateVariants } from "@/lib/course-variant";
 import { useLastOpened, resourceLabel } from "@/lib/last-opened";
 import { useCourseProgress } from "@/lib/progress";
+import { NextBestActionsCard } from "./next-best-actions-card";
+import { AddCourseOverlay } from "./add-course-overlay";
 import type { CourseMeta } from "@/lib/courses";
 
 interface CourseStat {
@@ -285,11 +289,8 @@ function SubjectCard({
 export function DashboardClient({ courses }: { courses: CourseMeta[] }) {
   const { slugs, has, add, remove } = useMySubjects();
   const identity = useIdentity();
-  // same subject+code lanes (Accounting 4AC1 ×2 etc.) — show the lane
-  // qualifier so identical-looking cards are tellable apart (UX audit P2-7)
-  const subtitles = useMemo(() => duplicateVariants(courses), [courses]);
   const lastOpened = useLastOpened();
-  const [q, setQ] = useState("");
+  const [addOpen, setAddOpen] = useState(false);
   const [stats, setStats] = useState<Record<string, CourseStat>>({});
 
   const bySlug = useMemo(() => {
@@ -321,25 +322,6 @@ export function DashboardClient({ courses }: { courses: CourseMeta[] }) {
     };
   }, [slugsKey]);
 
-  const available = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return courses.filter(
-      (c) =>
-        !has(c.slug) &&
-        (!needle ||
-          c.label.toLowerCase().includes(needle) ||
-          c.subject.toLowerCase().includes(needle) ||
-          c.code.toLowerCase().includes(needle) ||
-          c.level.toLowerCase().includes(needle)),
-    );
-  }, [courses, q, has]);
-
-  const grouped = useMemo(() => {
-    const g = new Map<string, CourseMeta[]>();
-    for (const c of available) g.set(c.level, [...(g.get(c.level) ?? []), c]);
-    return [...g.entries()].sort((a, b) => b[1].length - a[1].length);
-  }, [available]);
-
   // "Jump back in" — only if the recorded course still resolves in the registry
   const jumpBack =
     lastOpened && bySlug.has(lastOpened.slug)
@@ -367,14 +349,15 @@ export function DashboardClient({ courses }: { courses: CourseMeta[] }) {
           <h2 className="text-lg font-semibold">
             My subjects <span className="text-sm font-normal text-muted-foreground">· {mySubjects.length}</span>
           </h2>
-          {mySubjects.length > 0 && (
-            <Button asChild size="sm" variant="outline" className="gap-1.5">
-              <a href="#add-subject">
-                <Plus className="size-3.5" aria-hidden />
-                Add course
-              </a>
-            </Button>
-          )}
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
+            onClick={() => setAddOpen(true)}
+          >
+            <Plus className="size-3.5" aria-hidden />
+            Add course
+          </Button>
         </div>
 
         {mySubjects.length === 0 ? (
@@ -382,12 +365,16 @@ export function DashboardClient({ courses }: { courses: CourseMeta[] }) {
             <CardContent className="flex flex-col items-start gap-3 p-6">
               <p className="flex items-center gap-2 text-sm font-medium">
                 <GraduationCap className="size-4 text-primary" aria-hidden />
-                No subjects yet — add your first one below.
+                No subjects yet — add your first one.
               </p>
               <p className="text-sm text-muted-foreground">
-                Pick from the {courses.length}-course Edexcel registry, or start with a popular one:
+                Pick your exam board, level and subject, or start with a popular one:
               </p>
               <div className="flex flex-wrap gap-2">
+                <Button size="sm" className="gap-1.5" onClick={() => setAddOpen(true)}>
+                  <Plus className="size-3.5" aria-hidden />
+                  Choose a subject
+                </Button>
                 {QUICK_ADD.filter((s) => bySlug.has(s)).map((slug) => {
                   const c = bySlug.get(slug) as CourseMeta;
                   return (
@@ -411,9 +398,11 @@ export function DashboardClient({ courses }: { courses: CourseMeta[] }) {
                 onRemove={remove}
               />
             ))}
-            {/* SME's trailing slot cell: "Got another course?" */}
-            <a
-              href="#add-subject"
+            {/* SME's trailing slot cell: "Got another course?" — opens the
+                cascading board → level → subject overlay */}
+            <button
+              type="button"
+              onClick={() => setAddOpen(true)}
               className="flex min-h-[10rem] flex-col items-start justify-center gap-2 rounded-xl border border-dashed border-muted-foreground/40 p-4 text-left transition-colors hover:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <p className="text-sm font-semibold">Got another course?</p>
@@ -424,9 +413,14 @@ export function DashboardClient({ courses }: { courses: CourseMeta[] }) {
                 <Plus className="size-3.5" aria-hidden />
                 Add course
               </span>
-            </a>
+            </button>
           </div>
         )}
+      </section>
+
+      {/* ---- Next best actions (recommendation output — advice, not facts) ---- */}
+      <section aria-label="Next best actions">
+        <NextBestActionsCard courses={mySubjects} />
       </section>
 
       {/* ---- Jump back in (SME resume card, backed by real navigation) ---- */}
@@ -460,58 +454,14 @@ export function DashboardClient({ courses }: { courses: CourseMeta[] }) {
         </section>
       )}
 
-      {/* ---- Add subject (catalogue picker) ---- */}
-      <section aria-label="Add subject" className="space-y-3 scroll-mt-20" id="add-subject">
-        <h2 className="flex items-center gap-2 text-lg font-semibold">
-          <Sparkles className="size-4 text-primary" aria-hidden />
-          Add a subject
-        </h2>
-        <Input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder={`Search the ${courses.length}-course registry by subject or exam code…`}
-          aria-label="Search courses to add"
-          className="max-w-md"
-        />
-        {grouped.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {q ? `No course matches “${q}”.` : "Every course in the registry is already in My subjects."}
-          </p>
-        ) : (
-          grouped.map(([level, list]) => (
-            <div key={level} className="space-y-2">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {level} <span className="font-normal">· {list.length}</span>
-              </h3>
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {list.map((c) => (
-                  <Card key={c.slug} className="h-full">
-                    <CardContent className="flex items-center gap-3 p-4">
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold">{c.label}</p>
-                        {subtitles.get(c.slug) && (
-                          <p className="mt-0.5 truncate text-xs text-muted-foreground">{subtitles.get(c.slug)}</p>
-                        )}
-                        <p className="mt-0.5 font-mono text-xs text-muted-foreground">{c.code || "code pending"}</p>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-8 shrink-0 gap-1.5"
-                        onClick={() => add(c.slug)}
-                        aria-label={`Add ${c.label} to my subjects`}
-                      >
-                        <Plus className="size-3.5" aria-hidden />
-                        Add
-                      </Button>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </div>
-          ))
-        )}
-      </section>
+      {/* ---- Add course — cascading board → level → subject overlay ---- */}
+      <AddCourseOverlay
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        courses={courses}
+        has={has}
+        onAdd={add}
+      />
 
     </div>
   );

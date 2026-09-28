@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
 /**
  * Progress overlay — the demo's honest stand-in for SaveMyExams accounts.
@@ -114,6 +114,64 @@ export function useCourseProgress(course: Course): CourseProgress {
     () => getProgressSnapshot(course),
     () => serverSnapshot,
   );
+}
+
+// ── multi-course binding (dashboard-scale surfaces) ─────────────────────
+
+const EMPTY_ALL: Record<string, CourseProgress> = {};
+
+/**
+ * Combined per-key snapshot cache. Entries are REPLACED wholesale (never
+ * mutated) so each snapshot object keeps a stable identity until one of the
+ * underlying per-course objects actually changes — the same module-level
+ * caching shape useSyncExternalStore requires (cf. my-subjects getSnapshot).
+ */
+interface MultiEntry {
+  last: Record<string, CourseProgress>;
+  built: Record<string, CourseProgress>;
+}
+const multiEntries = new Map<string, MultiEntry>();
+
+function getMultiSnapshot(key: string): Record<string, CourseProgress> {
+  const prev = multiEntries.get(key);
+  const slugs = key ? key.split(",") : [];
+  if (prev && Object.keys(prev.last).length === slugs.length) {
+    let unchanged = true;
+    for (const c of slugs) {
+      if (prev.last[c] !== load(c)) {
+        unchanged = false;
+        break;
+      }
+    }
+    if (unchanged) return prev.built;
+  }
+  const last: Record<string, CourseProgress> = {};
+  const built: Record<string, CourseProgress> = {};
+  for (const c of slugs) {
+    last[c] = load(c);
+    built[c] = last[c];
+  }
+  multiEntries.set(key, { last, built });
+  return built;
+}
+
+/**
+ * Reactive progress snapshots for several courses at once (the dashboard
+ * needs every "my subjects" course, and hooks cannot be called in a loop of
+ * varying length). Same-tab reactivity only, exactly like useCourseProgress.
+ */
+export function useAllCourseProgress(courses: string[]): Record<string, CourseProgress> {
+  const key = courses.join(",");
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      const slugs = key ? key.split(",") : [];
+      const unsubs = slugs.map((c) => subscribeProgress(c, onChange));
+      return () => unsubs.forEach((u) => u());
+    },
+    [key],
+  );
+  const getSnapshot = useCallback(() => getMultiSnapshot(key), [key]);
+  return useSyncExternalStore(subscribe, getSnapshot, () => EMPTY_ALL);
 }
 
 // ── events ──────────────────────────────────────────────────────────────

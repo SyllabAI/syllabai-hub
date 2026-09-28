@@ -87,6 +87,11 @@ export interface LearnerBridge {
   questionCodes: Record<string, string[]>;
   partParent: Record<string, string>;
   flashcardCodes: Record<string, string[]>;
+  /** spec-point id → statement text (KG phase 3+ — dashboard-scale surfaces
+   *  name a point without a second bundle read; absent on stale caches) */
+  pointTexts?: Record<string, string>;
+  /** note id → display title (same provenance as noteCodes) */
+  noteTitles?: Record<string, string>;
   /** KG phase 3 — corpus content × sim-learner state (empty for courses
    *  without a misconception corpus; see api/kg-learner-bridge) */
   misconceptions: BridgeMisconception[];
