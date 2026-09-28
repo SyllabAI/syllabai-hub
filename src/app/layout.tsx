@@ -3,6 +3,7 @@ import {
   Bricolage_Grotesque,
   Fraunces,
   Instrument_Sans,
+  Inter,
   Kodchasan,
   Nunito,
   Plus_Jakarta_Sans,
@@ -23,7 +24,8 @@ import { publicConfig } from "@/lib/config";
  * with preload disabled so default-theme (SME) visitors never pay for
  * them — they download only when the quiet-green theme activates and its
  * --app-font-* chains reference the variables. Candy Shop follows the
- * same pattern (Fraunces display / Nunito body, preload: false).
+ * same pattern (Fraunces display / Nunito body, preload: false), and
+ * Chat App Plum too (Inter everywhere — one family, Law 8 of its spec).
  */
 const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -69,16 +71,24 @@ const nunito = Nunito({
   display: "swap",
   preload: false,
 });
+const inter = Inter({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-inter",
+  display: "swap",
+  preload: false,
+});
 
 /**
  * No-flash theme bootstrap — runs before first paint, mirrors the logic in
  * src/lib/theme-store.ts (same storage key + parsing). Reads
- * { theme: "sme"|"quiet-green"|"candy-shop", mode: "light"|"dark"|"system" }
+ * { theme: "sme"|"quiet-green"|"candy-shop"|"chat-app-plum",
+ *   mode: "light"|"dark"|"system" }
  * from localStorage["syllabai-theme"] and applies data-theme + .dark.
  */
 const themeBootstrap = `(function(){try{
 var t=JSON.parse(localStorage.getItem("syllabai-theme")||"{}");
-var theme=t.theme==="quiet-green"?"quiet-green":t.theme==="candy-shop"?"candy-shop":"sme";
+var theme=t.theme==="quiet-green"?"quiet-green":t.theme==="candy-shop"?"candy-shop":t.theme==="chat-app-plum"?"chat-app-plum":"sme";
 var mode=t.mode||"system";
 var dark=mode==="dark"||(mode==="system"&&window.matchMedia("(prefers-color-scheme: dark)").matches);
 var d=document.documentElement;
@@ -100,7 +110,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${jakarta.variable} ${kodchasan.variable} ${instrumentSans.variable} ${bricolage.variable} ${splineMono.variable} ${fraunces.variable} ${nunito.variable}`}
+      className={`${jakarta.variable} ${kodchasan.variable} ${instrumentSans.variable} ${bricolage.variable} ${splineMono.variable} ${fraunces.variable} ${nunito.variable} ${inter.variable}`}
       suppressHydrationWarning
     >
       <body className="antialiased">

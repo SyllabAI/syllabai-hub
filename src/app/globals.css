@@ -657,6 +657,322 @@
   color: #ffe9f2;
 }
 
+/* ====================================================================
+   CHAT APP PLUM THEME (chat-app-plum-design-system, alpha) —
+   data-theme="chat-app-plum"
+   Port of https://github.com/nawaf-al-hussain/FileUpload/blob/main/
+   chat-app-plum-design-system.md onto the hub's QG architecture: light
+   raw block → one shared shadcn alias group → dark raw overrides ONLY →
+   theme-scoped authored layer (no component files touched).
+
+   The spec's laws, honored here:
+   - violet #7B44C7 is the ONLY interaction color and stays byte-identical
+     in light AND dark (the brand fill); hover darkens in light (#6838AD),
+     lightens in dark (#8A55DB); violet-AS-TEXT splits off (--accent-ink:
+     #7B44C7 light / #A678EE dark — spec §3.2 derivation)
+   - white-on-violet is 6.0:1 AA in both themes — this port needs NO
+     button contrast caveat (the spec's headline accessibility win)
+   - plum ink & mist paper swap in dark: #23132E↔#F4EFFA over plum-black
+     #161021 (never #000, never pure-white text)
+   - lavender whispers: raw #8672A0 does borders/fills only; TEXT duty
+     uses the spec's deepened lavender #5F4B7A light / #B3A3CC dark
+   - no green exists: success = violet (the spec's presence/read voice);
+     no amber either — warn rides a deepened lavender-violet with
+     warn-ink carrying body copy on washes (status never rides hue alone
+     in the hub; labels always accompany color). info = the spec's AA
+     muted, cat = plum ink, sim = raw lavender — the family ladder.
+   - destructive follows the spec's error semantics (§10.8: violet means
+     action, NOT error; errors are plum-ink): light destructive = plum
+     ink #23132E (white label 17:1). Dark splits the duty: --destructive
+     is the light plum-lavender #C9B7E4 for text/washes/borders (~9:1),
+     while FILLED destructive slots (button/badge/toast) get a solid deep
+     plum #3B2A52 in the authored layer so their hardcoded white labels
+     carry (~10:1)
+   - flat on purpose: static shadow utilities are zeroed; floating layers
+     re-receive the only sanctioned shadows (--shadow-pop /
+     --shadow-overlay, plum-tinted per §6); dark adds --glow-accent
+   - soft contained geometry: --radius 28 + pinned utility ladder
+     10/18/28 (inputs/selects = 10, badges/buttons = pill/18 per §10;
+     controls under ~32px exempt and untouched)
+   - one family: Inter everywhere (Law 8 — display chain is also Inter);
+     no mono override (spec defines none)
+   ==================================================================== */
+[data-theme="chat-app-plum"] {
+  /* brand constants — identical in both themes */
+  --plum: #23132e;
+  --lavender: #8672a0;
+  --violet: #7b44c7;
+  --mist: #f4effa;
+
+  /* surfaces / ink / lines (light raws) */
+  --bg: #f4effa;  --bg-deep: #ece5f6;
+  --surface: #ffffff;           --surface-raised: #ffffff;
+  --surface-recessed: #ece5f6;  --surface-sunken: #e4dbf3;
+  --ink: #23132e;  --ink-soft: #5f4b7a;  --ink-faint: #8672a0;  --ink-faintest: #a99bc2;
+  --line: rgba(134, 114, 160, 0.32);  --line-soft: rgba(134, 114, 160, 0.18);
+  --line-strong: #8672a0;
+
+  /* action / danger / status raws */
+  --primary-pm: #7b44c7;  --primary-pm-hover: #6838ad;  --on-primary-pm: #ffffff;
+  --accent-ink: #7b44c7;
+  --danger-pm: #23132e;
+  --focus-pm: #8672a0;
+  --success: var(--violet);
+  --warn: #6e5a96;  --warn-ink: #3d2e58;
+  --info: #5f4b7a;
+  --cat: #23132e;  --sim: #8672a0;
+
+  /* the only sanctioned shadows (floating layers, §6) */
+  --shadow-pop: 0 10px 30px -8px rgba(35, 19, 46, 0.16);
+  --shadow-overlay: 0 20px 50px -12px rgba(35, 19, 46, 0.24);
+
+  /* geometry — soft, contained (pins below give the exact 10/18/28) */
+  --radius: 28px;
+
+  /* fonts — Inter does everything (Law 8: one family, weight-driven) */
+  --app-font-sans: var(--font-inter), "Segoe UI", "Helvetica Neue", sans-serif;
+  --app-font-display: var(--font-inter), "Segoe UI", "Helvetica Neue", sans-serif;
+
+  color-scheme: light;
+}
+
+/* shadcn alias contract — defined once, re-resolves in dark */
+[data-theme="chat-app-plum"],
+[data-theme="chat-app-plum"].dark {
+  --background: var(--bg);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface-raised);
+  --popover-foreground: var(--ink);
+  --primary: var(--primary-pm);
+  --primary-foreground: var(--on-primary-pm);
+  --secondary: var(--surface-recessed);
+  --secondary-foreground: var(--ink);
+  --muted: var(--surface-recessed);
+  --muted-foreground: var(--ink-soft);
+  --accent: var(--surface-sunken);
+  --accent-foreground: var(--ink);
+  --destructive: var(--danger-pm);
+  --border: var(--line);
+  --input: var(--line-strong);
+  --ring: var(--focus-pm);
+  --chart-1: var(--violet);
+  --chart-2: var(--lavender);
+  --chart-3: var(--primary-pm-hover);
+  --chart-4: var(--ink-soft);
+  --chart-5: var(--ink-faintest);
+  --sidebar: var(--bg-deep);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--primary-pm);
+  --sidebar-primary-foreground: var(--on-primary-pm);
+  --sidebar-accent: var(--surface);
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--focus-pm);
+}
+
+/* dark — lights off, plum on; violet fill keeps its color; raw values only */
+[data-theme="chat-app-plum"].dark {
+  --bg: #161021;  --bg-deep: #120d1b;
+  --surface: #221834;           --surface-raised: #2c2044;
+  --surface-recessed: #1b1329;  --surface-sunken: #332550;
+  --ink: #f4effa;  --ink-soft: #b3a3cc;  --ink-faint: #8672a0;  --ink-faintest: #6e5f8a;
+  --line: rgba(134, 114, 160, 0.4);  --line-soft: rgba(134, 114, 160, 0.24);
+  --line-strong: #8672a0;
+
+  --primary-pm: #7b44c7;        /* byte-identical — the brand never moves */
+  --primary-pm-hover: #8a55db;  /* hover moves toward the viewer in dark */
+  --accent-ink: #a678ee;
+  --danger-pm: #c9b7e4;         /* text/wash voice; FILLED slots override below */
+  --focus-pm: #a678ee;
+  --success: #a678ee;
+  --warn: #c4b0e8;  --warn-ink: #e8e0f6;
+  --info: #b3a3cc;
+  --cat: #f4effa;  --sim: #8a76ad;
+
+  --chart-1: #7b44c7;
+  --chart-2: #b3a3cc;
+  --chart-3: #a678ee;
+  --chart-4: #8a76ad;
+  --chart-5: #e2d6f6;
+
+  --shadow-pop: 0 10px 30px -8px rgba(0, 0, 0, 0.5);
+  --shadow-overlay: 0 20px 50px -12px rgba(0, 0, 0, 0.6);
+  --glow-accent: 0 0 20px rgba(123, 68, 199, 0.25);
+
+  color-scheme: dark;
+}
+
+/* ====================================================================
+   CHAT APP PLUM — authored layer (theme-scoped component signatures)
+   Everything targets [data-theme="chat-app-plum"] only; SME, QG and
+   candy are untouched. Component files are NOT modified for plum.
+   ==================================================================== */
+
+/* --- geometry: the 10/18/28 ladder. --radius is 28 under this theme, so
+       the calc chain (24/26/28/32) is pinned to the spec ladder instead.
+       The spec top rung is 28 (cards/dialogs/composer); rounded-xl pins
+       there too — nearest rung, never in between (§5). Small controls
+       (<~32px) are exempt per spec — checkbox/switch/radio ship arbitrary
+       or pill radii and are deliberately not touched. Buttons get 18
+       (radius-md) — the spec's own button radius. --- */
+[data-theme="chat-app-plum"] .rounded-sm { border-radius: 10px; }
+[data-theme="chat-app-plum"] .rounded-md { border-radius: 18px; }
+[data-theme="chat-app-plum"] .rounded-lg,
+[data-theme="chat-app-plum"] .rounded-xl { border-radius: 28px; }
+
+/* --- slot radii: inputs/selects = 10 (radius-sm rung, §10.8), badges =
+       pill (§10.12) --- */
+[data-theme="chat-app-plum"] :is([data-slot="input"], [data-slot="textarea"], [data-slot="select-trigger"]) {
+  border-radius: 10px;
+}
+[data-theme="chat-app-plum"] [data-slot="badge"] { border-radius: 999px; }
+
+/* --- depth: flat on purpose. Zero static shadows (anchored things
+       separate with 1px lavender hairlines); floating layers get the
+       only sanctioned ones back. --- */
+[data-theme="chat-app-plum"] :is(.shadow-2xs, .shadow-xs, .shadow-sm, .shadow, .shadow-md, .shadow-lg, .shadow-xl) {
+  --tw-shadow: 0 0 #0000;
+  --tw-shadow-colored: 0 0 #0000;
+}
+[data-theme="chat-app-plum"] :is(
+  [data-slot="popover-content"],
+  [data-slot="dropdown-menu-content"],
+  [data-slot="select-content"],
+  [data-slot="tooltip-content"],
+  [data-slot="toast"],
+  [data-sonner-toast]
+) {
+  box-shadow: var(--shadow-pop);
+}
+[data-theme="chat-app-plum"] :is([data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="sheet-content"]) {
+  box-shadow: var(--shadow-overlay);
+}
+
+/* --- buttons: the plum signature. Label voice (Inter 600 uppercase
+       0.04em — §10.1's exact label style; component font-size kept so
+       dense headers don't wrap), squash on press with the spec's spring
+       release, hover toward the sanctioned variant, faint violet glow in
+       dark (the send/unread glow, §6). --- */
+[data-theme="chat-app-plum"] [data-slot="button"] {
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+[data-theme="chat-app-plum"] [data-slot="button"]:active {
+  transform: scale(0.97);
+  transition-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+[data-theme="chat-app-plum"] [data-slot="button"].bg-primary:hover {
+  background: var(--primary-pm-hover);
+}
+[data-theme="chat-app-plum"].dark [data-slot="button"].bg-primary {
+  box-shadow: var(--glow-accent);
+}
+
+/* --- dark filled destructive: --destructive is the light text voice in
+       dark, so the slots that render hardcoded white labels go solid
+       deep plum instead (spec §10.8 error language — never violet). --- */
+[data-theme="chat-app-plum"].dark :is(
+  [data-slot="button"].bg-destructive,
+  [data-slot="badge"].bg-destructive,
+  [data-slot="toast"].destructive
+) {
+  background: #3b2a52;
+}
+[data-theme="chat-app-plum"].dark [data-slot="toast"].destructive {
+  color: #f4effa;
+  border-color: var(--line-strong);
+}
+[data-theme="chat-app-plum"] [data-slot="button"].bg-destructive:hover {
+  background: var(--plum);
+}
+[data-theme="chat-app-plum"].dark [data-slot="button"].bg-destructive:hover {
+  background: #4a3766;
+}
+
+/* --- tabs: the underline signature — violet spine (the active voice,
+       §10.9 selected = accent-ink), active text = accent-ink --- */
+[data-theme="chat-app-plum"] [data-slot="tabs-list"] {
+  background: transparent;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  padding: 0;
+  gap: 1rem;
+  height: auto;
+}
+[data-theme="chat-app-plum"] [data-slot="tabs-trigger"] {
+  height: 2.25rem;
+  margin-bottom: -1px;
+  border-radius: 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  padding-inline: 0.25rem;
+}
+[data-theme="chat-app-plum"] [data-slot="tabs-trigger"]:hover {
+  background: transparent;
+  color: var(--ink);
+}
+[data-theme="chat-app-plum"] [data-slot="tabs-trigger"][data-state="active"] {
+  background: transparent;
+  border-bottom-color: var(--violet);
+  color: var(--accent-ink);
+  box-shadow: none;
+}
+
+/* --- framework chips: pill (§10.12), owned-hue voices (Study=violet,
+       Practice=lavender, Diagnose=plum). Light: deep ink on wash;
+       dark: light voice on deeper wash. --- */
+[data-theme="chat-app-plum"] .chip-study {
+  background: rgba(123, 68, 199, 0.12);
+  color: #6838ad;
+  border-radius: 999px;
+}
+[data-theme="chat-app-plum"] .chip-practice {
+  background: rgba(134, 114, 160, 0.16);
+  color: #5f4b7a;
+  border-radius: 999px;
+}
+[data-theme="chat-app-plum"] .chip-diagnose {
+  background: rgba(35, 19, 46, 0.08);
+  color: #23132e;
+  border-radius: 999px;
+}
+[data-theme="chat-app-plum"].dark .chip-study {
+  background: rgba(123, 68, 199, 0.22);
+  color: #a678ee;
+}
+[data-theme="chat-app-plum"].dark .chip-practice {
+  background: rgba(134, 114, 160, 0.24);
+  color: #c4b6de;
+}
+[data-theme="chat-app-plum"].dark .chip-diagnose {
+  background: rgba(244, 239, 250, 0.1);
+  color: #f4effa;
+}
+
+/* --- course sidebar active item: the conversation-list active recipe
+       (§10.11) — surface + hairline + 3px violet left spine --- */
+[data-theme="chat-app-plum"] a.course-nav-item[aria-current="page"] {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--line);
+  position: relative;
+}
+[data-theme="chat-app-plum"] a.course-nav-item[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 7px;
+  bottom: 7px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--violet);
+}
+
 /* --- Past Papers viewer (pdf-pane v3): pdf.js text layer + find highlights ---
    The text layer hosts transparent absolutely-positioned spans produced by
    pdf.js TextLayer; spans position themselves with

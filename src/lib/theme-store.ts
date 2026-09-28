@@ -1,11 +1,11 @@
 "use client";
 
 /**
- * Tri-theme store — SME (default), Quiet Green and Candy Shop, each
- * light/dark/system.
+ * Quad-theme store — SME (default), Quiet Green, Candy Shop and Chat App
+ * Plum, each light/dark/system.
  *
  * Persists to localStorage["syllabai-theme"] as
- *   { theme: "sme" | "quiet-green" | "candy-shop",
+ *   { theme: "sme" | "quiet-green" | "candy-shop" | "chat-app-plum",
  *     mode: "light" | "dark" | "system" }
  * and applies the resolved state to <html> as data-theme + .dark, exactly
  * like the inline no-flash bootstrap in src/app/layout.tsx (same key, same
@@ -15,8 +15,16 @@
  * the toggle component. No zustand/next-themes so the app shell stays lean.
  */
 
-export type ThemeName = "sme" | "quiet-green" | "candy-shop";
+export type ThemeName = "sme" | "quiet-green" | "candy-shop" | "chat-app-plum";
 export type ThemeMode = "light" | "dark" | "system";
+
+/** Whitelist — unknown stored values fall back to the default theme. */
+const THEME_NAMES: readonly ThemeName[] = [
+  "sme",
+  "quiet-green",
+  "candy-shop",
+  "chat-app-plum",
+];
 
 export interface ThemeState {
   theme: ThemeName;
@@ -66,12 +74,9 @@ function parseStored(): ThemeState {
     if (!raw) return INITIAL;
     const t = JSON.parse(raw) as { theme?: string; mode?: string };
     return {
-      theme:
-        t.theme === "quiet-green"
-          ? "quiet-green"
-          : t.theme === "candy-shop"
-            ? "candy-shop"
-            : "sme",
+      theme: THEME_NAMES.includes(t.theme as ThemeName)
+        ? (t.theme as ThemeName)
+        : "sme",
       mode:
         t.mode === "light" || t.mode === "dark" || t.mode === "system"
           ? t.mode
@@ -136,6 +141,7 @@ export const THEME_LABEL: Record<ThemeName, string> = {
   sme: "SME",
   "quiet-green": "Quiet Green",
   "candy-shop": "Candy Shop",
+  "chat-app-plum": "Chat App Plum",
 };
 
 export const MODE_LABEL: Record<ThemeMode, string> = {
