@@ -48,6 +48,7 @@ import {
   type LearnerModel,
 } from "./learner-state";
 import { api, getToken } from "./api";
+import { summarizeCardReviews, type CardReviewSummary } from "./flashcard-review";
 import type { LearnerStateView, LearnerKnowledgeGraphView, AttemptHistoryView } from "./types";
 import { fetchPilotInfo } from "./attempt-bridge";
 
@@ -154,6 +155,11 @@ export interface LearnerDrawerState {
   upcoming: ReviewItem[];
   /** misconception watch (KG phase 3) — null when the course has no corpus */
   misconceptionWatch: MisconceptionWatch | null;
+  /** tranche 4.6: the Ebbinghaus flashcard review queue, scheduled from the
+   *  device-local rating trail (lib/flashcard-review.ts) — null when no card
+   *  was ever rated on this browser. Self-report feeds SCHEDULING only; the
+   *  attempts reviewQueue above stays the mastery-derived queue. */
+  cardReviews?: CardReviewSummary | null;
   /** recorded evidence stream, newest first (capped) */
   events: LearnerEvent[];
   /** number of recorded signals before the display cap */
@@ -798,8 +804,25 @@ export function useLearnerState(course: string): LearnerStateBundle {
     };
   }, [progress, bridge, titles, failed]);
 
-  if (coreResult) return coreResult;
-  if (simResult) return simResult;
+  // tranche 4.6: the flashcard review queue derives from the device-local
+  // rating trail in BOTH modes (the core mirror is additive — every rating
+  // lands locally first), so it is stamped once here where the paths
+  // converge and neither derivation can drift from the other
+  const cardReviews = useMemo(
+    () => summarizeCardReviews(progress.flashcards, Date.now()),
+    [progress],
+  );
+
+  if (coreResult) {
+    return coreResult.drawer
+      ? { ...coreResult, drawer: { ...coreResult.drawer, cardReviews } }
+      : coreResult;
+  }
+  if (simResult) {
+    return simResult.drawer
+      ? { ...simResult, drawer: { ...simResult.drawer, cardReviews } }
+      : simResult;
+  }
   return { overlay: null, drawer: null, source: "simulated" };
 }
 

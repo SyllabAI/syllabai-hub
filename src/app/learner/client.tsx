@@ -70,7 +70,7 @@ export function LearnerClient() {
         </TabsList>
         <div className="mt-3">
           <TabsContent value="state" className="mt-0">
-            <StateTab drawer={drawer} live={live} />
+            <StateTab drawer={drawer} live={live} course={PILOT_COURSE_SLUG} />
           </TabsContent>
           <TabsContent value="history" className="mt-0">
             <HistoryTab drawer={drawer} />

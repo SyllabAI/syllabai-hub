@@ -253,6 +253,7 @@ export function KnowledgeGraphClient({ courses }: { courses: CourseLite[] }) {
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
         courseLabel={current?.label ?? "this course"}
+        course={activeCourse}
         drawer={drawer}
         source={source}
       />

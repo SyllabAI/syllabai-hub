@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { loadHubCourse } from "@/lib/courses";
 import { CourseHeader } from "@/components/hub/course-header";
 import { NumberedLabel } from "@/components/hub/chrome";
+import { DeckDueBadge } from "./deck-due-badge";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +37,7 @@ export default async function FlashcardsIndexPage({
         meta={meta}
         title={`Edexcel ${meta.level} ${meta.label} Flashcards`}
         crumb="Flashcards"
-        description={`Per-sub-topic recall decks — ${stats.flashcards} cards. Rating a card (Still learning / Know) feeds your sub-topic rings in the local overlay; on the pilot course, signed-in learners also record ratings to their account as self-report evidence (never mastery).`}
+        description={`Per-sub-topic recall decks — ${stats.flashcards} cards. Rating a card (Still learning / Know) feeds your sub-topic rings in the local overlay; rated cards return on an expanding review schedule, and on the pilot course signed-in learners also record ratings to their account as self-report evidence (never mastery).`}
       />
 
       <div className="mt-6 space-y-2">
@@ -63,6 +64,7 @@ export default async function FlashcardsIndexPage({
               <p className="min-w-0 flex-1 truncate text-sm font-semibold group-hover:text-primary">
                 {d.subtopic.title}
               </p>
+              <DeckDueBadge course={meta.slug} subtopicCode={d.subtopic.code} />
               <ArrowRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden />
             </div>
             <p className="mt-1 truncate text-xs text-muted-foreground">

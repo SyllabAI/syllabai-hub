@@ -29,7 +29,19 @@ export interface CourseProgress {
   /** keyed by questionId — a question counts as attempted once any part is scored */
   selfScores: Record<string, { subtopic: string | null; topicSlug: string | null; score: number; max: number; at: number }>;
   mcqAnswers: Record<string, { subtopic: string | null; topicSlug: string | null; chosen: string | null; correct: boolean; at: number }>;
-  flashcards: Record<string, { subtopic: string | null; rating: FlashcardRating; at: number }>;
+  flashcards: Record<
+    string,
+    {
+      subtopic: string | null;
+      rating: FlashcardRating;
+      at: number;
+      /** tranche 4.6: bounded rating trail (newest last) — the feed the
+       *  Ebbinghaus review scheduler (lib/flashcard-review.ts) consumes.
+       *  Optional so pre-4.6 records keep loading; they schedule
+       *  conservatively from the latest rating alone. */
+      trail?: Array<{ rating: FlashcardRating; at: number }>;
+    }
+  >;
   saved: Record<string, { subtopic: string | null; topicSlug: string | null; at: number }>;
   /**
    * Typed answer workspace (SME "type your answer" for structured questions),
@@ -47,6 +59,10 @@ export const emptyProgress = (): CourseProgress => ({
   saved: {},
   typedAnswers: {},
 });
+
+/** Bounded per-card rating trail (tranche 4.6) — see flashcards above and
+ *  lib/flashcard-review.ts (the scheduler that reads it). */
+export const TRAIL_CAP = 10;
 
 const keyFor = (course: string) => `syllabai-hub:progress:${course}`;
 const isBrowser = typeof window !== "undefined";
@@ -242,10 +258,21 @@ export function rateFlashcard(
   subtopic: string | null,
   rating: FlashcardRating,
 ) {
-  mutate(course, (p) => ({
-    ...p,
-    flashcards: { ...p.flashcards, [cardId]: { subtopic, rating, at: Date.now() } },
-  }));
+  mutate(course, (p) => {
+    const prev = p.flashcards[cardId];
+    const at = Date.now();
+    // tranche 4.6: append to the bounded trail (newest last) — the local
+    // overlay stays the COMPLETE per-device trail the scheduler reads;
+    // the core mirror (flashcard-bridge) remains the account-side record
+    const trail = [
+      ...(prev?.trail ?? []),
+      { rating, at },
+    ].slice(-TRAIL_CAP);
+    return {
+      ...p,
+      flashcards: { ...p.flashcards, [cardId]: { subtopic, rating, at, trail } },
+    };
+  });
 }
 
 export function toggleSavedQuestion(

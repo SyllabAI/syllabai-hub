@@ -7,15 +7,20 @@
  * queue); on the pilot course, when signed in, they additionally record to
  * the learner's core account as append-only self-report evidence
  * (tranche 4.4 — lib/flashcard-bridge, never mastery, degrades silently).
+ *
+ * Tranche 4.6: the deck is also where the Ebbinghaus review queue is worked
+ * — cards whose rating trail says they are due again carry a badge, and
+ * "Review due first" lifts them (stalest due first) to the front of the run.
  */
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, RotateCcw, Shuffle } from "lucide-react";
+import { CalendarClock, ChevronLeft, RotateCcw, Shuffle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Markdown } from "@/components/markdown";
 import { rateFlashcard, useCourseProgress, type Course, type FlashcardRating } from "@/lib/progress";
+import { scheduleCards } from "@/lib/flashcard-review";
 import { getToken } from "@/lib/api";
 import { PILOT_COURSE_SLUG } from "@/lib/attempt-bridge";
 import { submitFlashcardRating } from "@/lib/flashcard-bridge";
@@ -66,6 +71,25 @@ export function DeckPlayer({
   );
   const stillLearning = rated.filter(([, v]) => v.rating === "still-learning").length;
   const know = rated.filter(([, v]) => v.rating === "know").length;
+
+  // tranche 4.6: the Ebbinghaus schedule over this browser's rating trail —
+  // due cards (stalest first) can be lifted to the front of the run, and the
+  // card being shown carries an honest "due for review" marker while it is
+  // due. Recomputes on every rating, so a just-rated card leaves (or joins)
+  // the queue immediately.
+  const schedules = useMemo(
+    () => scheduleCards(progress.flashcards, Date.now()),
+    [progress.flashcards],
+  );
+  const scheduleById = useMemo(() => new Map(schedules.map((c) => [c.cardId, c])), [schedules]);
+  const dueStalestFirst = useMemo(
+    () =>
+      schedules
+        .filter((c) => c.due && byId.has(c.cardId))
+        .sort((a, b) => a.dueAt - b.dueAt || a.cardId.localeCompare(b.cardId))
+        .map((c) => c.cardId),
+    [schedules, byId],
+  );
 
   const advance = (rating: FlashcardRating | null) => {
     if (!current) return;
@@ -150,12 +174,34 @@ export function DeckPlayer({
           </Badge>
         )}
         <div className="ml-auto flex flex-wrap items-center gap-2">
+          {dueStalestFirst.length > 0 && (
+            <Badge variant="outline" className="border-warn/40 text-[10px] text-warn">
+              {dueStalestFirst.length} due for review
+            </Badge>
+          )}
           <Badge variant="outline" className="border-destructive/30 text-[10px] text-destructive">
             {stillLearning} still learning
           </Badge>
           <Badge variant="outline" className="border-success/30 text-[10px] text-success">
             {know} know
           </Badge>
+          {dueStalestFirst.length > 0 && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="gap-1.5 text-xs"
+              onClick={() => {
+                // lift the due cards to the front, stalest due first; the
+                // rest keep their current run order behind them
+                const dueSet = new Set(dueStalestFirst);
+                setOrder([...dueStalestFirst, ...order.filter((id) => !dueSet.has(id))]);
+                setPos(0);
+                setFlipped(false);
+              }}
+            >
+              <CalendarClock className="size-3.5" aria-hidden /> Review due first
+            </Button>
+          )}
           <Button size="sm" variant="ghost" className="gap-1.5 text-xs" onClick={shuffle}>
             <Shuffle className="size-3.5" aria-hidden /> Shuffle
           </Button>
@@ -199,6 +245,15 @@ export function DeckPlayer({
             <Badge variant="outline" className="text-[10px]">
               {current.provenanceTier}
             </Badge>
+            {scheduleById.get(current.id)?.due && (
+              <Badge
+                variant="outline"
+                className="text-[10px] border-warn/40 text-warn"
+                title="Your rating trail says this card is due for review again"
+              >
+                due for review
+              </Badge>
+            )}
             <span>{flipped ? "Back" : "Front"}</span>
             {current.sourceTitle && (
               <Link

@@ -29,6 +29,7 @@ import {
   Gauge,
   Hourglass,
   Info,
+  Layers,
   ListChecks,
   ScanEye,
   TriangleAlert,
@@ -211,7 +212,17 @@ function MisconceptionWatchCard({ watch, live = false }: { watch: MisconceptionW
 
 /** Exported for reuse by /learner (My Progress) — one derivation, one UI,
  * so the KG drawer and the page can never disagree (ADR-029 tranche 4.1). */
-export function StateTab({ drawer, live = false }: { drawer: LearnerDrawerState; live?: boolean }) {
+export function StateTab({
+  drawer,
+  live = false,
+  course,
+}: {
+  drawer: LearnerDrawerState;
+  live?: boolean;
+  /** course slug — when present, due decks deep-link into the player
+   *  (tranche 4.6 flashcard queue) */
+  course?: string;
+}) {
   const stats = drawer.stats;
   const exposureOnly = Math.max(0, stats.touched - stats.measured);
 
@@ -372,6 +383,64 @@ export function StateTab({ drawer, live = false }: { drawer: LearnerDrawerState;
           )}
         </div>
       </section>
+
+      {/* flashcard review queue (tranche 4.6) — scheduled from the rating
+          trail, a self-report evidence class distinct from the mastery queue
+          above: it colors review TIMING, never the mastery bands */}
+      {drawer.cardReviews && (
+        <section className="rounded-lg border">
+          <header className="flex items-center gap-2 border-b px-3 py-2">
+            <Layers className="size-4 text-primary" aria-hidden />
+            <h3 className="text-sm font-semibold">Flashcards due</h3>
+            <Badge variant="outline" className="font-mono text-[10px] text-muted-foreground">
+              {drawer.cardReviews.due}
+            </Badge>
+          </header>
+          <div className="px-3 py-2">
+            {drawer.cardReviews.due === 0 ? (
+              <p className="py-2 text-xs text-muted-foreground">
+                Nothing due — next card{" "}
+                {drawer.cardReviews.nextDueAt
+                  ? formatDue(drawer.cardReviews.nextDueAt, Date.now())
+                  : "has no schedule"}
+                .
+              </p>
+            ) : (
+              <ul className="divide-y">
+                {drawer.cardReviews.decks.map((d) => (
+                  <li key={d.subtopic} className="flex items-center gap-2 py-2 first:pt-0 last:pb-0">
+                    <SpecChip code={d.subtopic} />
+                    <Badge
+                      variant="outline"
+                      className="shrink-0 border-warn/40 text-[10px] text-warn"
+                    >
+                      {d.due} due
+                    </Badge>
+                    {course && (
+                      <Button
+                        asChild
+                        size="sm"
+                        variant="ghost"
+                        className="ml-auto h-7 shrink-0 gap-1 px-2 text-[11px]"
+                      >
+                        <Link href={`/courses/${course}/flashcards/${d.subtopic}`}>
+                          open deck
+                        </Link>
+                      </Button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-2 border-t pt-2 text-[10px] leading-relaxed text-muted-foreground">
+              Scheduled from your ratings on this browser: “still learning” resurfaces
+              immediately; “know” returns on an expanding Ebbinghaus ladder
+              (1 · 2 · 4 · 8 · 16 · 32 days) and every re-rate resets its clock.
+              Self-report drives review timing only — never mastery.
+            </p>
+          </div>
+        </section>
+      )}
 
       {/* mastery table */}
       <section className="rounded-lg border">
@@ -616,12 +685,15 @@ export function LearnerStateDrawer({
   open,
   onOpenChange,
   courseLabel,
+  course,
   drawer,
   source = "simulated",
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   courseLabel: string;
+  /** course slug — deep-links the tranche-4.6 flashcard queue into decks */
+  course?: string;
   drawer: LearnerDrawerState | null;
   /** core = the pilot's real learner model from the backend; simulated = the
    *  browser-local demo overlay. Only the provenance labels change. */
@@ -655,7 +727,7 @@ export function LearnerStateDrawer({
             <div className="p-4">
               <TabsContent value="state" className="mt-0">
                 {drawer ? (
-                  <StateTab drawer={drawer} live={live} />
+                  <StateTab drawer={drawer} live={live} course={course} />
                 ) : (
                   <p className="text-xs text-muted-foreground">
                     The content bridge is still loading — the state view appears once it
