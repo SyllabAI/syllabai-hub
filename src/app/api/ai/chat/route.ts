@@ -6,6 +6,7 @@ import {
   coreErrorDetail,
 } from "@/lib/core-proxy";
 import { mapCitation, type CoreCitation } from "@/lib/citation-map";
+import { rateLimit, rateLimitKey, rateLimitResponse, type RateLimitRule } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -37,6 +38,17 @@ const SSE_HEADERS = {
 } as const;
 
 /**
+ * Phase-1 hardening: burst + sustained caps for one learner on the tutor
+ * relay (a real tutor turn takes seconds; nobody legitimate needs more).
+ * Per-instance on serverless — see lib/rate-limit.ts for the honesty note;
+ * core's own per-JWT limiter stays authoritative.
+ */
+const CHAT_LIMITS: RateLimitRule[] = [
+  { limit: 10, windowMs: 60_000 },
+  { limit: 60, windowMs: 3_600_000 },
+];
+
+/**
  * POST /api/ai/chat — grounded tutor, PROXIED to syllabai-core (ADR-029 R3).
  *
  * Streaming contract (tutor SSE tranche): core's `/api/v1/tutor/ask/stream`
@@ -61,6 +73,15 @@ const SSE_HEADERS = {
  * core's §22 session store is a recorded follow-up tranche.
  */
 export async function POST(req: NextRequest) {
+  const token =
+    req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "") ??
+    (req.cookies.get("syllabai.token")?.value ?? null);
+
+  // Rate-limit BEFORE any body parsing or core fan-out; anonymous callers
+  // key on IP and fall through to the 401 below.
+  const limited = rateLimit(rateLimitKey(req, "ai/chat"), CHAT_LIMITS);
+  if (!limited.ok) return rateLimitResponse(limited);
+
   let parsed: z.infer<typeof Body>;
   try {
     parsed = Body.parse(await req.json());
@@ -71,9 +92,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const token =
-    req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "") ??
-    (req.cookies.get("syllabai.token")?.value ?? null);
   if (!token) {
     return Response.json(
       { error: "unauthorized", detail: "Sign in to use the tutor — it runs on your SyllabAI account." },

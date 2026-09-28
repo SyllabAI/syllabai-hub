@@ -3,6 +3,7 @@ import { z } from "zod";
 import { coreBaseUrl, coreFetchAuthorized, coreErrorDetail } from "@/lib/core-proxy";
 import { mapCitation } from "@/lib/citation-map";
 import { listCourses } from "@/lib/courses";
+import { rateLimit, rateLimitKey, rateLimitResponse, type RateLimitRule } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -46,6 +47,16 @@ const QuestionBody = z.object({
 
 const Body = z.discriminatedUnion("kind", [NoteBody, TopicBody, QuestionBody]);
 
+/**
+ * Phase-1 hardening: burst + sustained caps for one learner on the CLA relay
+ * (mirrors the tutor limits; per-instance on serverless — see
+ * lib/rate-limit.ts for the honesty note; core stays authoritative).
+ */
+const CLA_LIMITS: RateLimitRule[] = [
+  { limit: 10, windowMs: 60_000 },
+  { limit: 60, windowMs: 3_600_000 },
+];
+
 // ── core anchor resolution — shared with the 4CH1 question bridge ──────────
 import {
   rootIdForCourseCode,
@@ -77,6 +88,15 @@ import {
  * — guidance, never error noise).
  */
 export async function POST(req: NextRequest) {
+  const token =
+    req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "") ??
+    (req.cookies.get("syllabai.token")?.value ?? null);
+
+  // Rate-limit BEFORE any body parsing or core fan-out; anonymous callers
+  // key on IP and fall through to the 401 below.
+  const limited = rateLimit(rateLimitKey(req, "ai/cla"), CLA_LIMITS);
+  if (!limited.ok) return rateLimitResponse(limited);
+
   let parsed: z.infer<typeof Body>;
   try {
     const raw = (await req.json()) as Record<string, unknown>;
@@ -89,9 +109,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const token =
-    req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "") ??
-    (req.cookies.get("syllabai.token")?.value ?? null);
   if (!token) {
     return Response.json(
       { error: "unauthorized", detail: "Sign in to use the assistant — it runs on your SyllabAI account." },
