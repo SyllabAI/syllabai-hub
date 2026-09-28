@@ -48,7 +48,6 @@
  */
 
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
@@ -57,6 +56,8 @@ import { Markdown } from "@/components/markdown";
 import {
   AlertTriangle,
   Compass,
+  FileText,
+  Info,
   Lightbulb,
   Loader2,
   Lock,
@@ -276,6 +277,18 @@ export function QuestionClaOverlay({
           </SheetDescription>
         </SheetHeader>
 
+        {/* amber honesty banner — the Save My Exams reference panel's
+            signature (HUB-TUTOR-CLA-LOOK), on the hub's theme-aware warn
+            tokens */}
+        <div className="flex items-start gap-2 border-b bg-warn/10 px-4 py-2.5 text-xs leading-relaxed text-warn-ink">
+          <Info className="mt-0.5 size-3.5 shrink-0 text-warn" aria-hidden />
+          <p>
+            The assistant can make mistakes. It answers only from this
+            question&apos;s own text plus validated material — check the
+            citations on every answer.
+          </p>
+        </div>
+
         {/* server-anchored context card: the question IS the anchor — the
             server resolves the whole family's first row and serves the stem
             plus every part prompt as id-anchored lead evidence */}
@@ -340,26 +353,31 @@ export function QuestionClaOverlay({
               onClick={() => setFreeMode(m)}
               aria-pressed={freeMode === m}
               className={cn(
-                "rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors",
+                "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors",
                 freeMode === m
                   ? "border-primary bg-primary text-primary-foreground"
                   : "border-border text-muted-foreground hover:border-primary/40",
               )}
             >
-              {m}
+              {m === "EXPLAIN" ? (
+                <Compass className="size-3" aria-hidden />
+              ) : (
+                <Lightbulb className="size-3" aria-hidden />
+              )}
+              {m === "EXPLAIN" ? "Explain" : "Hint"}
             </button>
           ))}
           <span
             title="Summarise is a topic/notes mode — use the notes overlay or the assistant tab"
             className="cursor-not-allowed rounded-full border border-dashed px-2.5 py-0.5 text-[11px] text-muted-foreground/60"
           >
-            SUMMARIZE
+            Summarize
           </span>
           <span
             title="Post-attempt review lives with Smart Mark (Explain my feedback) — attempt-gated in production"
             className="cursor-not-allowed rounded-full border border-dashed px-2.5 py-0.5 text-[11px] text-muted-foreground/60"
           >
-            CHECK
+            Check
           </span>
         </div>
 
@@ -421,7 +439,7 @@ export function QuestionClaOverlay({
           )}
           {messages.map((m, i) =>
             m.kind === "user" ? (
-              <div key={i} className="ml-auto w-fit max-w-[85%] rounded-lg bg-primary px-3 py-2 text-[13px] text-primary-foreground">
+              <div key={i} className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-md bg-muted px-3 py-2 text-[13px]">
                 {m.text}
               </div>
             ) : m.kind === "assistant" ? (
@@ -441,16 +459,19 @@ export function QuestionClaOverlay({
                 )}
                 <Markdown className="text-sm [&_p]:text-sm">{m.result.answer}</Markdown>
                 {m.result.citations.length > 0 && !m.result.refused && (
-                  <div className="flex flex-wrap gap-1 pt-0.5">
+                  <div className="flex flex-wrap gap-1.5 pt-0.5">
                     {m.result.citations.map((c: ClaCitation) => (
-                      <Badge
+                      <span
                         key={c.index}
-                        variant="outline"
-                        className="max-w-full truncate text-[10px] font-normal"
+                        className="inline-flex max-w-full items-center gap-1.5 rounded-full border bg-background px-2.5 py-1 text-[11px]"
                         title={c.label}
                       >
-                        [{c.index}] {c.label}
-                      </Badge>
+                        <span className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
+                          {c.index}
+                        </span>
+                        <FileText className="size-3 shrink-0 text-muted-foreground" aria-hidden />
+                        <span className="max-w-48 truncate font-medium">{c.label}</span>
+                      </span>
                     ))}
                   </div>
                 )}
@@ -539,8 +560,8 @@ export function QuestionClaOverlay({
               onChange={(e) => setDraft(e.target.value)}
               placeholder={
                 freeMode === "HINT" && target?.anchor === "QUESTION_PART"
-                  ? `Ask about part (${target.label})…`
-                  : "Ask about this question…"
+                  ? `What needs explaining about part (${target.label})?`
+                  : "What needs explaining?"
               }
               maxLength={2000}
               disabled={busy}

@@ -25,7 +25,9 @@ import { useEffect, useRef, useState } from "react";
 import {
   BookMarked,
   BookOpenText,
+  FileText,
   GraduationCap,
+  Info,
   Loader2,
   ListChecks,
   Send,
@@ -227,6 +229,17 @@ export function NoteCla({
             </SheetDescription>
           </SheetHeader>
 
+          {/* amber honesty banner — the Save My Exams reference panel's
+              signature (HUB-TUTOR-CLA-LOOK), on the hub's theme-aware warn
+              tokens */}
+          <div className="flex items-start gap-2 border-b bg-warn/10 px-4 py-2.5 text-xs leading-relaxed text-warn-ink">
+            <Info className="mt-0.5 size-3.5 shrink-0 text-warn" aria-hidden />
+            <p>
+              The assistant can make mistakes. It answers only from this note
+              and validated material — check the citations on every answer.
+            </p>
+          </div>
+
           {/* server-resolved context: data, not judgment (production §3) */}
           <div className="space-y-1.5 border-b bg-muted/40 px-4 py-3">
             <div className="flex items-start gap-2">
@@ -260,13 +273,18 @@ export function NoteCla({
                 onClick={() => setFreeMode(m)}
                 aria-pressed={freeMode === m}
                 className={cn(
-                  "rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors",
+                  "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors",
                   freeMode === m
                     ? "border-primary bg-primary text-primary-foreground"
                     : "border-border text-muted-foreground hover:border-primary/40",
                 )}
               >
-                {m}
+                {m === "EXPLAIN" ? (
+                  <Sparkles className="size-3" aria-hidden />
+                ) : (
+                  <ListChecks className="size-3" aria-hidden />
+                )}
+                {m === "EXPLAIN" ? "Explain" : "Summarize"}
               </button>
             ))}
             {(["HINT", "CHECK"] as const).map((m) => (
@@ -275,7 +293,7 @@ export function NoteCla({
                 title="Question contexts only — arriving with the exam-question CLA (attempt-gated in production)"
                 className="cursor-not-allowed rounded-full border border-dashed px-2.5 py-0.5 text-[11px] text-muted-foreground/60"
               >
-                {m}
+                {m === "HINT" ? "Hint" : "Check"}
               </span>
             ))}
           </div>
@@ -313,7 +331,7 @@ export function NoteCla({
             )}
             {thread.map((m, i) =>
               m.role === "user" ? (
-                <div key={i} className="ml-auto w-fit max-w-[85%] rounded-lg bg-primary px-3 py-2 text-[13px] text-primary-foreground">
+                <div key={i} className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-md bg-muted px-3 py-2 text-[13px]">
                   {m.content}
                 </div>
               ) : (
@@ -332,16 +350,19 @@ export function NoteCla({
                   )}
                   <Markdown className="text-sm [&_p]:text-sm">{m.content}</Markdown>
                   {m.citations && m.citations.length > 0 && !m.refused && (
-                    <div className="flex flex-wrap gap-1 pt-0.5">
+                    <div className="flex flex-wrap gap-1.5 pt-0.5">
                       {m.citations.map((c) => (
-                        <Badge
+                        <span
                           key={c.index}
-                          variant="outline"
-                          className="max-w-full truncate text-[10px] font-normal"
+                          className="inline-flex max-w-full items-center gap-1.5 rounded-full border bg-background px-2.5 py-1 text-[11px]"
                           title={c.label}
                         >
-                          [{c.index}] {c.label}
-                        </Badge>
+                          <span className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
+                            {c.index}
+                          </span>
+                          <FileText className="size-3 shrink-0 text-muted-foreground" aria-hidden />
+                          <span className="max-w-48 truncate font-medium">{c.label}</span>
+                        </span>
                       ))}
                     </div>
                   )}

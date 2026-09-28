@@ -171,7 +171,7 @@ export function ThreadSidebar({
                   const active = c.sessionId === activeSessionId;
                   const opening = openingId === c.sessionId;
                   return (
-                    <li key={c.sessionId} className="group/item relative flex items-center rounded-md transition-colors">
+                    <li key={c.sessionId} className="group/item relative flex items-center rounded-lg transition-colors">
                       <button
                         type="button"
                         disabled={opening}
@@ -277,7 +277,7 @@ export function ThreadSidebar({
                       ) : (
                         <div
                           className={cn(
-                            "group/item relative flex items-center rounded-md transition-colors",
+                            "group/item relative flex items-center rounded-lg transition-colors",
                             active ? "bg-sidebar-accent" : "hover:bg-sidebar-accent/60",
                           )}
                         >

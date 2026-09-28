@@ -25,17 +25,19 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  ArrowUp,
   BookOpenCheck,
+  Compass,
   FileQuestion,
+  FileText,
+  Info,
   Lightbulb,
   ListChecks,
   Loader2,
   Lock,
-  Send,
   Sparkles,
   TriangleAlert,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -103,10 +105,10 @@ interface ClaMessage {
 const MAX_QUESTION_CHARS = 600; // mirrors the API contract (note island parity)
 
 const MODES: { value: Mode; label: string; hint: string; questionOnly: boolean }[] = [
-  { value: "EXPLAIN", label: "EXPLAIN", hint: "Teach the topic from validated sources", questionOnly: false },
-  { value: "SUMMARIZE", label: "SUMMARIZE", hint: "Compress the anchored material", questionOnly: false },
-  { value: "HINT", label: "HINT", hint: "Scaffolding only — never the answer", questionOnly: true },
-  { value: "CHECK", label: "CHECK", hint: "Full mark-scheme feedback after your attempt", questionOnly: true },
+  { value: "EXPLAIN", label: "Explain", hint: "Teach the topic from validated sources", questionOnly: false },
+  { value: "SUMMARIZE", label: "Summarize", hint: "Compress the anchored material", questionOnly: false },
+  { value: "HINT", label: "Hint", hint: "Scaffolding only — never the answer", questionOnly: true },
+  { value: "CHECK", label: "Check", hint: "Full mark-scheme feedback after your attempt", questionOnly: true },
 ];
 
 export function AssistantClient({
@@ -258,58 +260,69 @@ export function AssistantClient({
     !draft.trim() ||
     (kind === "SPEC_TOPIC" ? !topicCode : !questionId);
 
+  // the composer's anchor summary — one honest line for "what am I anchored
+  //  to" (HUB-TUTOR-CLA-LOOK, the SME explain-panel reference)
+  const selectedTopic = topics.find((t) => t.code === topicCode) ?? null;
+  const anchorSummary =
+    kind === "SPEC_TOPIC"
+      ? selectedTopic
+        ? `${selectedTopic.number}. ${selectedTopic.title}`
+        : "No topic picked yet"
+      : question
+        ? `${question.label.slice(0, 48)}${question.label.length > 48 ? "…" : ""} · ${question.marks} marks`
+        : "No question picked yet";
+
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-6">
-      {/* header */}
-      <div className="flex items-start gap-3">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-          <Sparkles className="size-5 text-primary" aria-hidden />
-        </span>
-        <div className="min-w-0">
-          <h1 className="text-lg font-bold leading-tight">Contextual Learning Assistant</h1>
-          <p className="text-[13px] leading-snug text-muted-foreground">
-            Explicit context, explicit mode — every answer is grounded in the bundled corpus,
-            cited, and refused rather than guessed when the material doesn&apos;t support it.
+    <div className="mx-auto w-full max-w-3xl px-4 py-6">
+      {/* the SME explain-panel reference (HUB-TUTOR-CLA-LOOK): one chat
+          canvas — identity strip, amber honesty banner, anchor bar,
+          transcript, composer card */}
+      <div className="flex min-h-[34rem] flex-col overflow-hidden rounded-xl border bg-background">
+        {/* identity strip — the shared chat-canvas header */}
+        <div className="flex items-center gap-2.5 border-b px-4 py-3">
+          <span
+            className="flex size-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary/70 text-primary-foreground"
+            aria-hidden="true"
+          >
+            <Sparkles className="size-4" />
+          </span>
+          <div className="leading-tight">
+            <h1 className="text-sm font-semibold">Contextual Learning Assistant</h1>
+            <p className="text-[11px] text-muted-foreground">
+              you pick the context — it answers from validated course material
+            </p>
+          </div>
+        </div>
+
+        {/* amber honesty banner — the reference's signature, on the hub's
+            theme-aware warn tokens */}
+        <div className="flex items-start gap-2 border-b bg-warn/10 px-4 py-2.5 text-xs leading-relaxed text-warn-ink">
+          <Info className="mt-0.5 size-3.5 shrink-0 text-warn" aria-hidden />
+          <p>
+            The assistant can make mistakes. It answers only from validated course
+            material, with citations — always check them.
           </p>
         </div>
-      </div>
 
-      {/* context + mode controls */}
-      <div className="space-y-3 rounded-xl border bg-card px-4 py-4">
-        <div className="grid gap-3 sm:grid-cols-2">
-          {/* course */}
-          <div className="space-y-1.5">
-            <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Course</span>
-            <Select value={course.slug} onValueChange={(slug) => router.push(`/assistant?course=${slug}`)}>
-              <SelectTrigger className="h-9" aria-label="Course">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="max-h-72">
-                {courses.map((c) => (
-                  <SelectItem key={c.slug} value={c.slug}>
-                    {c.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {/* context kind */}
-          <div className="space-y-1.5">
-            <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Context</span>
-            <div className="flex gap-1.5" role="tablist" aria-label="Context kind">
+        {/* anchor bar — the §3 explicit-context contract as pill segments +
+            compact selects (the s129 overlay vocabulary, now shared) */}
+        <div className="space-y-2.5 border-b px-4 py-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Anchor</span>
+            <span className="flex items-center gap-1.5" role="tablist" aria-label="Context kind">
               <button
                 type="button"
                 role="tab"
                 aria-selected={kind === "SPEC_TOPIC"}
                 onClick={() => switchKind("SPEC_TOPIC")}
                 className={cn(
-                  "flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md border text-[13px] font-medium transition-colors",
+                  "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors",
                   kind === "SPEC_TOPIC"
                     ? "border-primary bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:border-primary/40",
+                    : "border-border text-muted-foreground hover:border-primary/40",
                 )}
               >
-                <Sparkles className="size-3.5" aria-hidden /> Topic
+                <Sparkles className="size-3" aria-hidden /> Topic
               </button>
               <button
                 type="button"
@@ -319,17 +332,30 @@ export function AssistantClient({
                 disabled={questionTopics.length === 0}
                 title={questionTopics.length === 0 ? "This course has no exam-question sets yet" : undefined}
                 className={cn(
-                  "flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md border text-[13px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                  "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
                   kind === "EXAM_QUESTION"
                     ? "border-primary bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:border-primary/40",
+                    : "border-border text-muted-foreground hover:border-primary/40",
                 )}
               >
-                <FileQuestion className="size-3.5" aria-hidden /> Question
+                <FileQuestion className="size-3" aria-hidden /> Question
               </button>
+            </span>
+            <div className="ml-auto w-full sm:w-56">
+              <Select value={course.slug} onValueChange={(slug) => router.push(`/assistant?course=${slug}`)}>
+                <SelectTrigger className="h-8 w-full text-xs" aria-label="Course">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="max-h-72">
+                  {courses.map((c) => (
+                    <SelectItem key={c.slug} value={c.slug}>
+                      {c.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
-        </div>
 
         {/* anchored entity */}
         {kind === "SPEC_TOPIC" ? (
@@ -338,7 +364,7 @@ export function AssistantClient({
               Anchored topic — the server resolves it VALIDATED-only
             </span>
             <Select value={topicCode} onValueChange={setTopicCode}>
-              <SelectTrigger className="h-9" aria-label="Anchored topic">
+              <SelectTrigger className="h-8 w-full text-xs" aria-label="Anchored topic">
                 <SelectValue placeholder={topics.length === 0 ? "No spec tree for this course" : "Pick the topic you are studying"} />
               </SelectTrigger>
               <SelectContent className="max-h-72">
@@ -364,7 +390,7 @@ export function AssistantClient({
                   setQuestionId("");
                 }}
               >
-                <SelectTrigger className="h-9" aria-label="Question set">
+                <SelectTrigger className="h-8 w-full text-xs" aria-label="Question set">
                   <SelectValue placeholder="Pick the set you are working through" />
                 </SelectTrigger>
                 <SelectContent className="max-h-72">
@@ -386,7 +412,7 @@ export function AssistantClient({
                 onValueChange={setQuestionId}
                 disabled={!qTopicSlug || catalogLoading}
               >
-                <SelectTrigger className="h-9" aria-label="Anchored question">
+                <SelectTrigger className="h-8 w-full text-xs" aria-label="Anchored question">
                   <SelectValue
                     placeholder={
                       !qTopicSlug
@@ -461,46 +487,17 @@ export function AssistantClient({
           })}
         </div>
 
-        {/* the ask */}
-        <div className="space-y-2">
-          <Textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value.slice(0, MAX_QUESTION_CHARS))}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void ask();
-              }
-            }}
-            rows={3}
-            maxLength={MAX_QUESTION_CHARS}
-            aria-label="Your question in this context"
-            placeholder={
-              mode === "CHECK"
-                ? "Describe your answer — CHECK gives full feedback against the mark scheme"
-                : mode === "HINT"
-                  ? "Ask for a hint (scaffolding, never the answer)"
-                  : "Ask about the anchored context…"
-            }
-          />
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] text-muted-foreground">
-              {draft.length}/{MAX_QUESTION_CHARS}
-            </span>
-            <Button size="sm" onClick={() => void ask()} disabled={disabled} className="gap-1.5">
-              {busy ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <Send className="size-3.5" aria-hidden />}
-              {busy ? "Grounding…" : "Ask"}
-            </Button>
-          </div>
         </div>
 
+        {/* send feedback — the §7 gate stays guidance, never noise (kept
+            verbatim, now a strip between the anchor bar and the transcript) */}
         {error && (
           <div
             className={cn(
-              "flex items-start gap-2 rounded-md border p-3 text-xs",
+              "flex items-start gap-2 border-b px-4 py-2.5 text-xs",
               error.code === "attempt_required"
-                ? "border-warn/40 bg-warn/5 text-warn"
-                : "border-destructive/40 bg-destructive/5 text-destructive",
+                ? "bg-warn/5 text-warn-ink"
+                : "bg-destructive/5 text-destructive",
             )}
           >
             {error.code === "attempt_required" ? (
@@ -512,7 +509,7 @@ export function AssistantClient({
               {error.text}
               {error.code === "attempt_required" && (
                 <>
-                  <br />
+                  {" "}
                   <span className="text-muted-foreground">
                     This is the answer-leakage gate: full feedback unlocks only after the attempt
                     exists, so CHECK can never leak the mark scheme early.
@@ -522,12 +519,11 @@ export function AssistantClient({
             </span>
           </div>
         )}
-      </div>
 
-      {/* thread */}
-      <div ref={threadRef} className="space-y-3">
+        {/* transcript — chat-first like the reference panel */}
+        <div ref={threadRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
         {thread.length === 0 && !busy && (
-          <p className="rounded-md border border-dashed p-4 text-center text-xs leading-relaxed text-muted-foreground">
+          <p className="py-6 text-center text-xs leading-relaxed text-muted-foreground">
             Every answer is grounded in validated course material anchored to the context you
             picked — citations point at the real sources, and nothing is served that the content
             does not support. The free <a href="/tutor" className="underline">AI Tutor</a> stays the
@@ -537,7 +533,7 @@ export function AssistantClient({
         {thread.map((m, i) =>
           m.role === "user" ? (
             <div key={i} className="flex justify-end">
-              <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-primary px-3.5 py-2 text-[13px] text-primary-foreground">
+              <div className="max-w-[85%] rounded-2xl rounded-br-md bg-muted px-3.5 py-2 text-[13px]">
                 {m.content}
               </div>
             </div>
@@ -557,24 +553,27 @@ export function AssistantClient({
               )}
               <Markdown className="text-sm [&_p]:text-sm">{m.content}</Markdown>
               {m.citations && m.citations.length > 0 && !m.refused && (
-                <div className="flex flex-wrap gap-1 pt-0.5">
+                <div className="flex flex-wrap gap-1.5 pt-0.5">
                   {m.citations.map((c) => {
-                    const badge = (
-                      <Badge
-                        variant="outline"
-                        className="max-w-full truncate text-[10px] font-normal"
+                    const pill = (
+                      <span
+                        className="inline-flex max-w-full items-center gap-1.5 rounded-full border bg-background px-2.5 py-1 text-[11px]"
                         title={c.label}
                       >
-                        [{c.index}] {c.label}
-                      </Badge>
+                        <span className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
+                          {c.index}
+                        </span>
+                        <FileText className="size-3 shrink-0 text-muted-foreground" aria-hidden />
+                        <span className="max-w-48 truncate font-medium">{c.label}</span>
+                      </span>
                     );
                     return c.url ? (
                       <a key={c.index} href={c.url} className="min-w-0 hover:opacity-80">
-                        {badge}
+                        {pill}
                       </a>
                     ) : (
                       <span key={c.index} className="min-w-0">
-                        {badge}
+                        {pill}
                       </span>
                     );
                   })}
@@ -615,6 +614,64 @@ export function AssistantClient({
             resolving context → gathering validated evidence → grounding the answer…
           </div>
         )}
+        </div>
+
+        {/* composer — the shared rounded-2xl card: anchor summary pill,
+            borderless field, circular send (HUB-TUTOR-CLA-LOOK). The §3
+            contract's validation rides the same ask() path + disabled logic */}
+        <div className="border-t bg-background p-3 sm:p-4">
+          <div className="rounded-2xl border bg-background shadow-sm transition-colors focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/15">
+            <div className="flex items-center px-3.5 pt-3">
+              <span className="inline-flex min-w-0 items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-[11px] font-medium">
+                <Compass className="size-3 shrink-0 text-muted-foreground" aria-hidden />
+                <span className="truncate">{anchorSummary}</span>
+              </span>
+            </div>
+            <Textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value.slice(0, MAX_QUESTION_CHARS))}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void ask();
+                }
+              }}
+              rows={2}
+              maxLength={MAX_QUESTION_CHARS}
+              aria-label="Your question in this context"
+              placeholder={
+                mode === "CHECK"
+                  ? "Describe your answer — Check gives full feedback against the mark scheme"
+                  : mode === "HINT"
+                    ? "Ask for a hint (scaffolding, never the answer)"
+                    : "Ask about the anchored context…"
+              }
+              className="resize-none border-0 bg-transparent px-3.5 py-2.5 text-sm shadow-none placeholder:text-muted-foreground/70 focus-visible:ring-0 focus-visible:ring-offset-0"
+            />
+            <div className="flex items-center justify-between gap-2 px-3 pb-3">
+              <span className="text-[11px] text-muted-foreground">
+                Enter to ask · Shift+Enter for a new line
+              </span>
+              <span className="flex items-center gap-2">
+                <span aria-live="polite" className="text-[11px] tabular-nums text-muted-foreground">
+                  {draft.length}/{MAX_QUESTION_CHARS}
+                </span>
+                <Button
+                  onClick={() => void ask()}
+                  disabled={disabled}
+                  aria-label="Ask the contextual assistant"
+                  className="size-9 shrink-0 rounded-full"
+                >
+                  {busy ? (
+                    <Loader2 className="size-4 animate-spin" aria-hidden />
+                  ) : (
+                    <ArrowUp className="size-4" aria-hidden />
+                  )}
+                </Button>
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

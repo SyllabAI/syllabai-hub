@@ -71,6 +71,7 @@ import {
   Database,
   Download,
   Eraser,
+  GraduationCap,
   HelpCircle,
   ListChecks,
   PanelLeft,
@@ -590,12 +591,18 @@ export function TutorChat() {
             <PanelLeft className="size-4" aria-hidden />
           </button>
 
+          <span
+            className="flex size-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary/70 text-primary-foreground"
+            aria-hidden
+          >
+            <GraduationCap className="size-4" />
+          </span>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold">
               {activeThread?.title ?? "New conversation"}
             </p>
             <p className="truncate text-[10.5px] text-muted-foreground">
-              Grounded in Pearson Edexcel IGCSE Chemistry (4CH1)
+              SyllabAI tutor · answers only from validated course content
             </p>
           </div>
 
@@ -674,7 +681,12 @@ export function TutorChat() {
             className="h-full overflow-y-auto"
           >
             {messages.length === 0 ? (
-              <Welcome onPick={(p) => send(p)} />
+              <Welcome
+                firstName={
+                  identity ? identity.name.trim().split(/\s+/)[0] || null : null
+                }
+                onPick={(p) => send(p)}
+              />
             ) : (
               <div className="mx-auto w-full max-w-3xl space-y-5 px-3 py-5 sm:px-4">
                 {messages.map((m, i) => (
@@ -781,34 +793,56 @@ export function TutorChat() {
   );
 }
 
-function Welcome({ onPick }: { onPick: (prompt: string) => void }) {
+/** The itutor.study reference's time-of-day greeting (HUB-TUTOR-CLA-LOOK). */
+function greetingFor(at: Date): string {
+  const h = at.getHours();
+  if (h < 5) return "Working late";
+  if (h < 12) return "Good morning";
+  if (h < 18) return "Good afternoon";
+  return "Good evening";
+}
+
+function Welcome({
+  firstName,
+  onPick,
+}: {
+  firstName: string | null;
+  onPick: (prompt: string) => void;
+}) {
   return (
     <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-center px-4 py-8">
-      <div className="flex flex-col items-center text-center">
-        <div className="flex size-12 items-center justify-center rounded-xl bg-primary/10 ring-1 ring-primary/20">
-          <Sparkles className="size-6 text-primary" aria-hidden />
+      {/* the reference's greeting hero: gradient avatar, greet by name,
+          honest grounding promise (HUB-TUTOR-CLA-LOOK) */}
+      <div className="flex flex-col items-center gap-3 text-center">
+        <span
+          className="flex size-11 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-sm"
+          aria-hidden
+        >
+          <GraduationCap className="size-6" />
+        </span>
+        <div className="space-y-1">
+          <h1 className="text-xl font-semibold tracking-tight">
+            {greetingFor(new Date())}
+            {firstName ? `, ${firstName}` : ""}
+          </h1>
+          <p className="mx-auto max-w-md text-sm leading-relaxed text-muted-foreground">
+            Your grounded study companion for Pearson Edexcel IGCSE Chemistry.
+            Every answer cites the spec points and notes it draws on — and tells
+            you honestly when the evidence runs thin.
+          </p>
         </div>
-        <h1 className="mt-4 text-2xl font-bold tracking-tight">SyllabAI Tutor</h1>
-        <p className="mt-1.5 max-w-md text-sm leading-relaxed text-muted-foreground">
-          Your grounded study companion for Pearson Edexcel IGCSE Chemistry. Every answer cites the
-          spec points and notes it draws on — and tells you honestly when the evidence runs thin.
-        </p>
       </div>
-      <div className="mt-7 grid gap-2.5 sm:grid-cols-2">
+      <div className="mt-7 flex flex-wrap justify-center gap-2">
         {STARTERS.map((s) => (
           <button
             key={s.label}
             type="button"
             onClick={() => onPick(s.prompt)}
-            className="group rounded-xl border bg-card p-3.5 text-left transition-colors hover:border-primary/40 hover:bg-muted/50"
+            title={s.prompt}
+            className="inline-flex items-center gap-1.5 rounded-full border bg-card px-3.5 py-1.5 text-xs text-muted-foreground shadow-sm transition-colors hover:border-primary/40 hover:text-foreground"
           >
-            <span className="flex items-center gap-2 text-[13px] font-semibold">
-              <s.icon className="size-4 text-primary" aria-hidden />
-              {s.label}
-            </span>
-            <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
-              “{s.prompt}”
-            </span>
+            <s.icon className="size-3.5" aria-hidden />
+            {s.label}
           </button>
         ))}
       </div>

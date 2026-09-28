@@ -9,16 +9,24 @@
  * Speech API when the browser offers it, and a send/stop pair that mirrors
  * the stream state. The 600→2000 character budget is enforced server-side
  * (api/ai/chat zod) and mirrored here.
+ *
+ * Look (HUB-TUTOR-CLA-LOOK, the itutor.study reference): the deck is a
+ * rounded-2xl card with a subject context pill (green dot + the honest
+ * single-corpus scope) above a borderless field and a circular send.
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { Mic, MicOff, Paperclip, Send, Square } from "lucide-react";
+import { Mic, MicOff, Paperclip, ArrowUp, Square } from "lucide-react";
 
 /** Server body cap for `question` (api/ai/chat zod schema). */
 export const QUESTION_CAP = 2000;
+
+/** The subject context pill's label — the tutor's honest single-corpus scope
+ *  (the itutor.study "Chemistry" affordance, HUB-TUTOR-CLA-LOOK). */
+const SUBJECT_LABEL = "Chemistry (4CH1)";
 
 interface SpeechRecognitionLike {
   lang: string;
@@ -108,7 +116,15 @@ export function Composer({
   const nearCap = value.length > maxLen - 120;
 
   return (
-    <div className="rounded-xl border bg-card shadow-xs focus-within:border-primary/40">
+    <div className="rounded-2xl border bg-card shadow-sm transition-colors focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/15">
+      {/* subject context pill — the reference's affordance, honestly scoped:
+          the tutor answers inside the pilot corpus (HUB-TUTOR-CLA-LOOK) */}
+      <div className="flex items-center px-3.5 pt-3">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-[11px] font-medium">
+          <span className="size-1.5 rounded-full bg-success" aria-hidden="true" />
+          {SUBJECT_LABEL}
+        </span>
+      </div>
       <div className="flex items-end gap-1.5 p-1.5">
         <Button
           type="button"
@@ -159,9 +175,13 @@ export function Composer({
             <Square className="size-3.5 fill-current" aria-hidden /> Stop
           </Button>
         ) : (
-          <Button onClick={onSend} disabled={!value.trim()} className="h-10 shrink-0 gap-1.5 px-3">
-            <Send className="size-4" aria-hidden />
-            <span className="sr-only sm:not-sr-only">Send</span>
+          <Button
+            onClick={onSend}
+            disabled={!value.trim()}
+            aria-label="Send message"
+            className="size-10 shrink-0 rounded-full"
+          >
+            <ArrowUp className="size-4" aria-hidden />
           </Button>
         )}
       </div>

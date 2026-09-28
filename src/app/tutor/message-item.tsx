@@ -9,6 +9,11 @@
  * regenerate, feedback). User rows are primary bubbles with an inline
  * edit-resend affordance. Refusals / aborts / transport errors keep their
  * distinct, honest states.
+ *
+ * Look (HUB-TUTOR-CLA-LOOK, the itutor.study chat-home reference): assistant
+ * turns render as gradient-avatar + name rows on the canvas — no bubble box —
+ * with citation pills; user turns are muted gray bubbles with date-aware
+ * stamps. Presentation only — every state above is untouched.
  */
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -17,18 +22,34 @@ import { Textarea } from "@/components/ui/textarea";
 import { Markdown } from "@/components/markdown";
 import { cn } from "@/lib/utils";
 import type { Turn } from "./threads";
-import { clockTime } from "./threads";
 import {
   Check,
   Copy,
+  FileText,
+  GraduationCap,
   Pencil,
   RefreshCw,
   RotateCcw,
-  Sparkles,
   ThumbsDown,
   ThumbsUp,
   TriangleAlert,
 } from "lucide-react";
+
+/** The itutor.study reference's message stamp — "9:41 PM" today, otherwise
+ *  "Sep 27 · 9:41 PM" (HUB-TUTOR-CLA-LOOK). */
+function formatChatTime(at: number): string {
+  const d = new Date(at);
+  if (Number.isNaN(d.getTime())) return "";
+  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const today = new Date();
+  const sameDay =
+    d.getFullYear() === today.getFullYear() &&
+    d.getMonth() === today.getMonth() &&
+    d.getDate() === today.getDate();
+  return sameDay
+    ? time
+    : `${d.toLocaleDateString([], { month: "short", day: "numeric" })} · ${time}`;
+}
 
 const actionBtn =
   "inline-flex min-h-8 items-center gap-1 rounded px-2 py-1.5 text-[10.5px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground";
@@ -114,16 +135,20 @@ export function MessageItem({
             </div>
           ) : (
             <>
-              <div className="rounded-lg rounded-br-sm bg-primary px-3.5 py-2 text-sm text-primary-foreground">
+              {/* the reference's muted gray user bubble (HUB-TUTOR-CLA-LOOK) */}
+              <div className="rounded-2xl rounded-br-md bg-muted px-3.5 py-2 text-sm">
                 <p className="whitespace-pre-wrap leading-relaxed">{message.content || "…"}</p>
               </div>
-              <div className="flex items-center gap-0.5 pr-0.5 opacity-100 transition-opacity lg:opacity-0 lg:group-hover:opacity-100 lg:focus-within:opacity-100">
+              {/* the reference's date-aware stamp — always visible (rides its
+                  own row; the copy/edit affordances stay hover-gated) */}
+              <div className="flex items-center gap-0.5 pr-0.5">
                 <span className="mr-1 text-[10px] tabular-nums text-muted-foreground/70">
-                  {clockTime(message.at)}
+                  {formatChatTime(message.at)}
                 </span>
-                <button type="button" onClick={onCopy} className={actionBtn} aria-label="Copy message">
-                  {copied ? <Check className="size-3" aria-hidden /> : <Copy className="size-3" aria-hidden />}
-                </button>
+                <div className="flex items-center gap-0.5 opacity-100 transition-opacity lg:opacity-0 lg:group-hover:opacity-100 lg:focus-within:opacity-100">
+                  <button type="button" onClick={onCopy} className={actionBtn} aria-label="Copy message">
+                    {copied ? <Check className="size-3" aria-hidden /> : <Copy className="size-3" aria-hidden />}
+                  </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -136,6 +161,7 @@ export function MessageItem({
                 >
                   <Pencil className="size-3" aria-hidden /> Edit
                 </button>
+                </div>
               </div>
             </>
           )}
@@ -146,17 +172,18 @@ export function MessageItem({
 
   return (
     <div className="group flex gap-2.5">
+      {/* the reference's gradient identity avatar (HUB-TUTOR-CLA-LOOK) */}
       <div
-        className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10 ring-1 ring-primary/20"
+        className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary/70 text-primary-foreground"
         aria-hidden
       >
-        <Sparkles className="size-3.5 text-primary" />
+        <GraduationCap className="size-4" />
       </div>
       <div className="min-w-0 flex-1 space-y-1.5">
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold">SyllabAI Tutor</span>
           <span className="text-[10px] tabular-nums text-muted-foreground/70">
-            {clockTime(message.at)}
+            {formatChatTime(message.at)}
           </span>
           {message.refused && (
             <Badge variant="outline" className="h-4 w-fit border-warn/30 px-1.5 text-[9.5px] text-warn">
@@ -170,7 +197,9 @@ export function MessageItem({
           )}
         </div>
 
-        <div className="space-y-2 rounded-lg rounded-bl-sm bg-muted/60 px-3.5 py-2.5 text-sm">
+        {/* the answer renders on the canvas — the bubble box is retired
+            (the itutor.study reference, HUB-TUTOR-CLA-LOOK) */}
+        <div className="space-y-2 text-sm">
           {message.error ? (
             <div className="space-y-2">
               {message.content && <Markdown className="text-sm [&_p]:text-sm">{message.content}</Markdown>}
@@ -250,17 +279,22 @@ export function MessageItem({
           )}
 
           {message.citations && message.citations.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 border-t pt-2">
+            <div className="flex flex-wrap gap-1.5 pt-1">
               {message.citations.map((c) => (
                 <a
                   key={c.index}
                   href={c.url ?? "#"}
-                  className="inline-flex max-w-full items-center gap-1 rounded border bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+                  className="flex max-w-full items-center gap-1.5 rounded-full border bg-background px-2.5 py-1 text-xs transition-colors hover:border-primary/40"
                   title={c.label}
                 >
-                  <span className="font-mono text-[10.5px]">[{c.index}]</span>
-                  <span className="max-w-52 truncate">{c.label}</span>
-                  <span className="font-mono text-[10.5px]">{c.kind.slice(0, 4)}</span>
+                  <span className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
+                    {c.index}
+                  </span>
+                  <FileText className="size-3 shrink-0 text-muted-foreground" aria-hidden />
+                  <span className="max-w-52 truncate font-medium">{c.label}</span>
+                  <span className="shrink-0 text-[10px] text-muted-foreground">
+                    · {c.kind.slice(0, 4)}
+                  </span>
                 </a>
               ))}
             </div>
