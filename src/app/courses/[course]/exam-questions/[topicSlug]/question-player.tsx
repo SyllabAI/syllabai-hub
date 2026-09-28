@@ -706,50 +706,62 @@ function TypedAnswerWorkspace({
   const singlePart = question.parts.length === 1;
 
   return (
-    <div className="mt-3 rounded-lg border bg-muted/20 p-3">
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        <PenLine className="size-3.5 text-primary" aria-hidden />
-        <span className="text-[13px] font-medium">Your answer</span>
-        <Badge
-          variant="outline"
-          className={cn(
-            "px-1 text-[10.5px] uppercase",
-            coreLive ? "border-success/30 text-success" : "text-muted-foreground",
-          )}
-        >
-          {coreLive ? "live draft" : "simulated"}
-        </Badge>
-        <span className="text-[11px] text-muted-foreground">
-          {coreLive ? "saved in this browser — submit below to mark it" : "saved in this browser"}
-        </span>
-        {text.length > 0 && (
-          <span
-            aria-live="polite"
-            className={cn(
-              "inline-flex items-center gap-1 text-[11px]",
-              dirty ? "text-muted-foreground" : "text-success",
-            )}
-          >
-            {dirty ? (
-              <>
-                <Loader2 className="size-3 animate-spin" aria-hidden /> saving…
-              </>
-            ) : (
-              <>
-                <CheckCircle2 className="size-3" aria-hidden /> saved
-              </>
-            )}
-          </span>
-        )}
-      </div>
+    // wave 3b: the outer muted card is gone — the pinned SME anatomy is
+    // label + box + (on activation) tool strip, with no wrapping chrome.
+    <div className="mt-3">
       <AnswerTextarea
         value={text}
         onChange={onType}
         onBlur={flushNow}
+        label="Your answer"
         ariaLabel={`Your typed answer for part ${part.order + 1}`}
         placeholder={answerPlaceholder(part.problemMd)}
         marks={part.marks}
         onSubmitShortcut={submitShortcut}
+        // wave 1 honesty features, demoted into the active state (SME's box
+        // "looks normal at first"): lane badge + derived save chip ride the
+        // strip's right side; the where-drafts-live copy is the muted line
+        // under it. Both still appear the moment there is content (a typed
+        // or reloaded draft keeps the box active).
+        statusSlot={
+          <>
+            <Badge
+              variant="outline"
+              className={cn(
+                "px-1 text-[10.5px] uppercase",
+                coreLive ? "border-success/30 text-success" : "text-muted-foreground",
+              )}
+            >
+              {coreLive ? "live draft" : "simulated"}
+            </Badge>
+            {text.length > 0 && (
+              <span
+                aria-live="polite"
+                className={cn(
+                  "inline-flex items-center gap-1 text-[11px]",
+                  dirty ? "text-muted-foreground" : "text-success",
+                )}
+              >
+                {dirty ? (
+                  <>
+                    <Loader2 className="size-3 animate-spin" aria-hidden /> saving…
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="size-3" aria-hidden /> saved
+                  </>
+                )}
+              </span>
+            )}
+          </>
+        }
+        hintSlot={
+          <span>
+            {coreLive
+              ? "Saved in this browser — submit below to mark it."
+              : "Saved in this browser."}
+          </span>
+        }
       />
       <div className="mt-2 flex flex-wrap items-center gap-2">
         {aiAvailable !== false ? (

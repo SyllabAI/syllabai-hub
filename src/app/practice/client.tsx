@@ -129,11 +129,12 @@ export function PracticeClient({ topics }: Props) {
             <PartProblem md={item.part.problemMd} />
 
             <div className="space-y-2">
-              <Label htmlFor="answer" className="text-sm">
-                Your answer
-              </Label>
+              {/* wave 3b: the label renders inside AnswerTextarea (SME
+                  anatomy — bold label above the box, programmatically
+                  associated), so both surfaces look identical */}
               <AnswerTextarea
                 id="answer"
+                label="Your answer"
                 value={answer}
                 onChange={setAnswer}
                 ariaLabel="Your practice answer"
