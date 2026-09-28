@@ -162,7 +162,7 @@ export function LoginClient() {
           <h2 className="font-display text-3xl font-semibold leading-tight tracking-tight xl:text-4xl">
             {story.heading}
           </h2>
-          <p className="mt-3 max-w-sm text-sm leading-relaxed text-primary-foreground/80">
+          <p className="mt-3 max-w-sm text-sm leading-relaxed text-primary-foreground">
             {story.sub}
           </p>
           <ul className="mt-6 space-y-3">
@@ -171,13 +171,13 @@ export function LoginClient() {
                 <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md bg-white/15">
                   <bullet.icon className="size-3.5" aria-hidden />
                 </span>
-                <span className="leading-relaxed text-primary-foreground/90">{bullet.text}</span>
+                <span className="leading-relaxed text-primary-foreground">{bullet.text}</span>
               </li>
             ))}
           </ul>
         </div>
 
-        <div className="space-y-1 text-xs text-primary-foreground/70">
+        <div className="space-y-1 text-xs text-primary-foreground">
           <p className="font-medium">Edexcel IGCSE &amp; IAL · 4CH1 pilot corpus · 49 courses</p>
           <p>Grounded AI, honest citations, spec-anchored everything.</p>
         </div>
@@ -247,7 +247,10 @@ export function LoginClient() {
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   active
                     ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
+                    // foreground/70, not muted-foreground: the switcher sits on
+                    // bg-muted and neutral-500 there misses 4.5:1 by a hair
+                    // (axe color-contrast, tranche 4.13)
+                    : "text-foreground/70 hover:text-foreground",
                 )}
               >
                 <option.icon className="size-4" aria-hidden />

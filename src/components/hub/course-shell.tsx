@@ -169,7 +169,7 @@ export function CourseShell({
                         <item.icon className="size-4 shrink-0" aria-hidden />
                         <span className="truncate">{item.label}</span>
                         {item.badge && (
-                          <Badge variant="outline" className="ml-auto shrink-0 px-1 text-[10.5px] uppercase text-muted-foreground">
+                          <Badge variant="outline" className="ml-auto shrink-0 px-1 text-[10.5px] uppercase text-foreground/70">
                             {item.badge}
                           </Badge>
                         )}
@@ -303,7 +303,7 @@ function MobileDrawerInner({
                       <item.icon className="size-4 shrink-0" aria-hidden />
                       <span className="truncate">{item.label}</span>
                       {item.badge && (
-                        <Badge variant="outline" className="ml-auto shrink-0 px-1 text-[10.5px] uppercase text-muted-foreground">
+                        <Badge variant="outline" className="ml-auto shrink-0 px-1 text-[10.5px] uppercase text-foreground/70">
                           {item.badge}
                         </Badge>
                       )}

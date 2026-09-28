@@ -22,7 +22,10 @@ export function ProvenanceBadge({ tier }: { tier: string | null | undefined }) {
   if (!tier) return null;
   const map: Record<string, string> = {
     RULE_DERIVED: "border-info/30 bg-info/10 text-info",
-    AI_SUGGESTED: "border-warn/30 bg-warn/10 text-warn",
+    // text-warn-ink, not text-warn: amber-700 text on the amber wash failed
+    // 4.5:1 on warm page backgrounds (axe color-contrast, tranche 4.13) —
+    // --warn-ink is the design system's copy-on-warn token (both modes)
+    AI_SUGGESTED: "border-warn/30 bg-warn/10 text-warn-ink",
     HUMAN_VALIDATED: "border-success/30 bg-success/10 text-success",
     DEMO_DERIVED: "border-cat/30 bg-cat/10 text-cat",
     SIMULATED: "border-sim/30 bg-sim/10 text-sim",

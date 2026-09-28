@@ -153,7 +153,7 @@ export function TopicTree({
               <span className="size-4 shrink-0 rounded-full border-2 border-muted-foreground/25" aria-hidden />
               <span className="min-w-0 flex-1">
                 <NumberedLabel number={topic.number} title={topic.title} />
-                <span className="block text-[11px] text-muted-foreground">
+                <span className="block text-[11px] text-foreground/70">
                   {subCount} Topics · {metaRight}
                   {ring.percent > 0 ? ` · ${ring.percent}%` : ""}
                 </span>
@@ -184,7 +184,7 @@ export function TopicTree({
                       <ProgressRing course={course} subtopic={sub.code} counts={k} size={16} />
                       <span className="min-w-0 flex-1 truncate">{sub.title}</span>
                       {hasAny && (
-                        <span className="shrink-0 whitespace-nowrap text-[10.5px] tabular-nums text-muted-foreground">
+                        <span className="shrink-0 whitespace-nowrap text-[10.5px] tabular-nums text-foreground/70">
                           {countLabel}
                         </span>
                       )}
@@ -287,7 +287,7 @@ export function TopicTree({
                                     )}
                                     <span className="min-w-0 flex-1 truncate">{it.title}</span>
                                     {it.count !== undefined && it.count > 0 && (
-                                      <span className="shrink-0 text-[10.5px] tabular-nums text-muted-foreground">
+                                      <span className="shrink-0 text-[10.5px] tabular-nums text-foreground/70">
                                         {it.count}
                                       </span>
                                     )}
