@@ -80,3 +80,53 @@ export function coreErrorDetail(body: unknown, fallback: string): string {
   }
   return fallback;
 }
+
+export interface CoreStreamResult {
+  ok: boolean;
+  status: number;
+  /** media type of core's response — "text/event-stream" for the streaming
+   *  contract, "application/json" for a legacy (pre-stream) core */
+  contentType: string | null;
+  /** the raw response — present when ok (body NOT consumed) */
+  response: Response | null;
+  errorBody: unknown;
+}
+
+/** Authenticated server-side call against core that returns the RAW response
+ *  for streaming consumption (tutor SSE tranche). Never parses the body: the
+ *  caller decides whether to pipe an SSE stream through or fall back to the
+ *  legacy JSON adaptation. The AbortSignal is a hard wall-clock ceiling (not
+ *  an idle timeout) — deliberately matched to this route's Vercel
+ *  maxDuration, past which the function dies anyway; it also bounds the
+ *  Render cold-start wait before response headers. */
+export async function coreStreamAuthorized(
+  path: string,
+  init: { method: "POST"; token: string | null; body?: unknown },
+): Promise<CoreStreamResult> {
+  const base = coreBaseUrl();
+  if (!base) {
+    throw new CoreProxyError(503, "core_not_configured", "The SyllabAI backend is not configured for this deployment.");
+  }
+  const res = await fetch(`${base}${path}`, {
+    method: init.method,
+    headers: {
+      Accept: "text/event-stream, application/json",
+      "Content-Type": "application/json",
+      ...(init.token ? { Authorization: `Bearer ${init.token}` } : {}),
+    },
+    body: init.body === undefined ? undefined : JSON.stringify(init.body),
+    signal: AbortSignal.timeout(120_000),
+    cache: "no-store",
+  });
+  const contentType = res.headers.get("content-type");
+  if (res.ok) {
+    return { ok: true, status: res.status, contentType, response: res, errorBody: null };
+  }
+  let errorBody: unknown = null;
+  try {
+    errorBody = await res.json();
+  } catch {
+    errorBody = null;
+  }
+  return { ok: false, status: res.status, contentType, response: null, errorBody };
+}

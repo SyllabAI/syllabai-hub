@@ -21,7 +21,10 @@ browser ──► syllabai-hub (this repo, Next.js 16, Vercel)
 ```
 
 - **All AI flows through core** (`R3`): no LLM keys in this repo or its Vercel env.
-  `/api/ai/chat` proxies `POST /api/v1/tutor/ask` (SSE-adapted),
+  `/api/ai/chat` proxies `POST /api/v1/tutor/ask/stream` (true token streaming:
+  core emits citations → meta → delta → done, the hub remaps citation payloads
+  and pipes the rest verbatim; a legacy JSON response from core falls back to
+  the blocking `/ask` adaptation so deploy order never matters),
   `/api/ai/cla` proxies `POST /api/v1/learners/me/cla/ask`,
   `/api/ai/mark` is inert pending core question-ID mapping (self-mark is the path).
 - **Identity is core's**: login/register hit core `AuthController`; the session
