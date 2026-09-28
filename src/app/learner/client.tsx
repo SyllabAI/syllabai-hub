@@ -7,7 +7,9 @@
  * drawer (lib/kg-learner-state.ts — one pass, one UI): stat tiles, topic
  * mastery (core granularity), the decay-derived review queue, the spec-point
  * mastery table and the attempt-history stream, reusing the drawer's tab
- * components so the surfaces can never disagree.
+ * components so the surfaces can never disagree. A third tab carries the
+ * assignments the teachers set (V49 — the learner side of the two-party
+ * workflow, tranche 4.10).
  *
  * Provenance rules (the honesty contract):
  *   - CORE model (4CH1 pilot + signed in + core reachable): CORE_MEASURED —
@@ -23,6 +25,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useLearnerState } from "@/lib/kg-learner-state";
 import { PILOT_COURSE_SLUG } from "@/lib/attempt-bridge";
 import { HistoryTab, StateTab } from "../knowledge-graph/state-drawer";
+import { AssignmentsTab } from "./assignments-tab";
 
 export function LearnerClient() {
   // the 4CH1 pilot — the only course with a core-backed learner model today
@@ -67,6 +70,7 @@ export function LearnerClient() {
         <TabsList>
           <TabsTrigger value="state">My state</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
+          <TabsTrigger value="assignments">Assignments</TabsTrigger>
         </TabsList>
         <div className="mt-3">
           <TabsContent value="state" className="mt-0">
@@ -74,6 +78,9 @@ export function LearnerClient() {
           </TabsContent>
           <TabsContent value="history" className="mt-0">
             <HistoryTab drawer={drawer} />
+          </TabsContent>
+          <TabsContent value="assignments" className="mt-0">
+            <AssignmentsTab />
           </TabsContent>
         </div>
       </Tabs>

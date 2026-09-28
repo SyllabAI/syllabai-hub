@@ -41,10 +41,15 @@ import type {
   ConceptGraphEdgesView,
   ConceptGraphSeedSummary,
   NoteVoteView,
+  AssignmentRosterView,
+  AssignmentSummaryView,
+  AssignmentSubmissionView,
+  AssignmentView,
   ExamPaperBrowseView,
   ExamPaperDetailView,
   HumanMarkView,
   KappaEvaluationView,
+  LearnerAssignmentView,
   LearnerKnowledgeGraphView,
   LearnerStateView,
   NextBestActionsView,
@@ -505,6 +510,61 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  // ── Assignments (V49, ADR-029 tranche 4.10): the two-party workflow. The
+  // teacher builds from the hub's real bank (assemble stays hub-side) and
+  // registers the assignment on core; the learner hands in against it; the
+  // teacher tracks REAL completion. Errors are surfaced, never mirrored to
+  // localStorage — a hand-in that only reached one browser would be a lie.
+
+  // Teacher: register an assembled assignment (fail-closed target validation
+  // on core — every specRef must resolve to a curriculum-structure node).
+  teacherCreateAssignment: (body: {
+    title: string;
+    courseSlug: string;
+    courseLabel: string;
+    specRefs: string[];
+    marksTotal: number;
+    questionCount: number;
+    /** ISO-8601 instant */
+    dueAt: string;
+  }) =>
+    request<AssignmentView>("/api/v1/teacher/assignments", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  // Teacher: newest-first list with real completion stats.
+  teacherAssignments: () =>
+    request<AssignmentSummaryView[]>("/api/v1/teacher/assignments"),
+
+  // Teacher: the full roster for one assignment (every enabled student).
+  teacherAssignmentRoster: (id: string) =>
+    request<AssignmentRosterView>(`/api/v1/teacher/assignments/${id}`),
+
+  // Teacher: lifecycle — close (no new hand-ins) or reopen.
+  teacherSetAssignmentStatus: (id: string, status: "open" | "closed") =>
+    request<AssignmentView>(`/api/v1/teacher/assignments/${id}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    }),
+
+  // Learner: newest-first assignments with my hand-in beside each.
+  learnerAssignments: () =>
+    request<LearnerAssignmentView[]>("/api/v1/learners/me/assignments"),
+
+  // Learner: append a hand-in (re-hand-in = new evidence, latest wins).
+  submitAssignmentSubmission: (
+    id: string,
+    body: { questionsCompleted: number; score?: number | null },
+  ) =>
+    request<AssignmentSubmissionView>(
+      `/api/v1/learners/me/assignments/${id}/submissions`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    ),
 
   // Attempt history (Review Hub minimal slice) — read-only view over the
   // learner's own attempts/answers evidence rows. Default limit 50 (max 100).

@@ -1,19 +1,24 @@
 "use client";
 
 /**
- * Assignments — teacher workspace (Phase 2, demo-truth).
+ * Assignments — teacher workspace (core-backed, ADR-029 tranche 4.10).
  *
- * TEACHER_MODE_PLAN §5 Phase 2: "Assignments: build from question set/paper,
- * assign to class, due dates, completion tracking" — the full assignment
- * cycle, honestly simulated where real data does not exist yet:
+ * The full assignment cycle, now on the learner model's own contract:
  *   build   → the SAME marks-aware assembly the Test Builder uses
  *             (POST /api/teacher/assemble — real bank numbers),
- *   assign  → the SAMPLE class from the course payload,
- *   collect → the deterministic roster sim (roster.ts) correlated to the
- *             per-student mastery behind the class aggregates,
- *   review  → roster table + one-click remediation deep-link (§16).
- * Assignments persist locally (syllabai.assignments.v1); completion data is
- * computed, never stored, so it cannot drift from the class evidence.
+ *   assign  → POST /api/v1/teacher/assignments registers the assignment on
+ *             core with FAIL-CLOSED target validation (every spec ref must
+ *             resolve to a curriculum-structure node below the subject root),
+ *   collect → real hand-in evidence (V49 append-only submissions; latest row
+ *             per learner is the current state),
+ *   review  → the REAL roster — every enabled student, computed
+ *             complete/late/missing — replacing the retired SAMPLE roster sim.
+ *
+ * Honesty rules: errors are surfaced, never mirrored to localStorage (a
+ * hand-in that only reached one browser would be a lie); a hand-in is
+ * completion evidence and NEVER mastery (attempts remain the mastery path);
+ * the cohort is every enabled student account — computed on core, never
+ * stored, so it cannot drift from identity truth.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -28,7 +33,6 @@ import {
   Plus,
   Printer,
   ShieldCheck,
-  Trash2,
   XCircle,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -39,27 +43,31 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TeacherNav } from "@/components/teacher/teacher-nav";
-import { useIdentity } from "@/lib/identity";
-import { useAssignments, useSavedTests, type Assignment } from "@/lib/teacher/stores";
-import { SAMPLE_CLASS_SIZE } from "@/lib/teacher/class-sim";
-import {
-  buildRoster,
-  simulateSubmissions,
-  summarizeSubmissions,
-  type RosterStudent,
-} from "@/lib/teacher/roster";
+import { api, ApiError } from "@/lib/api";
+import type {
+  AssignmentRosterView,
+  AssignmentSummaryView,
+} from "@/lib/types";
+import { useSavedTests } from "@/lib/teacher/stores";
 import type { AssembledTest } from "@/lib/teacher/test-assembly";
 import type { SwitchableCourse, TeacherCourseData } from "@/lib/teacher/types";
 import { cn } from "@/lib/utils";
 
 const DAY = 24 * 60 * 60 * 1000;
 
-function fmtDate(iso: string): string {
+function fmtDate(iso: string | null): string {
+  if (!iso) return "—";
   const ms = Date.parse(iso);
   if (!Number.isFinite(ms)) return iso;
   return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" }).format(
     new Date(ms),
   );
+}
+
+function apiMessage(err: unknown, fallback: string): string {
+  if (err instanceof ApiError) return err.message;
+  if (err instanceof Error && err.message) return err.message;
+  return fallback;
 }
 
 export function AssignmentsClient({
@@ -73,7 +81,6 @@ export function AssignmentsClient({
   fromTest: string | null;
   initialSubtopics: string[];
 }) {
-  const identity = useIdentity();
   const [course, setCourse] = useState<string | null>(initialCourse);
   const [state, setState] = useState<{
     course: string;
@@ -84,9 +91,18 @@ export function AssignmentsClient({
   const data = state?.course === course ? state.data : undefined;
   const loadError = state?.course === course ? state.error : undefined;
 
-  const { assignments, create, setStatus, remove } = useAssignments();
   const { tests } = useSavedTests();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // core-backed assignment list (all courses, newest first — filtered below)
+  const [listRows, setListRows] = useState<AssignmentSummaryView[]>([]);
+  const [listLoading, setListLoading] = useState(true);
+  const [listError, setListError] = useState<string | null>(null);
+  const [roster, setRoster] = useState<AssignmentRosterView | null>(null);
+  const [rosterLoading, setRosterLoading] = useState(false);
+  const [rosterError, setRosterError] = useState<string | null>(null);
+  const [statusBusy, setStatusBusy] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
 
   // builder state
   const [builderOpen, setBuilderOpen] = useState(false);
@@ -100,6 +116,48 @@ export function AssignmentsClient({
   const [maxQuestions, setMaxQuestions] = useState("20");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+
+  const loadList = useCallback(async () => {
+    setListLoading(true);
+    setListError(null);
+    try {
+      setListRows(await api.teacherAssignments());
+    } catch (err: unknown) {
+      setListError(apiMessage(err, "Assignments are unavailable right now — core did not answer."));
+    } finally {
+      setListLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadList();
+  }, [loadList]);
+
+  // lazily pull the real roster for the selected assignment
+  useEffect(() => {
+    if (!selectedId) {
+      setRoster(null);
+      setRosterError(null);
+      return;
+    }
+    let cancelled = false;
+    setRosterLoading(true);
+    setRosterError(null);
+    api
+      .teacherAssignmentRoster(selectedId)
+      .then((view) => {
+        if (!cancelled) setRoster(view);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setRosterError(apiMessage(err, "The roster is unavailable right now."));
+      })
+      .finally(() => {
+        if (!cancelled) setRosterLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId]);
 
   // load the course payload per course switch (same pattern as Test Builder)
   useEffect(() => {
@@ -170,41 +228,15 @@ export function AssignmentsClient({
     [allSubtopics, selected],
   );
 
-  // roster + per-assignment completion sim (deterministic, never stored)
-  const roster: RosterStudent[] = useMemo(() => {
-    if (!course || allSubtopics.length === 0) return [];
-    return buildRoster(
-      course,
-      allSubtopics.map((s) => ({ code: s.code, anchorMean: s.anchorMean })),
-    );
-  }, [course, allSubtopics]);
-
   const forCourse = useMemo(
-    () => assignments.filter((a) => (course ? a.courseId === course : true)),
-    [assignments, course],
-  );
-  const sorted = useMemo(
     () =>
-      [...forCourse].sort(
-        (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt),
-      ),
-    [forCourse],
+      course ? listRows.filter((r) => r.assignment.courseSlug === course) : listRows,
+    [listRows, course],
   );
-  const selectedAssignment = sorted.find((a) => a.id === selectedId) ?? null;
-
-  const simFor = useCallback(
-    (a: Assignment) =>
-      simulateSubmissions(
-        {
-          id: a.id,
-          marksTotal: a.marksTotal,
-          dueAt: a.dueAt,
-          subtopicCodes: a.subtopics.map((s) => s.code),
-        },
-        roster.length > 0 ? roster : buildRoster(a.courseId, a.subtopics.map((s) => ({ code: s.code, anchorMean: null }))),
-      ),
-    [roster],
-  );
+  const selectedSummary =
+    forCourse.find((r) => r.assignment.id === selectedId) ??
+    listRows.find((r) => r.assignment.id === selectedId) ??
+    null;
 
   const createAssignment = useCallback(async () => {
     if (!course || selected.size === 0 || !data) return;
@@ -225,42 +257,53 @@ export function AssignmentsClient({
       if (!res.ok || !payload.test) throw new Error(payload.error ?? "assembly failed");
       const test = payload.test;
       const meta = courses.find((c) => c.slug === course);
-      const created = create({
-        courseId: course,
-        courseCode: meta?.code ?? test.course.code,
-        courseLabel: meta?.label ?? test.course.label,
+      // register on core — the two-party record the learner will see.
+      // No localStorage fallback: an assignment one browser kept to itself
+      // would be a lie every other surface would tell differently.
+      const created = await api.teacherCreateAssignment({
         title:
           title.trim() ||
           `${test.course.subject} — ${test.subtopics.map((s) => s.title).slice(0, 2).join(" · ")}`,
-        className: data.class.className,
-        subtopics: test.subtopics,
-        targetMarks: useMarksTarget ? Number(targetMarks) || null : null,
-        maxQuestions: useMarksTarget ? null : Number(maxQuestions) || null,
+        courseSlug: course,
+        courseLabel: meta?.label ?? test.course.label,
+        specRefs: test.subtopics.map((s) => s.code),
         marksTotal: test.totalMarks,
         questionCount: test.questions.length,
         dueAt: new Date(`${dueAt}T23:59:00`).toISOString(),
-        status: "open",
       });
+      await loadList();
       setSelectedId(created.id);
       setTitle("");
       setSelected(new Set());
       setBuilderOpen(false);
     } catch (err: unknown) {
-      setCreateError(err instanceof Error ? err.message : "failed to assemble assignment");
+      setCreateError(apiMessage(err, "failed to register the assignment on core"));
     } finally {
       setCreating(false);
     }
-  }, [course, selected, data, useMarksTarget, targetMarks, maxQuestions, title, dueAt, courses, create]);
+  }, [course, selected, data, useMarksTarget, targetMarks, maxQuestions, title, dueAt, courses, loadList]);
 
-  const weakestOf = useCallback(
-    (a: Assignment) => {
-      if (!data) return null;
-      const codes = new Set(a.subtopics.map((s) => s.code));
-      const subs = allSubtopics.filter((s) => codes.has(s.code));
-      if (subs.length === 0) return null;
-      return [...subs].sort((x, y) => x.meanMastery - y.meanMastery)[0];
+  const flipStatus = useCallback(
+    async (id: string, status: "open" | "closed") => {
+      setStatusBusy(true);
+      setStatusError(null);
+      try {
+        await api.teacherSetAssignmentStatus(id, status);
+        await loadList();
+        if (selectedId === id) {
+          setRoster((prev) =>
+            prev && prev.assignment.id === id
+              ? { ...prev, assignment: { ...prev.assignment, status } }
+              : prev,
+          );
+        }
+      } catch (err: unknown) {
+        setStatusError(apiMessage(err, "could not change the assignment status"));
+      } finally {
+        setStatusBusy(false);
+      }
     },
-    [data, allSubtopics],
+    [loadList, selectedId],
   );
 
   const current = courses.find((c) => c.slug === course) ?? null;
@@ -275,15 +318,15 @@ export function AssignmentsClient({
             Assignments
           </Badge>
           <Badge variant="secondary" className="text-[10px] font-normal">
-            Phase 2 · demo-truth
+            core-backed · live
           </Badge>
         </div>
         <h1 className="font-display text-2xl font-bold tracking-tight sm:text-3xl">Assignments</h1>
         <p className="max-w-3xl text-sm leading-relaxed text-muted-foreground">
-          Build from the question bank, assign to the class, set a due date, and track completion —
-          the full assignment cycle. Assembly uses the same marks-aware rules as the Test Builder;
-          completion and scores are the deterministic SAMPLE roster sim until real accounts and
-          server-side attempt events land (Phase 1 data foundation).
+          Build from the question bank, assign to your cohort, set a due date, and track real
+          completion — the full assignment cycle on your SyllabAI account. Assembly uses the same
+          marks-aware rules as the Test Builder; the roster and completion data below are real
+          learner hand-ins recorded on core (the SAMPLE roster sim is retired).
         </p>
       </div>
 
@@ -325,17 +368,18 @@ export function AssignmentsClient({
           </Badge>
         )}
         <span className="text-[11px] text-muted-foreground">
-          Class: {data?.class.className ?? "—"}
+          Cohort: every enabled student account on core
         </span>
       </div>
 
       <Alert className="border-dashed">
         <ShieldCheck className="size-4" aria-hidden />
-        <AlertTitle className="text-sm">SAMPLE cohort — simulated completion</AlertTitle>
+        <AlertTitle className="text-sm">Real completion — and its honest boundary</AlertTitle>
         <AlertDescription className="text-xs leading-relaxed">
-          {SAMPLE_CLASS_SIZE} simulated students, deterministically seeded from the same class
-          evidence the Class knowledge graph shows. Names and submissions are SAMPLE; real
-          completion tracking needs the Phase 1 write path (attempt events per student).
+          Completion rows are learner hand-ins on their SyllabAI accounts: who handed in, when, and
+          the work summary they attached. A hand-in is completion evidence only — it never writes
+          mastery; mastery still comes from marked attempts through the attempt pipeline. Learners
+          can re-hand-in (improved work) — the latest hand-in is the current state.
         </AlertDescription>
       </Alert>
 
@@ -478,7 +522,8 @@ export function AssignmentsClient({
                   Create assignment
                 </Button>
                 <span className="text-[11px] text-muted-foreground">
-                  Assembles against the real bank — counts on the assignment are actual numbers.
+                  Assembles against the real bank, then registers on your SyllabAI account —
+                  learners see it on their My Progress page.
                 </span>
               </div>
             </div>
@@ -491,7 +536,18 @@ export function AssignmentsClient({
         <h2 id="asg-list" className="text-sm font-semibold">
           Assignments for this subject
         </h2>
-        {sorted.length === 0 ? (
+        {listError && (
+          <Alert variant="destructive" className="mt-3">
+            <AlertTitle>Assignments unavailable</AlertTitle>
+            <AlertDescription>{listError}</AlertDescription>
+          </Alert>
+        )}
+        {listLoading && !listError && (
+          <p className="mt-3 flex items-center gap-2 text-xs text-muted-foreground" role="status">
+            <Loader2 className="size-3.5 animate-spin" aria-hidden /> Loading assignments from core…
+          </p>
+        )}
+        {!listLoading && !listError && forCourse.length === 0 ? (
           <p className="mt-3 rounded-lg border border-dashed bg-muted/30 p-4 text-xs text-muted-foreground">
             No assignments yet for {current?.label ?? "this subject"} — create one above, or open a
             saved test in the Test Builder and use{" "}
@@ -499,10 +555,9 @@ export function AssignmentsClient({
           </p>
         ) : (
           <ul className="mt-3 space-y-2">
-            {sorted.map((a) => {
-              const sim = simFor(a);
-              const summary = summarizeSubmissions(sim);
-              const pct = Math.round(((summary.complete + summary.late) / sim.length) * 100);
+            {forCourse.map(({ assignment: a, submitted, late, missing, meanScore }) => {
+              const cohort = submitted + missing;
+              const pct = cohort > 0 ? Math.round((submitted / cohort) * 100) : 0;
               const overdue = a.status === "open" && Date.parse(a.dueAt) < Date.now();
               return (
                 <li key={a.id}>
@@ -517,7 +572,7 @@ export function AssignmentsClient({
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="min-w-0 flex-1 truncate text-sm font-semibold">{a.title}</p>
                         <Badge variant="outline" className="font-mono text-[10px] font-normal">
-                          {a.courseCode}
+                          {a.courseSlug}
                         </Badge>
                         {a.status === "closed" ? (
                           <Badge variant="secondary" className="text-[10px] font-normal">
@@ -542,7 +597,7 @@ export function AssignmentsClient({
                           {a.questionCount} questions · {a.marksTotal} marks
                         </span>
                         <span className="tabular-nums">
-                          {a.subtopics.length} subtopic{a.subtopics.length === 1 ? "" : "s"}
+                          {a.specRefs.length} subtopic{a.specRefs.length === 1 ? "" : "s"}
                         </span>
                       </div>
                       <div className="mt-3 flex items-center gap-3">
@@ -554,11 +609,9 @@ export function AssignmentsClient({
                           <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
                         </div>
                         <span className="text-xs tabular-nums text-muted-foreground">
-                          {pct}% turned in
-                          {summary.meanScore !== null && ` · mean ${summary.meanScore}/${a.marksTotal}`}
-                        </span>
-                        <span className="ml-auto text-[10px] text-muted-foreground">
-                          SAMPLE completion
+                          {submitted}/{cohort} handed in
+                          {late > 0 && ` · ${late} late`}
+                          {meanScore !== null && ` · mean ${Math.round(meanScore * 10) / 10}/${a.marksTotal}`}
                         </span>
                       </div>
                     </CardContent>
@@ -571,146 +624,140 @@ export function AssignmentsClient({
       </section>
 
       {/* roster detail */}
-      {selectedAssignment && (
+      {selectedSummary && (
         <section aria-labelledby="asg-detail">
           <h2 id="asg-detail" className="text-sm font-semibold">
-            {selectedAssignment.title}
+            {selectedSummary.assignment.title}
           </h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            {selectedAssignment.className} · due {fmtDate(selectedAssignment.dueAt)} ·{" "}
-            {selectedAssignment.marksTotal} marks · targets{" "}
-            {selectedAssignment.subtopics.map((s) => s.code).join(", ")}
+            {selectedSummary.assignment.courseLabel} · due{" "}
+            {fmtDate(selectedSummary.assignment.dueAt)} ·{" "}
+            {selectedSummary.assignment.marksTotal} marks · targets{" "}
+            {selectedSummary.assignment.specRefs.join(", ")}
           </p>
-          {(() => {
-            const sim = simFor(selectedAssignment);
-            const summary = summarizeSubmissions(sim);
-            const weak = weakestOf(selectedAssignment);
-            return (
-              <>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <Badge variant="outline" className="gap-1 text-[10px] font-normal">
-                    <CheckCircle2 className="size-3" aria-hidden /> {summary.complete} on time
-                  </Badge>
-                  <Badge variant="outline" className="gap-1 text-[10px] font-normal">
-                    <CircleAlert className="size-3" aria-hidden /> {summary.late} late
-                  </Badge>
-                  <Badge variant="outline" className="gap-1 text-[10px] font-normal">
-                    <XCircle className="size-3" aria-hidden /> {summary.missing} missing
-                  </Badge>
-                  {summary.meanScore !== null && (
-                    <Badge variant="secondary" className="text-[10px] font-normal tabular-nums">
-                      mean {summary.meanScore}/{selectedAssignment.marksTotal}
-                    </Badge>
-                  )}
-                  {weak && (
-                    <Button asChild size="sm" variant="outline" className="ml-auto gap-1.5">
-                      <Link
-                        href={`/teacher/test-builder?course=${selectedAssignment.courseId}&subtopics=${weak.code}`}
-                      >
-                        Build remediation test — {weak.code}
-                      </Link>
-                    </Button>
-                  )}
-                </div>
 
-                <div className="mt-3 max-h-96 overflow-y-auto rounded-lg border">
-                  <table className="w-full text-sm">
-                    <caption className="sr-only">
-                      Roster completion for {selectedAssignment.title}
-                    </caption>
-                    <thead className="sticky top-0 bg-muted/80 text-xs text-muted-foreground backdrop-blur">
-                      <tr>
-                        <th scope="col" className="px-3 py-2 text-left font-medium">Student</th>
-                        <th scope="col" className="px-3 py-2 text-left font-medium">Status</th>
-                        <th scope="col" className="px-3 py-2 text-right font-medium">Score</th>
-                        <th scope="col" className="px-3 py-2 text-right font-medium">Submitted</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sim.map((s) => {
-                        const student = roster[s.studentIndex];
-                        return (
-                          <tr key={s.studentIndex} className="border-t">
-                            <td className="px-3 py-2">{student?.name ?? `Student ${s.studentIndex + 1}`}</td>
-                            <td className="px-3 py-2">
-                              {s.state === "complete" && (
-                                <span className="flex items-center gap-1 text-xs">
-                                  <CheckCircle2 className="size-3.5 text-primary" aria-hidden /> on time
-                                </span>
-                              )}
-                              {s.state === "late" && (
-                                <span className="flex items-center gap-1 text-xs">
-                                  <CircleAlert className="size-3.5 text-amber-500" aria-hidden /> late
-                                </span>
-                              )}
-                              {s.state === "missing" && (
-                                <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                                  <XCircle className="size-3.5" aria-hidden /> missing
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-3 py-2 text-right tabular-nums">
-                              {typeof s.score === "number"
-                                ? `${s.score}/${selectedAssignment.marksTotal}`
-                                : "—"}
-                            </td>
-                            <td className="px-3 py-2 text-right text-xs text-muted-foreground">
-                              {s.submittedAt ? fmtDate(s.submittedAt) : "—"}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+          {statusError && (
+            <p className="mt-2 text-xs font-medium text-destructive" role="alert">
+              {statusError}
+            </p>
+          )}
 
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Button asChild size="sm" variant="outline" className="gap-1.5">
-                    <Link
-                      href={`/teacher/test-builder?course=${selectedAssignment.courseId}&subtopics=${selectedAssignment.subtopics.map((s) => s.code).join(",")}`}
-                    >
-                      <Printer className="size-3.5" aria-hidden />
-                      Print the paper (Test Builder)
-                    </Link>
-                  </Button>
-                  {selectedAssignment.status === "open" ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setStatus(selectedAssignment.id, "closed")}
-                    >
-                      Close assignment
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setStatus(selectedAssignment.id, "open")}
-                    >
-                      Reopen
-                    </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="gap-1.5 text-destructive hover:text-destructive"
-                    onClick={() => {
-                      remove(selectedAssignment.id);
-                      setSelectedId(null);
-                    }}
-                  >
-                    <Trash2 className="size-3.5" aria-hidden />
-                    Delete
-                  </Button>
-                </div>
-                {identity && identity.role !== "teacher" && (
-                  <p className="mt-2 text-[11px] text-muted-foreground">
-                    You are signed in as a {identity.role} — assignments are a teacher surface.
-                  </p>
-                )}
-              </>
-            );
-          })()}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Badge variant="outline" className="gap-1 text-[10px] font-normal">
+              <CheckCircle2 className="size-3" aria-hidden /> {selectedSummary.submitted} handed in
+            </Badge>
+            <Badge variant="outline" className="gap-1 text-[10px] font-normal">
+              <CircleAlert className="size-3" aria-hidden /> {selectedSummary.late} late
+            </Badge>
+            <Badge variant="outline" className="gap-1 text-[10px] font-normal">
+              <XCircle className="size-3" aria-hidden /> {selectedSummary.missing} missing
+            </Badge>
+            {selectedSummary.meanScore !== null && (
+              <Badge variant="secondary" className="text-[10px] font-normal tabular-nums">
+                mean {Math.round(selectedSummary.meanScore * 10) / 10}/
+                {selectedSummary.assignment.marksTotal}
+              </Badge>
+            )}
+          </div>
+
+          {rosterLoading && (
+            <p className="mt-3 flex items-center gap-2 text-xs text-muted-foreground" role="status">
+              <Loader2 className="size-3.5 animate-spin" aria-hidden /> Loading the roster…
+            </p>
+          )}
+          {rosterError && (
+            <p className="mt-3 text-xs font-medium text-destructive" role="alert">
+              {rosterError}
+            </p>
+          )}
+
+          {roster && !rosterLoading && (
+            <div className="mt-3 max-h-96 overflow-y-auto rounded-lg border">
+              <table className="w-full text-sm">
+                <caption className="sr-only">
+                  Roster completion for {roster.assignment.title}
+                </caption>
+                <thead className="sticky top-0 bg-muted/80 text-xs text-muted-foreground backdrop-blur">
+                  <tr>
+                    <th scope="col" className="px-3 py-2 text-left font-medium">Student</th>
+                    <th scope="col" className="px-3 py-2 text-left font-medium">Status</th>
+                    <th scope="col" className="px-3 py-2 text-right font-medium">Done</th>
+                    <th scope="col" className="px-3 py-2 text-right font-medium">Score</th>
+                    <th scope="col" className="px-3 py-2 text-right font-medium">Submitted</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {roster.rows.map((r) => (
+                    <tr key={r.learnerId} className="border-t">
+                      <td className="px-3 py-2">{r.displayName}</td>
+                      <td className="px-3 py-2">
+                        {r.state === "complete" && (
+                          <span className="flex items-center gap-1 text-xs">
+                            <CheckCircle2 className="size-3.5 text-primary" aria-hidden /> on time
+                          </span>
+                        )}
+                        {r.state === "late" && (
+                          <span className="flex items-center gap-1 text-xs">
+                            <CircleAlert className="size-3.5 text-amber-500" aria-hidden /> late
+                          </span>
+                        )}
+                        {r.state === "missing" && (
+                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <XCircle className="size-3.5" aria-hidden /> missing
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {r.questionsCompleted !== null
+                          ? `${r.questionsCompleted}/${roster.assignment.questionCount}`
+                          : "—"}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {r.score !== null ? `${r.score}/${roster.assignment.marksTotal}` : "—"}
+                      </td>
+                      <td className="px-3 py-2 text-right text-xs text-muted-foreground">
+                        {fmtDate(r.submittedAt)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button asChild size="sm" variant="outline" className="gap-1.5">
+              <Link
+                href={`/teacher/test-builder?course=${selectedSummary.assignment.courseSlug}&subtopics=${selectedSummary.assignment.specRefs.join(",")}`}
+              >
+                <Printer className="size-3.5" aria-hidden />
+                Print the paper (Test Builder)
+              </Link>
+            </Button>
+            {selectedSummary.assignment.status === "open" ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={statusBusy}
+                onClick={() => flipStatus(selectedSummary.assignment.id, "closed")}
+              >
+                Close assignment
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={statusBusy}
+                onClick={() => flipStatus(selectedSummary.assignment.id, "open")}
+              >
+                Reopen
+              </Button>
+            )}
+            <span className="self-center text-[11px] text-muted-foreground">
+              Assignments are workflow records on core — close instead of delete, so a learner&apos;s
+              handed-in evidence keeps its context.
+            </span>
+          </div>
         </section>
       )}
     </div>

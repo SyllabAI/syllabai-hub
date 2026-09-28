@@ -345,6 +345,65 @@ export interface NoteVoteView {
   occurredAt: string;
 }
 
+// ── Assignments (V49, ADR-029 tranche 4.10) — the two-party workflow: the
+// teacher builds from the hub's real question bank, core holds the workflow
+// state, learners hand in, the teacher tracks REAL completion. courseSlug /
+// courseLabel are opaque hub-owned content refs (the card_id/rn_* ruling).
+
+export interface AssignmentView {
+  id: string;
+  title: string;
+  courseSlug: string;
+  courseLabel: string;
+  /** validated curriculum-structure codes the assignment targets */
+  specRefs: string[];
+  marksTotal: number;
+  questionCount: number;
+  dueAt: string;
+  /** "open" | "closed" */
+  status: string;
+  createdAt: string;
+}
+
+/** list-row stats: real completion counts over the enabled student cohort */
+export interface AssignmentSummaryView {
+  assignment: AssignmentView;
+  submitted: number;
+  late: number;
+  missing: number;
+  /** mean of the hand-ins that carried a score; null when none did */
+  meanScore: number | null;
+}
+
+/** one roster row per enabled student — computed on core, never stored */
+export interface AssignmentRosterRow {
+  learnerId: string;
+  displayName: string;
+  /** "complete" | "late" | "missing" */
+  state: string;
+  submittedAt: string | null;
+  score: number | null;
+  questionsCompleted: number | null;
+}
+
+export interface AssignmentRosterView {
+  assignment: AssignmentView;
+  rows: AssignmentRosterRow[];
+}
+
+/** the learner's own hand-in (latest evidence row) */
+export interface AssignmentSubmissionView {
+  questionsCompleted: number;
+  score: number | null;
+  submittedAt: string;
+}
+
+export interface LearnerAssignmentView {
+  assignment: AssignmentView;
+  /** null until this learner hands in */
+  mySubmission: AssignmentSubmissionView | null;
+}
+
 export interface TutorEngagementView {
   nodeId: string;
   /** Human KG title (backend-resolved); null → callers fall back to the graph/code. */

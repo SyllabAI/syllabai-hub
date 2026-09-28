@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "Assignments — SyllabAI Hub teacher workspace",
   description:
-    "Teacher assignments (Phase 2): build from the question bank, assign to the class, track completion — demo-truth on the SAMPLE cohort.",
+    "Teacher assignments (core-backed): build from the question bank, assign to your cohort, track real learner hand-ins — completion evidence recorded on core.",
 };
 
 export default async function AssignmentsPage({
