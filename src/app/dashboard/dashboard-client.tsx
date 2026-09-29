@@ -430,7 +430,16 @@ export function DashboardClient({ courses }: { courses: CourseMeta[] }) {
         <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
           Welcome to your SyllabAI dashboard — your launchpad for stress-free, spec-anchored
           study. Add the courses you are taking, then revise each one from notes, exam questions
-          and flashcards mapped to its syllabus. Your progress is saved on this device.
+          and flashcards mapped to its syllabus.{" "}
+          {/* HUB-DASH-CORE P0-2 (operator trace 1a0ec29c8c8cfb71): the progress
+              sentence tells the truth per session state — the old static line
+              claimed device-only storage to learners whose account trail
+              follows them across devices (the exact split-brain the account
+              strip's tooltip already contradicted). Mirrors the identity
+              store's reactivity: login/logout rewrites it in place. */}
+          {identity
+            ? "Your measured progress follows your account across devices — self-marked answers and reading history stay on this device."
+            : "Your progress is saved on this device."}
         </p>
       </header>
 
