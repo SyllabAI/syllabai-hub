@@ -57,6 +57,21 @@
  * like SME. Zero contract delta; the Insert-equation button is a plain
  * action again (no open/close state to track).
  *
+ * Wave 7 — the symbols palette goes fully TRANSIENT (operator bug report,
+ * trace 1a0ec11bc830f67d: on Exam Questions the Mathematics / Greek
+ * letters / Chemistry palette "stays opened up by default, cant close it
+ * as well"). Two mechanical defects, both retired: (1) wave 3c persisted
+ * the palette's open-state in localStorage ("syllabai-hub:answer-symbols-open")
+ * and re-applied it one tick after hydration, so any browser that had ever
+ * toggled Ω loaded with the palette ALREADY expanded — an Insert-symbol
+ * dropdown is a transient surface (SME's own is), it does not outlive the
+ * page; the pref and its mount-time effect are gone and the stale key is
+ * swept once so affected browsers self-heal. (2) the palette was a
+ * CONTROLLED Radix Popover wired without onOpenChange, so every dismiss
+ * path Radix offers — outside pointer-down, Escape, focus-away — routed
+ * to a no-op and the layer stayed mounted; Radix's onOpenChange is now
+ * the single source of truth and every dismiss path closes the palette.
+ *
  * Unchanged honesty behaviors:
  *   - wave-3 ink pad / photo → core transcription → insert at the caret,
  *     session-gated (the spend is authenticated and per-learner — a button
@@ -106,10 +121,10 @@ import { AnswerInkPad, useHasLearnerSession } from "@/components/answer-ink-pad"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 /**
- * localStorage key follows the syllabai-hub: namespacing convention
- * (progress.ts parity — a shared/demo key must never collide or wipe).
+ * Wave 7: the wave-3c persisted open-pref key, kept ONLY as the name of
+ * the thing to sweep — the palette no longer reads or writes it.
  */
-const SYMBOLS_PREF_KEY = "syllabai-hub:answer-symbols-open";
+const LEGACY_SYMBOLS_PREF_KEY = "syllabai-hub:answer-symbols-open";
 
 /**
  * Toolbar symbol groups, in the pinned SME order. "Mathematical" and
@@ -210,19 +225,16 @@ export function AnswerTextarea({
   hintSlot?: ReactNode;
   className?: string;
 }) {
-  // symbols-pref read stays POST-hydration (the wave-3b/3c hydration
-  // discipline: SSR and client agree on "closed"; the pref applies one
-  // tick after mount from a timer callback — react-hooks/set-state-in-effect)
+  // Wave 7: the palette is transient — ALWAYS closed on load, no persisted
+  // pref, no post-hydration correction (SSR and client agree on "closed").
+  // The wave-3c key is swept once so browsers that stored it self-heal.
   const [symOpen, setSymOpen] = useState(false);
   useEffect(() => {
-    const t = setTimeout(() => {
-      try {
-        setSymOpen(window.localStorage.getItem(SYMBOLS_PREF_KEY) === "1");
-      } catch {
-        // private mode — session-only default
-      }
-    }, 0);
-    return () => clearTimeout(t);
+    try {
+      window.localStorage.removeItem(LEGACY_SYMBOLS_PREF_KEY);
+    } catch {
+      // private mode — nothing stored to remove
+    }
   }, []);
   const [padOpen, setPadOpen] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
@@ -269,16 +281,6 @@ export function AnswerTextarea({
    *  swallowed (the canonical editor pattern — click still fires) so the
    *  editor keeps its selection, exactly like SME's menu. */
   const keepFocus = (e: ReactMouseEvent) => e.preventDefault();
-
-  const toggleSymbols = () => {
-    const next = !symOpen;
-    setSymOpen(next);
-    try {
-      window.localStorage.setItem(SYMBOLS_PREF_KEY, next ? "1" : "0");
-    } catch {
-      // private mode — the preference is session-only, palette still works
-    }
-  };
 
   const onWrapperKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     // the equation mathfield owns Enter — a shortcut keystroke typed while
@@ -394,11 +396,10 @@ export function AnswerTextarea({
                 >
                   <SquareRadical className="size-4" aria-hidden />
                 </button>
-                <Popover open={symOpen}>
+                <Popover open={symOpen} onOpenChange={setSymOpen}>
                   <PopoverTrigger asChild>
                     <button
                       type="button"
-                      onClick={toggleSymbols}
                       aria-expanded={symOpen}
                       aria-label="Insert symbol"
                       title="Insert symbol"
