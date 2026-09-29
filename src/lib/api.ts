@@ -95,6 +95,11 @@ import type {
   RevisionNoteBodyView,
   RevisionNotesIndexView,
   MarkSchemeRevealView,
+  LearnerAnnouncementView,
+  LearnerClassroomView,
+  TeacherAnnouncementView,
+  TeacherClassDetailView,
+  TeacherClassView,
 } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "";
@@ -538,6 +543,8 @@ export const api = {
 
   // Teacher: register an assembled assignment (fail-closed target validation
   // on core — every specRef must resolve to a curriculum-structure node).
+  // classId (V51): target a specific class instead of the whole cohort —
+  // null keeps the V49 default (every enabled student sees it).
   teacherCreateAssignment: (body: {
     title: string;
     courseSlug: string;
@@ -547,6 +554,7 @@ export const api = {
     questionCount: number;
     /** ISO-8601 instant */
     dueAt: string;
+    classId?: string | null;
   }) =>
     request<AssignmentView>("/api/v1/teacher/assignments", {
       method: "POST",
@@ -583,6 +591,77 @@ export const api = {
         method: "POST",
         body: JSON.stringify(body),
       },
+    ),
+
+  // ── Classroom (V51, TFA-01 + TFA-02): the explicit class entity, class
+  // membership, announcements, and the learner classroom overlay. Visibility
+  // derives from membership rows ONLY — an independent student's reads come
+  // back empty and the UI renders no classroom surface at all. Announcement
+  // traffic is plain communication, never an AI path.
+
+  // Teacher: create a class on one hub course.
+  teacherCreateClass: (body: { courseSlug: string; courseLabel: string; name: string }) =>
+    request<TeacherClassView>("/api/v1/teacher/classes", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  // Teacher: my classes, newest first, with live member counts.
+  teacherClasses: () => request<TeacherClassView[]>("/api/v1/teacher/classes"),
+
+  // Teacher: one class with its full roster.
+  teacherClassDetail: (id: string) =>
+    request<TeacherClassDetailView>(`/api/v1/teacher/classes/${id}`),
+
+  // Teacher: enroll a registered student by email (idempotent on re-enroll).
+  teacherClassEnroll: (id: string, body: { email: string }) =>
+    request<TeacherClassDetailView>(`/api/v1/teacher/classes/${id}/members`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  // Teacher: remove a student from the class.
+  teacherClassRemoveMember: (id: string, studentId: string) =>
+    request<TeacherClassDetailView>(`/api/v1/teacher/classes/${id}/members/${studentId}`, {
+      method: "DELETE",
+    }),
+
+  // Teacher: publish an announcement to the class (read counts start at 0).
+  teacherPublishAnnouncement: (
+    id: string,
+    body: { title: string; body: string; category?: string },
+  ) =>
+    request<TeacherAnnouncementView>(`/api/v1/teacher/classes/${id}/announcements`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  // Teacher: the class's announcements with per-announcement read counts.
+  teacherClassAnnouncements: (id: string) =>
+    request<TeacherAnnouncementView[]>(`/api/v1/teacher/classes/${id}/announcements`),
+
+  // Teacher: archive (or reopen) a class — archived classes refuse new
+  // enrollment/publishing and drop out of the student overlay.
+  teacherSetClassStatus: (id: string, status: "active" | "archived") =>
+    request<TeacherClassView>(`/api/v1/teacher/classes/${id}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    }),
+
+  // Learner: my classroom overview — classes + flattened unread badge.
+  // Empty for the independent student; that empty IS the honest state.
+  learnerClassroom: () =>
+    request<LearnerClassroomView>("/api/v1/learners/me/classroom"),
+
+  // Learner: announcements across my live classes, with my read-state.
+  learnerClassroomAnnouncements: () =>
+    request<LearnerAnnouncementView[]>("/api/v1/learners/me/classroom/announcements"),
+
+  // Learner: mark one announcement read (idempotent, membership-gated).
+  markAnnouncementRead: (id: string) =>
+    request<{ id: string; read: boolean }>(
+      `/api/v1/learners/me/classroom/announcements/${id}/read`,
+      { method: "POST" },
     ),
 
   // Attempt history (Review Hub minimal slice) — read-only view over the
