@@ -4,10 +4,18 @@
  * Local class workspace — "inside there, all the tools and course resources
  * exist" (HUB-TEACHER-DASH wave 1, operator trace 1a0ec61d5612aa6d).
  *
+ * Wave 2 (operator trace 1a0ec95548b5f1e1 "The teacher should also have a
+ * knowledge graph view right?"): the per-subject Knowledge Graph joins the
+ * resource rows — the same graph students open from the course hub,
+ * deep-linked /knowledge-graph?course=<slug>. The graph is a property of
+ * the SUBJECT (operator decision, trace 1a0e8568eb6bb545 — no course
+ * switcher); the cohort-level class KG heatmap stays the core-class surface
+ * (F-072, /teacher/classes/[id]/knowledge-graph — untouched here).
+ *
  * One section per subject the class covers, in selection order:
  *   - course resource rows into the SAME hub surfaces students use
- *     (revision notes, exam questions, flashcards, past papers) with real
- *     corpus counts from /api/course-stats;
+ *     (revision notes, exam questions, flashcards, and the per-subject
+ *     Knowledge Graph) with real corpus counts from /api/course-stats;
  *   - the corpus-local teacher tools scoped to that subject (Test Builder,
  *     assignments, validation — ?course= deep links, honest SAMPLE badges
  *     carried from the old overview verbatim).
@@ -62,6 +70,17 @@ const RESOURCES = [
   { key: "notes", href: (slug: string) => `/courses/${slug}/revision-notes`, icon: BookOpen, label: "Revision Notes" },
   { key: "questions", href: (slug: string) => `/courses/${slug}/exam-questions`, icon: FileQuestion, label: "Exam Questions" },
   { key: "flashcards", href: (slug: string) => `/courses/${slug}/flashcards`, icon: LibraryBig, label: "Flashcards" },
+  // wave 2 — the per-subject knowledge graph, the exact deep link the course
+  // hub uses; the count is the course-stats TOPIC node census (an honest
+  // corpus number from the same payload the other cards read).
+  {
+    key: "graph",
+    countKey: "topics",
+    href: (slug: string) => `/knowledge-graph?course=${slug}`,
+    icon: Network,
+    label: "Knowledge Graph",
+    countLabel: "topics in the corpus",
+  },
 ] as const;
 
 const TOOLS = [
@@ -290,10 +309,11 @@ export function LocalClassWorkspace({
                 </Button>
               </div>
 
-              {/* course resources — the same families students use */}
-              <div className="grid gap-3 sm:grid-cols-3">
+              {/* course resources — the same families students use (the
+                  knowledge graph joined in wave 2) */}
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 {RESOURCES.map((r) => {
-                  const count = countOf(stat, r.key);
+                  const count = countOf(stat, "countKey" in r ? r.countKey : r.key);
                   return (
                     <Link
                       key={r.key}
@@ -311,7 +331,13 @@ export function LocalClassWorkspace({
                         />
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground tabular-nums">
-                        {count === undefined ? <Skeleton className="inline-block h-3 w-16" /> : `${count} in the corpus`}
+                        {count === undefined ? (
+                          <Skeleton className="inline-block h-3 w-16" />
+                        ) : "countLabel" in r ? (
+                          `${count} ${r.countLabel}`
+                        ) : (
+                          `${count} in the corpus`
+                        )}
                       </p>
                     </Link>
                   );
