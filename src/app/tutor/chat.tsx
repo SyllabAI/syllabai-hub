@@ -75,6 +75,7 @@ import {
   HelpCircle,
   ListChecks,
   PanelLeft,
+  Plus,
   Sparkles,
   Target,
 } from "lucide-react";
@@ -512,7 +513,7 @@ export function TutorChat() {
   const clearConversation = () => {
     abortsRef.current.get(activeId ?? "")?.abort();
     if (activeThread) {
-      updateThread(activeThread.id, (t) => ({ ...t, messages: [], title: "New conversation" }));
+      updateThread(activeThread.id, (t) => ({ ...t, messages: [], title: "New chat" }));
     }
     setMeta({});
   };
@@ -599,7 +600,7 @@ export function TutorChat() {
           </span>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold">
-              {activeThread?.title ?? "New conversation"}
+              {activeThread?.title ?? "New chat"}
             </p>
             <p className="truncate text-[10.5px] text-muted-foreground">
               SyllabAI tutor · answers only from validated course content
@@ -618,6 +619,21 @@ export function TutorChat() {
             <Database className="size-3" aria-hidden />
             4CH1 corpus
           </Badge>
+
+          {/* the reference's New chat action (itutor.study header, verbatim
+              anatomy): bordered pill, Plus glyph, label on sm+ and icon-only
+              below — it starts a FRESH thread (server-session binding and
+              all), unlike the eraser which empties the current one */}
+          <button
+            type="button"
+            onClick={newChat}
+            title="Start a new chat"
+            aria-label="New chat"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center gap-1.5 rounded-[10px] border text-[13px] font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:w-auto sm:px-3"
+          >
+            <Plus className="size-4 shrink-0" aria-hidden />
+            <span className="hidden sm:inline">New chat</span>
+          </button>
 
           <Popover>
             <PopoverTrigger asChild>
