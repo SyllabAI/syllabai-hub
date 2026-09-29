@@ -49,6 +49,14 @@
  * Storage, the 4000-char cap, per-keystroke autosave semantics and both
  * mark lanes are untouched (the string is still just a string).
  *
+ * Wave 5 — the mathfield moves INTO the text (operator trace
+ * 1a0eb5e936962765 "Yes want the equation mathfield embedded in the text",
+ * the green light on wave 4's recorded refinement candidate): the wave-4
+ * anchored popover retires — clicking an equation edits it in place and
+ * "Insert equation" drops an atom at the caret already editing, exactly
+ * like SME. Zero contract delta; the Insert-equation button is a plain
+ * action again (no open/close state to track).
+ *
  * Unchanged honesty behaviors:
  *   - wave-3 ink pad / photo → core transcription → insert at the caret,
  *     session-gated (the spend is authenticated and per-learner — a button
@@ -219,7 +227,6 @@ export function AnswerTextarea({
   const [padOpen, setPadOpen] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [focused, setFocused] = useState(false);
-  const [eqOpen, setEqOpen] = useState(false);
   /** live mark state at the editor selection (drives aria-pressed) */
   const [markState, setMarkState] = useState({ italic: false, subscript: false, superscript: false, equation: false });
   const editorRef = useRef<AnswerEditorHandle>(null);
@@ -230,7 +237,7 @@ export function AnswerTextarea({
   const wordCount = value.trim() ? value.trim().split(/\s+/).length : 0;
 
   /** SME activation: pristine until focused, typed into, or a tool is open */
-  const active = focused || value.trim().length > 0 || symOpen || padOpen || eqOpen;
+  const active = focused || value.trim().length > 0 || symOpen || padOpen;
 
   /** the marks-proportional floor (a 6-mark answer starts taller than a
    *  1-mark one; SME's fixed 10rem sits inside this range) — rides
@@ -275,8 +282,9 @@ export function AnswerTextarea({
 
   const onWrapperKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     // the equation mathfield owns Enter — a shortcut keystroke typed while
-    // editing math must never submit the answer
-    if ((e.target as HTMLElement).closest("math-field, .answer-equation-popover")) return;
+    // editing math must never submit the answer (wave 5: the mathfield
+    // lives inline in the editor area, so the guard keys on math-field)
+    if ((e.target as HTMLElement).closest("math-field")) return;
     if (onSubmitShortcut && (e.metaKey || e.ctrlKey) && e.key === "Enter") {
       e.preventDefault();
       onSubmitShortcut();
@@ -324,7 +332,6 @@ export function AnswerTextarea({
           id={label ? inputId : undefined}
           placeholder={placeholder}
           minHeight={active ? `${floorRows * 1.5}rem` : undefined}
-          onEquationPopoverChange={setEqOpen}
           onStateChange={setMarkState}
         />
         {/* the active strip — mirrors SME's Editor_menu, verbatim anatomy:
@@ -381,7 +388,6 @@ export function AnswerTextarea({
                   onClick={() => {
                     editorRef.current?.openEquation();
                   }}
-                  aria-expanded={eqOpen}
                   aria-label="Insert equation"
                   title="Insert equation"
                   className={MENU_BUTTON_SQUARE}

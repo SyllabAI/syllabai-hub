@@ -1325,8 +1325,7 @@
 /* ── HUB-ANSWER-BOX wave 4 — the rich answer editor (TipTap + MathLive) ──
    Placeholder = SME's exact mechanism (TipTap p[data-placeholder] ::before,
    classes is-empty is-editor-empty — verified against their editor DOM).
-   The equation atom renders KaTeX inline with a selection ring; the
-   MathLive mathfield in the equation popover blends into the theme. */
+   The equation atom renders KaTeX inline with a selection ring. */
 .answer-editor-area .tiptap p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   color: var(--muted-foreground);
@@ -1347,14 +1346,30 @@
   outline: 2px solid var(--primary);
   outline-offset: 1px;
 }
+/* ── wave 5 — the mathfield lives IN the text (operator trace
+   1a0eb5e936962765): while an equation session is open the atom's node
+   view hosts the MathLive mathfield INLINE in the ProseMirror flow —
+   chip-like at text size, no popover. Static KaTeX renders at rest. */
+.answer-equation--editing {
+  cursor: text;
+}
 math-field.answer-mathfield {
-  display: block;
-  width: 100%;
-  min-height: 56px;
-  padding: 4px 8px;
-  border-radius: 6px;
+  display: inline-block;
+  vertical-align: middle;
+  min-width: 4ch;
+  max-width: 100%;
+  min-height: 0;
+  padding: 0 2px;
+  margin: 0 1px;
+  font-size: 1em;
+  line-height: normal;
   border: 1px solid var(--input);
+  border-radius: 4px;
   background: var(--background);
   color: var(--foreground);
-
+}
+math-field.answer-mathfield:focus-within,
+math-field.answer-mathfield:focus {
+  border-color: var(--primary);
+  outline: none;
 }
