@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ArrowRight, CircleHelp, ExternalLink, FileQuestion } from "lucide-react";
+import { ArrowLeft, ArrowRight, CircleHelp, FileQuestion } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { loadHubCourse } from "@/lib/courses";
@@ -15,7 +15,7 @@ import { pilotNoteParams } from "@/lib/static-params";
 /**
  * Note reader — SME page anatomy (research §5.3 + flow crawl fig. flow-04):
  * breadcrumb trail, two-tone title, exam-code pill, slim trust meta row
- * (exam board · updated · source) in place of the authorship block, guided-
+ * (exam board · updated) in place of the authorship block, guided-
  * study banner, standardised body, and the build-on-this-topic cross-links +
  * prev/next footer. The resource topic panel (SME's second column) mounts
  * left with the active note highlighted.
@@ -86,16 +86,10 @@ export default async function NoteReaderPage({
               <span>
                 Updated <span className="font-medium text-foreground">{note.updatedAt.slice(0, 10)}</span>
               </span>
-              {note.sourceUrl && (
-                <a
-                  href={note.sourceUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-primary underline underline-offset-2"
-                >
-                  Source <ExternalLink className="size-3" aria-hidden />
-                </a>
-              )}
+              {/* operator 2026-09-29 (trace 1a0ec009029f7a1d): the outbound
+                  Source link is removed from ALL courses — note.sourceUrl
+                  stays in the data contract (corpus tooling joins on it), it
+                  just no longer renders on the page. */}
             </div>
           </header>
 
