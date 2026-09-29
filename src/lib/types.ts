@@ -362,6 +362,8 @@ export interface AssignmentView {
   dueAt: string;
   /** "open" | "closed" */
   status: string;
+  /** V51 class target — null = the whole enabled cohort (the V49 default) */
+  classId: string | null;
   createdAt: string;
 }
 
@@ -1508,4 +1510,86 @@ export interface RevisionNoteBodyView {
   assets: string[];
   prevNoteId: string | null;
   nextNoteId: string | null;
+}
+
+// ── classroom foundation (V51, TFA-01 + TFA-02) ─────────────────────────
+// The explicit Class entity, class membership, announcements, and the
+// classroom student capability layer. course identity stays the hub's
+// (course_slug / course_label opaque refs — the V49 ruling reused); a
+// student's classroom visibility derives from membership rows ONLY: no
+// membership → empty reads → no classroom UI (the independent-student rule).
+
+/** teacher list row: one class + live member count */
+export interface TeacherClassView {
+  id: string;
+  courseSlug: string;
+  courseLabel: string;
+  name: string;
+  /** "active" | "archived" */
+  status: string;
+  memberCount: number;
+  createdAt: string;
+}
+
+/** one roster row: the student + when they were enrolled + by whom */
+export interface ClassMemberView {
+  studentId: string;
+  displayName: string;
+  email: string;
+  enrolledBy: string;
+  enrolledAt: string;
+}
+
+/** class detail: the class + its full roster */
+export interface TeacherClassDetailView {
+  id: string;
+  courseSlug: string;
+  courseLabel: string;
+  name: string;
+  status: string;
+  createdAt: string;
+  members: ClassMemberView[];
+}
+
+/** teacher announcement row: content + read-state count over the roster */
+export interface TeacherAnnouncementView {
+  id: string;
+  title: string;
+  body: string;
+  /** "general" | "homework" | "notice" | "exam-reminder" | "resource" */
+  category: string;
+  readCount: number;
+  memberCount: number;
+  createdAt: string;
+}
+
+/** learner-side class row (the classroom overlay) + unread badge */
+export interface LearnerClassView {
+  id: string;
+  courseSlug: string;
+  courseLabel: string;
+  name: string;
+  teacherName: string;
+  unreadAnnouncements: number;
+  enrolledAt: string;
+}
+
+/** learner announcement row: content + whether THIS student has read it */
+export interface LearnerAnnouncementView {
+  id: string;
+  classId: string;
+  className: string;
+  courseSlug: string;
+  teacherName: string;
+  title: string;
+  body: string;
+  category: string;
+  read: boolean;
+  createdAt: string;
+}
+
+/** learner classroom overview: my classes + the flattened unread badge */
+export interface LearnerClassroomView {
+  classes: LearnerClassView[];
+  unreadAnnouncements: number;
 }

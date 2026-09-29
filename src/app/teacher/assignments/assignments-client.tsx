@@ -47,6 +47,7 @@ import { api, ApiError } from "@/lib/api";
 import type {
   AssignmentRosterView,
   AssignmentSummaryView,
+  TeacherClassView,
 } from "@/lib/types";
 import { useSavedTests } from "@/lib/teacher/stores";
 import type { AssembledTest } from "@/lib/teacher/test-assembly";
@@ -117,6 +118,12 @@ export function AssignmentsClient({
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
+  // V51 class targeting (TFA-02): the classes this teacher owns — the create
+  // form can target one of them instead of the whole cohort. "cohort" keeps
+  // the V49 default: every enabled student, independent students included.
+  const [teacherClasses, setTeacherClasses] = useState<TeacherClassView[]>([]);
+  const [targetClass, setTargetClass] = useState<string>("cohort");
+
   const loadList = useCallback(async () => {
     setListLoading(true);
     setListError(null);
@@ -132,6 +139,37 @@ export function AssignmentsClient({
   useEffect(() => {
     void loadList();
   }, [loadList]);
+
+  // V51: the teacher's own classes for the target selector — a failed load
+  // degrades to cohort-only targeting (the pre-classroom behavior), never
+  // a fake class list
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .teacherClasses()
+      .then((rows) => {
+        if (!cancelled) setTeacherClasses(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setTeacherClasses([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // classes available as targets for THIS course: live, course-matching
+  const courseClasses = useMemo(
+    () => teacherClasses.filter((c) => c.courseSlug === course && c.status === "active"),
+    [teacherClasses, course],
+  );
+  // if the selected course has no class, silently fall back to the cohort
+  useEffect(() => {
+    if (targetClass !== "cohort" && !courseClasses.some((c) => c.id === targetClass)) {
+      setTargetClass("cohort");
+    }
+  }, [courseClasses, targetClass]);
+
 
   // lazily pull the real roster for the selected assignment
   useEffect(() => {
@@ -270,6 +308,7 @@ export function AssignmentsClient({
         marksTotal: test.totalMarks,
         questionCount: test.questions.length,
         dueAt: new Date(`${dueAt}T23:59:00`).toISOString(),
+        classId: targetClass === "cohort" ? null : targetClass,
       });
       await loadList();
       setSelectedId(created.id);
@@ -281,7 +320,7 @@ export function AssignmentsClient({
     } finally {
       setCreating(false);
     }
-  }, [course, selected, data, useMarksTarget, targetMarks, maxQuestions, title, dueAt, courses, loadList]);
+  }, [course, selected, data, useMarksTarget, targetMarks, maxQuestions, title, dueAt, courses, loadList, targetClass]);
 
   const flipStatus = useCallback(
     async (id: string, status: "open" | "closed") => {
@@ -368,8 +407,28 @@ export function AssignmentsClient({
           </Badge>
         )}
         <span className="text-[11px] text-muted-foreground">
-          Cohort: every enabled student account on core
+          {targetClass === "cohort"
+            ? "Cohort: every enabled student account on core"
+            : `Class only: ${courseClasses.find((c) => c.id === targetClass)?.name ?? ""}`}
         </span>
+        {courseClasses.length > 0 && (
+          <div className="relative ml-auto">
+            <select
+              value={targetClass}
+              onChange={(e) => setTargetClass(e.target.value)}
+              aria-label="Assignment audience"
+              className="h-9 w-full appearance-none rounded-md border bg-background pr-8 pl-3 text-sm sm:w-64"
+            >
+              <option value="cohort">Audience: whole cohort</option>
+              {courseClasses.map((c) => (
+                <option key={c.id} value={c.id}>
+                  Class only: {c.name} ({c.memberCount})
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute top-1/2 right-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          </div>
+        )}
       </div>
 
       <Alert className="border-dashed">
@@ -571,6 +630,11 @@ export function AssignmentsClient({
                     <CardContent className="p-4">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="min-w-0 flex-1 truncate text-sm font-semibold">{a.title}</p>
+                        {a.classId && (
+                          <Badge variant="outline" className="text-[10px] font-normal">
+                            class: {teacherClasses.find((c) => c.id === a.classId)?.name ?? "targeted"}
+                          </Badge>
+                        )}
                         <Badge variant="outline" className="font-mono text-[10px] font-normal">
                           {a.courseSlug}
                         </Badge>

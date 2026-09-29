@@ -18,6 +18,7 @@ import {
   ListChecks,
   Network,
   ShieldCheck,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useIdentity } from "@/lib/identity";
@@ -25,6 +26,7 @@ import { useIdentity } from "@/lib/identity";
 const TABS = [
   { href: "/teacher", label: "Overview", icon: LayoutDashboard },
   { href: "/teacher/marking", label: "Marking review", icon: ClipboardCheck },
+  { href: "/teacher/classes", label: "Classes", icon: Users },
   { href: "/teacher/class", label: "Class intelligence", icon: Network },
   { href: "/teacher/test-builder", label: "Test Builder", icon: ClipboardList },
   { href: "/teacher/assignments", label: "Assignments", icon: ListChecks },
@@ -65,7 +67,11 @@ export function TeacherNav() {
           className="flex gap-1 overflow-x-auto rounded-lg border bg-card p-1 print:hidden"
         >
         {TABS.map((tab) => {
-          const active = pathname === tab.href;
+          // exact match for most tabs; the Classes workspace keeps its detail
+          // routes (/teacher/classes/[id]) highlighted under the same tab
+          const active =
+            pathname === tab.href ||
+            (tab.href === "/teacher/classes" && pathname.startsWith("/teacher/classes/"));
           return (
             <Link
               key={tab.href}

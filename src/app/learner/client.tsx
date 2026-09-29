@@ -1,36 +1,55 @@
 "use client";
 
 /**
- * My Progress — the real learner model viewer (ADR-029 tranche 4.1).
+ * My Progress page shell (ADR-029 tranche 4.1 + V51 classroom tab).
  *
- * Renders the same derivation that paints the Knowledge Graph and feeds its
- * drawer (lib/kg-learner-state.ts — one pass, one UI): stat tiles, topic
- * mastery (core granularity), the decay-derived review queue, the spec-point
- * mastery table and the attempt-history stream, reusing the drawer's tab
- * components so the surfaces can never disagree. A third tab carries the
- * assignments the teachers set (V49 — the learner side of the two-party
- * workflow, tranche 4.10).
- *
- * Provenance rules (the honesty contract):
- *   - CORE model (4CH1 pilot + signed in + core reachable): CORE_MEASURED —
- *     real attempt evidence, backend-computed decay and review scheduling.
- *   - Anything else: SIMULATED — the browser-local progress overlay, never
- *     written to course data, labelled on every section.
- *   - Bridge failure: an honest unavailable panel — no fabricated numbers.
+ * The learner-model tabs reuse the drawer's tab components so the surfaces
+ * can never disagree. A fourth tab — CLASSROOM — renders ONLY when the
+ * learner holds at least one live class membership (TFA-02's
+ * independent-student rule): a class-enrolled student gets announcements
+ * beside their learning state; an independent student's page is byte-for-byte
+ * what it was before classrooms existed.
  */
-import { User } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+
+import { useEffect, useState } from "react";
+import { GraduationCap, User } from "lucide-react";
 import { ProvenanceBadge } from "@/components/provenance";
+import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useLearnerState } from "@/lib/kg-learner-state";
+import { api } from "@/lib/api";
 import { PILOT_COURSE_SLUG } from "@/lib/attempt-bridge";
+import { useLearnerState } from "@/lib/kg-learner-state";
 import { HistoryTab, StateTab } from "../knowledge-graph/state-drawer";
 import { AssignmentsTab } from "./assignments-tab";
+import { ClassroomTab } from "./classroom-tab";
 
 export function LearnerClient() {
   // the 4CH1 pilot — the only course with a core-backed learner model today
   const { overlay, drawer, source } = useLearnerState(PILOT_COURSE_SLUG);
   const live = source === "core";
+
+  // the classroom overlay probe: null = still asking; [] = no membership
+  // (the independent case — the tab disappears); non-empty = class-enrolled
+  const [classNames, setClassNames] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .learnerClassroom()
+      .then((v) => {
+        if (!cancelled) setClassNames(v.classes.map((c) => c.name));
+      })
+      .catch(() => {
+        // a backend that predates the classroom contract, or a failed call:
+        // the honest default for THIS surface is the pre-classroom page
+        if (!cancelled) setClassNames([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const classroomTab = classNames !== null && classNames.length > 0;
 
   if (overlay?.bridgeError) {
     return (
@@ -71,6 +90,12 @@ export function LearnerClient() {
           <TabsTrigger value="state">My state</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
           <TabsTrigger value="assignments">Assignments</TabsTrigger>
+          {classroomTab && (
+            <TabsTrigger value="classroom" className="gap-1.5">
+              <GraduationCap className="size-3.5" aria-hidden />
+              Classroom
+            </TabsTrigger>
+          )}
         </TabsList>
         <div className="mt-3">
           <TabsContent value="state" className="mt-0">
@@ -82,6 +107,11 @@ export function LearnerClient() {
           <TabsContent value="assignments" className="mt-0">
             <AssignmentsTab />
           </TabsContent>
+          {classroomTab && (
+            <TabsContent value="classroom" className="mt-0">
+              <ClassroomTab />
+            </TabsContent>
+          )}
         </div>
       </Tabs>
     </div>
