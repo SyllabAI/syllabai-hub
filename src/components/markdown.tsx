@@ -199,19 +199,18 @@ export function Markdown({
           strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
           a: ({ children, href }) => {
             const h = typeof href === "string" ? href : "";
-            // Upstream cross-references ("[condensation reactions](savemyexams…)",
-            // 788 links corpus-wide) used to hop learners off-site to the
-            // source site — keep the label text, drop the off-site hop.
-            if (/^https?:\/\/([^/]+\.)?savemyexams\.(com|co\.uk)(\/|$)/i.test(h)) {
+            // Operator 2026-09-29 (trace 1a0ec14f2f7e3581): "same treatment
+            // for other outbound links" — EVERY external text-link gets the
+            // HUB-NOTES-SOURCE treatment the savemyexams cross-references
+            // already had: keep the label text, drop the off-site hop. This
+            // also covers the Pearson past-paper refs and the news/gov/
+            // Wikimedia attribution links in question content, and any URL
+            // an AI answer emits. Internal (relative) hrefs stay links.
+            // Images are a different renderer path (img:) and keep loading
+            // from the resources mirror; the pastpapers PDF buttons are not
+            // markdown (they point at the SyllabAI mirror) and stay live.
+            if (/^https?:\/\//i.test(h)) {
               return <span>{children}</span>;
-            }
-            if (h.startsWith("http")) {
-              // rare legitimate citations (World Bank, Wikimedia, gov.uk…)
-              return (
-                <a href={h} target="_blank" rel="noreferrer" className="text-primary underline underline-offset-2">
-                  {children}
-                </a>
-              );
             }
             return (
               <a href={h} className="text-primary underline underline-offset-2">
