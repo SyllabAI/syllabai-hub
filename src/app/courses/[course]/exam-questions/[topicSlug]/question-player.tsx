@@ -672,6 +672,20 @@ function TypedAnswerWorkspace({
   const progress = useCourseProgress(course);
   const savedText = progress.typedAnswers[part.id]?.text ?? "";
   const [text, setText] = useState(savedText);
+  // wave-4 defect fix (found by the answer-format draft-reload probe):
+  // useState above captures savedText during the SSR-hydration render, when
+  // useSyncExternalStore still serves the SERVER snapshot (empty). The
+  // client snapshot (the persisted draft) arrives one tick later — without
+  // this adoption the workspace keeps text="", and the first blur then
+  // persists "" which saveTypedAnswer treats as "delete the draft": the
+  // learner's saved answer (now with rendered equations) silently wipes on
+  // the first reload + click. Adopt the store value whenever the local
+  // text has not diverged from the store yet (the user hasn't typed).
+  const lastStoreText = useRef(savedText);
+  useEffect(() => {
+    lastStoreText.current = savedText;
+    setText((prev) => (prev === lastStoreText.current || prev === "" ? savedText : prev));
+  }, [savedText]);
   const [probedAi, setProbedAi] = useState<boolean | null>(null);
   const [mark, setMark] = useState<MarkState>({ kind: "idle" });
   const [applied, setApplied] = useState(false);
