@@ -100,6 +100,7 @@ import type {
   TeacherAnnouncementView,
   TeacherClassDetailView,
   TeacherClassView,
+  ClassKnowledgeGraphView,
 } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "";
@@ -647,6 +648,15 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ status }),
     }),
+
+  // Teacher: the F-072 class knowledge-graph heatmap — the curriculum
+  // subtree with member-only §13.3 aggregation fused with the TFA-03
+  // teaching-coverage overlay (§13.4). A pure read model; archived classes
+  // stay readable.
+  teacherClassKnowledgeGraph: (classId: string, rootId: string) =>
+    request<ClassKnowledgeGraphView>(
+      `/api/v1/teacher/classes/${classId}/knowledge-graph?rootId=${encodeURIComponent(rootId)}`,
+    ),
 
   // Learner: my classroom overview — classes + flattened unread badge.
   // Empty for the independent student; that empty IS the honest state.

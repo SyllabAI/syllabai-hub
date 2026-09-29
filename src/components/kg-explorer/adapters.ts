@@ -8,8 +8,8 @@
  * curriculum concept graph) and the web applicability-chip import stay on web.
  */
 
-import type { ClassOverviewView } from "@/lib/types";
-import type { KGXEdge, KGXGraph, KGXHost, KGXNode, KGXPanelSection } from "./types";
+import type { ClassKnowledgeGraphView, ClassOverviewView } from "@/lib/types";
+import type { KGXEdge, KGXGraph, KGXHost, KGXNode, KGXNodeType, KGXPanelSection } from "./types";
 
 // ── Class Intelligence — class aggregates over the topic graph ────────────
 
@@ -152,5 +152,218 @@ export function classGraphHost(
       : undefined,
     caption:
       "Class-level facts only: mastery from graded BKT evidence, misconceptions from BDT estimates, tutor asks are engagement — never weakness (productization sprint §4).",
+  };
+}
+
+// ── F-072 — class knowledge-graph heatmap over the real class payload ────
+
+/** backend NodeType.name() → the KGX family the engine draws */
+const KG_NODE_TYPE: Record<string, KGXNodeType> = {
+  SUBJECT: "ROOT",
+  UNIT: "UNIT",
+  TOPIC: "TOPIC",
+  SUBTOPIC: "SPEC",
+  CONCEPT: "CONCEPT",
+  PRACTICAL: "PRACTICAL",
+  QUESTION: "QUESTION",
+  PAPER: "PAPER",
+};
+
+/** the shared backend band vocabulary → the §13.1 words teachers read */
+const BAND_LABEL: Record<string, string> = {
+  LOW: "Weak",
+  DEVELOPING: "Developing",
+  SECURE: "Secure",
+  UNMEASURED: "Unmeasured",
+};
+
+/**
+ * The F-072 host: the core ClassKnowledgeGraphView verbatim into KGX —
+ * the SAME graph component as every other surface (no second KG
+ * implementation), a projection of the read model, nothing invented.
+ * The coverage lens states teaching coverage first (solid band ring =
+ * taught, dashed grey = not yet taught, ringless = no coverage recorded);
+ * the panel shows the §13.3 distribution so a polarized class cannot hide
+ * behind its mean.
+ */
+export function classKnowledgeGraphHost(view: ClassKnowledgeGraphView): KGXHost {
+  const wireById = new Map(view.nodes.map((n) => [n.id, n]));
+  // the wire carries the tree as childIds — derive parent pointers once
+  const parentOf = new Map<string, string>();
+  for (const n of view.nodes) {
+    for (const childId of n.childIds) parentOf.set(childId, n.id);
+  }
+
+  const nodes: KGXNode[] = view.nodes.map((n) => {
+    const parent = parentOf.get(n.id);
+    const parentNode = parent ? wireById.get(parent) : undefined;
+    const badge =
+      n.coverageState === "taught"
+        ? BAND_LABEL[n.meanBand] ?? n.meanBand
+        : n.coverageState === "not-taught"
+          ? "Not taught"
+          : "No coverage";
+    const subtitleParts: string[] = [];
+    if (n.type === "SUBTOPIC") {
+      // spec point: the parent topic is the orientation
+      if (parentNode) subtitleParts.push(parentNode.title);
+    } else if (n.specPoints > 0) {
+      subtitleParts.push(
+        `${n.taughtSpecPoints} of ${n.specPoints} spec points marked taught`,
+      );
+    }
+    return {
+      id: n.id,
+      type: KG_NODE_TYPE[n.type] ?? "CONCEPT",
+      title: n.title,
+      code: n.code,
+      parentId: parent ?? null,
+      subtitle: subtitleParts.length ? subtitleParts.join(" · ") : null,
+      badge,
+      // the backend mean is the EFFECTIVE (decayed) mean — feed both slots
+      mastery: n.meanMastery,
+      effectiveMastery: n.meanMastery,
+      attempts: n.attempts > 0 ? n.attempts : null,
+      correct: n.correctCount > 0 ? n.correctCount : null,
+      learnersMeasured: n.learnersMeasured,
+      coverageState: n.coverageState,
+      distribution: {
+        struggling: n.strugglingCount,
+        developing: n.developingCount,
+        proficient: n.proficientCount,
+      },
+      misconception:
+        n.learnersWithActiveMisconception > 0
+          ? {
+              probability: Math.min(1, n.learnersWithActiveMisconception / Math.max(1, n.learnersMeasured)),
+              active: true,
+            }
+          : null,
+      detail: n.description,
+    };
+  });
+
+  // prerequisite edges verbatim; endpoints must exist (the engine invariant
+  // the student-KG service also enforces — skip, never guess)
+  const present = new Set(nodes.map((n) => n.id));
+  const edges: KGXEdge[] = view.prerequisiteEdges
+    .filter((e) => present.has(e.prerequisiteId) && present.has(e.nodeId))
+    .map((e) => ({
+      from: e.prerequisiteId,
+      to: e.nodeId,
+      kind: "pre" as const,
+      label: "REQUIRES_PREREQUISITE",
+    }));
+
+  return {
+    graph: { nodes, edges },
+    lenses: [
+      {
+        id: "coverage",
+        label: "Coverage × understanding",
+        metric: "class-coverage",
+        hint: "solid ring = taught (band = class mean) · dashed grey = not yet taught · no ring = no coverage recorded",
+      },
+      {
+        id: "class",
+        label: "Class mastery",
+        metric: "class",
+        hint: "ring = class mean mastery band (graded evidence, enrolled members only)",
+      },
+      {
+        id: "misconception",
+        label: "Misconceptions",
+        metric: "misconception",
+        hint: "red = nodes where enrolled learners carry active misconceptions",
+      },
+      {
+        id: "structure",
+        label: "Curriculum",
+        metric: "structure",
+        hint: "the plain paper graph",
+      },
+    ],
+    defaultLensId: "coverage",
+    panelSections: (n) => {
+      const node = wireById.get(n.id);
+      if (!node) return [];
+      const sections: KGXPanelSection[] = [];
+
+      // §13.4 teaching status — verbatim for spec points, derived elsewhere
+      const statusValue =
+        node.coverageState === "taught"
+          ? "Taught"
+          : node.coverageState === "not-taught"
+            ? "Not taught yet"
+            : "No coverage recorded";
+      sections.push({
+        title: "Teaching status",
+        rows: [{ label: "Status", value: statusValue }],
+        note:
+          node.type === "SUBTOPIC"
+            ? undefined
+            : node.specPoints > 0
+              ? `Derived from spec points: ${node.taughtSpecPoints} of ${node.specPoints} marked taught (${node.recordedSpecPoints} recorded).`
+              : "No specification points under this node.",
+      });
+
+      // §13.3 class understanding — the distribution, not just the mean
+      if (node.learnersMeasured > 0 && node.meanMastery != null) {
+        const measured = node.learnersMeasured;
+        sections.push({
+          title: "Class understanding",
+          rows: [
+            { label: "Mean (after decay)", value: `${Math.round(node.meanMastery * 100)}%` },
+            {
+              label: "Students measured",
+              value: `${measured} of ${view.learnersEnrolled} enrolled`,
+            },
+          ],
+          bars: [
+            {
+              label: "Struggling (low)",
+              value: node.strugglingCount / measured,
+              caption: `${node.strugglingCount} of ${measured}`,
+            },
+            {
+              label: "Developing",
+              value: node.developingCount / measured,
+              caption: `${node.developingCount} of ${measured}`,
+            },
+            {
+              label: "Proficient (secure)",
+              value: node.proficientCount / measured,
+              caption: `${node.proficientCount} of ${measured}`,
+            },
+          ],
+        });
+      } else {
+        sections.push({
+          title: "Class understanding",
+          note: "No enrolled student has evidence on this node yet — honestly unmeasured, never zero.",
+        });
+      }
+
+      if (node.attempts > 0) {
+        sections.push({
+          title: "Evidence",
+          rows: [
+            { label: "Evidence-backed attempts", value: String(node.attempts) },
+            { label: "Correct", value: String(node.correctCount) },
+            {
+              label: "Accuracy",
+              value: `${Math.round((node.correctCount / node.attempts) * 100)}%`,
+            },
+            {
+              label: "Active misconceptions",
+              value: `${node.learnersWithActiveMisconception} learner${node.learnersWithActiveMisconception === 1 ? "" : "s"}`,
+            },
+          ],
+        });
+      }
+      return sections;
+    },
+    caption:
+      "Member-only aggregation: only this class's enrolled students count — independent students never enter these numbers. Grey/dashed means not yet taught (a teaching-coverage state, NOT a mastery state).",
   };
 }
