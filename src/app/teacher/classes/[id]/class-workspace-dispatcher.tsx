@@ -14,7 +14,7 @@
  */
 
 import { ClassDetailClient } from "./class-detail-client";
-import { LocalClassMissing, LocalClassWorkspace } from "./local-class-workspace";
+import { LocalClassMissing, LocalClassWorkspace } from "./class-workspace-local";
 import { useMyClasses } from "@/lib/teacher/my-classes";
 import type { TeacherCourseLite } from "../../teacher-client";
 
