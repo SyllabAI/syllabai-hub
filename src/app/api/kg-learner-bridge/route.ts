@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { getCourseMeta, loadHubCourse } from "@/lib/courses";
 
 /**
  * GET /api/kg-learner-bridge?course=<slug>
@@ -97,6 +98,13 @@ interface LearnerBridgePayload {
   misconceptions: BridgeMisconception[];
   /** sim-learner disclaimer for drawer labelling — null when no states exist */
   misconceptionDisclaimer: string | null;
+  /** HUB-DASH-CORE (P1, operator trace 1a0ec29c8c8cfb71): additive join —
+   *  full sub-topic code ("4CH1-S1-a") → the first exam-questions topic
+   *  slug anchored there, so core-side target codes (recommendation rows,
+   *  the most-recent topic) can deep-link into the hub's own question sets.
+   *  Committed bundles only; omitted on any failure — consumers fall back
+   *  to the exam-questions index (deploy-skew safe in both directions). */
+  subtopicSets?: Record<string, string>;
 }
 
 const cache = new Map<string, LearnerBridgePayload>();
@@ -120,7 +128,7 @@ function itemCodes(item: MapItem | undefined): string[] {
   return out;
 }
 
-export function GET(request: Request) {
+export async function GET(request: Request) {
   const slug = new URL(request.url).searchParams.get("course") ?? "";
   if (!/^[a-z0-9-]+$/.test(slug)) {
     return NextResponse.json({ error: "bad course slug" }, { status: 400 });
@@ -330,6 +338,26 @@ export function GET(request: Request) {
     misconceptions,
     misconceptionDisclaimer: misconceptions.length ? (sim?.disclaimer ?? null) : null,
   };
+
+  // HUB-DASH-CORE (P1, operator trace 1a0ec29c8c8cfb71): publish the
+  // sub-topic → question-set join for core-side deep links. loadHubCourse
+  // is bundle-cache-backed (one parse per process) and only reached for
+  // committed bundles — courses still importing via a provider keep the
+  // field absent and every consumer falls back to the index page.
+  try {
+    const meta = await getCourseMeta(slug);
+    if (meta?.hasBundle) {
+      const hub = await loadHubCourse(slug);
+      const subtopicSets: Record<string, string> = {};
+      for (const [code, slugs] of Object.entries(hub?.setsBySubtopic ?? {})) {
+        if (slugs.length > 0) subtopicSets[code] = slugs[0];
+      }
+      if (Object.keys(subtopicSets).length > 0) payload.subtopicSets = subtopicSets;
+    }
+  } catch {
+    // additive — the bridge stays valid without the join
+  }
+
   cache.set(slug, payload);
   return NextResponse.json(payload);
 }

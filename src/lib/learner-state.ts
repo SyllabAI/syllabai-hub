@@ -96,6 +96,12 @@ export interface LearnerBridge {
    *  without a misconception corpus; see api/kg-learner-bridge) */
   misconceptions: BridgeMisconception[];
   misconceptionDisclaimer: string | null;
+  /** HUB-DASH-CORE (P1): additive join — full sub-topic code ("4CH1-S1-a")
+   *  → the first exam-questions topic slug anchored there. Lets core-side
+   *  target codes (recommendation rows, the most-recent topic) deep-link
+   *  into the hub's own question sets. Absent on stale caches / courses
+   *  without a committed bundle — consumers fall back to the index page. */
+  subtopicSets?: Record<string, string>;
 }
 
 /** One watched misconception — content from the corpus, state from the seeded
