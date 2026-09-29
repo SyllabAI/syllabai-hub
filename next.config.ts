@@ -27,7 +27,9 @@ const CORE_ORIGIN = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "")
  *   (public/kg/*.html), so frame-ancestors is 'self' — 'none' would break our
  *   own embeds while 'self' still blocks cross-site framing (with
  *   X-Frame-Options: SAMEORIGIN as the legacy fallback).
- * - fonts: next/font self-hosts at build; KaTeX ships with the bundle.
+ * - fonts: pinned woff2 assets (src/fonts/) served same-origin via
+ *   next/font/local — zero font network fetches at build or runtime;
+ *   KaTeX ships with the bundle.
  */
 const isDev = process.env.NODE_ENV === "development";
 const CSP = [
