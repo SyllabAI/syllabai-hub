@@ -116,7 +116,7 @@ function truncate(text: string, max = 90): string {
   return `${(sp > max * 0.6 ? cut.slice(0, sp) : cut).trimEnd()}…`;
 }
 
-function daysAgo(now: number, at: number): string {
+export function daysAgo(now: number, at: number): string {
   const d = Math.floor((now - at) / DAY);
   if (d <= 0) return "today";
   if (d === 1) return "yesterday";
