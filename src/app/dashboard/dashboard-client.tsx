@@ -54,6 +54,7 @@ import { useCourseProgress } from "@/lib/progress";
 import { api, getToken } from "@/lib/api";
 import { fetchPilotInfo, PILOT_COURSE_SLUG } from "@/lib/attempt-bridge";
 import { NextBestActionsCard } from "./next-best-actions-card";
+import { ReviewDueStrip } from "./review-due-strip";
 import { AddCourseOverlay } from "./add-course-overlay";
 import type { CourseMeta } from "@/lib/courses";
 import type { CourseStatsView } from "@/lib/types";
@@ -442,6 +443,11 @@ export function DashboardClient({ courses }: { courses: CourseMeta[] }) {
             : "Your progress is saved on this device."}
         </p>
       </header>
+
+      {/* ---- Review due (HUB-DASH-CORE P1-5): the retention loop's headline.
+          Account queue when the pilot's core path is live, the device's
+          Ebbinghaus derivation otherwise; renders nothing when nothing is due ---- */}
+      <ReviewDueStrip courses={mySubjects} />
 
       {/* ---- My courses ---- */}
       <section aria-label="My subjects" className="space-y-3">
