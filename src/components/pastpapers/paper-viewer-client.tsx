@@ -160,15 +160,16 @@ export function PaperViewerClient({
   };
 
   const commitResult = () => {
-    const m = Number.parseInt(marks, 10);
-    const t = Number.parseInt(total, 10);
+    // clamp ≥ 0 (s140 audit B5: a typed "-5" used to save straight through)
+    const m = Math.max(0, Number.parseInt(marks, 10));
+    const t = Math.max(1, Number.parseInt(total, 10));
     if (Number.isNaN(m) || Number.isNaN(t)) return;
     // optional per-question tally — only rows the student actually filled
     const breakdown = rows
       .map((r) => ({
         label: r.label.trim(),
-        marks: Number.parseInt(r.marks, 10),
-        max: Number.parseInt(r.max, 10),
+        marks: Math.max(0, Number.parseInt(r.marks, 10)),
+        max: Math.max(0, Number.parseInt(r.max, 10)),
       }))
       .filter((q) => q.label !== "" && !Number.isNaN(q.marks))
       .map((q) => ({
@@ -337,7 +338,10 @@ export function PaperViewerClient({
             size="sm"
             variant="ghost"
             className="size-9 px-0"
-            onClick={() => endMock("exited")}
+            /* s140 audit (B3): this button's label promises exit WITHOUT
+               grading — so it leaves the mock entirely (nothing saved) instead
+               of landing on the grading screen with a false "Finished in Xm" */
+            onClick={() => router.push(backHref)}
             aria-label="Exit mock without grading"
           >
             <X className="size-4" aria-hidden />
@@ -611,7 +615,9 @@ export function PaperViewerClient({
                 Begin mock
               </Button>
               <Button asChild variant="outline">
-                <Link href={`/courses/${course}/past-papers/${paper.sessionId}/${paper.dir}?doc=qp`}>
+                {/* s140 audit (B1): the viewer lives at /past-papers/view/<session>/<dir>
+                 * — the old link dropped the view/ segment and 404'd */}
+                <Link href={`/courses/${course}/past-papers/view/${paper.sessionId}/${paper.dir}?doc=qp`}>
                   <BookOpenCheck className="size-4" aria-hidden />
                   Just view the paper
                 </Link>
@@ -655,13 +661,17 @@ export function PaperViewerClient({
         {/* doc switch — three states on desktop (QP | MS | Split). Gated to
             lg+: the two-pane split grid only exists at lg, so exposing the
             Split tab in the 640–1023px band made it a silent no-op. Below lg
-            the floating A/B pill is the doc switch (split falls back to QP). */}
+            the floating A/B pill is the doc switch (split falls back to QP).
+            (s140 audit: the tablist's children were plain aria-pressed buttons
+            — axe aria-required-children CRITICAL. Real role=tab + aria-selected
+            now, mirroring the mobile pill.) */}
         <div className="ml-auto hidden items-center gap-1 rounded-lg border p-1 lg:flex" role="tablist" aria-label="Document view">
           <Button
             size="sm"
             variant={doc === "qp" ? "secondary" : "ghost"}
             className="h-7 text-xs"
-            aria-pressed={doc === "qp"}
+            role="tab"
+            aria-selected={doc === "qp"}
             disabled={!qpUrl}
             onClick={() => setDoc("qp")}
           >
@@ -671,7 +681,8 @@ export function PaperViewerClient({
             size="sm"
             variant={doc === "ms" ? "secondary" : "ghost"}
             className="h-7 text-xs"
-            aria-pressed={doc === "ms"}
+            role="tab"
+            aria-selected={doc === "ms"}
             disabled={!msUrl}
             title={msUrl ? undefined : "No mark scheme held for this paper"}
             onClick={() => setDoc("ms")}
@@ -683,7 +694,8 @@ export function PaperViewerClient({
               size="sm"
               variant={doc === "split" ? "default" : "ghost"}
               className="h-7 text-xs"
-              aria-pressed={doc === "split"}
+              role="tab"
+              aria-selected={doc === "split"}
               aria-label="Split view: question paper and mark scheme side by side"
               onClick={() => setDoc("split")}
             >
@@ -695,11 +707,15 @@ export function PaperViewerClient({
 
       {/* pane area — flex row for a single doc, 2-col grid for desktop split.
           Panes are h-full: no fixed 70vh/16rem math, the area below the
-          toolbar row is the PDF's to fill. */}
+          toolbar row is the PDF's to fill.
+          (s140 audit: the split grid's implicit row is auto-sized — it grew
+          to the 25k-px document height, so the panes never bounded their
+          scrollers: the pages you could SEE stayed blank while canvases
+          rendered ~14 pages down. minmax(0,1fr) is the grid's min-h-0.) */}
       <div
         className={cn(
           "relative flex min-h-0 flex-1 gap-2",
-          isSplitCapable && doc === "split" && "lg:grid lg:grid-cols-2",
+          isSplitCapable && doc === "split" && "lg:grid lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)]",
         )}
       >
         {/* mobile A/B toggle — floats over the pane's bottom edge so it costs
@@ -735,10 +751,16 @@ export function PaperViewerClient({
             downloadUrl={qpUrl}
             label={`Question paper — ${paper.ref}`}
             active={doc === "qp" || doc === "split"}
+            /* s140 audit: the old split-mode "lg:block" OVERRODE the pane's
+               base `flex` at lg → display:block → the flex-1 scroller lost
+               its bounds and grew to the full 25k-px document height (the
+               pages you could SEE stayed blank while canvases painted ~14
+               pages down). The pane needs NOTHING extra in split mode — it
+               is visible at every width (mobile split falls back to QP-only)
+               and flexes inside the bounded grid row. */
             className={cn(
               "h-full min-h-0 w-full flex-1",
               doc === "ms" && "hidden",
-              doc === "split" && "lg:block", // mobile split falls back to QP-only
             )}
           />
         )}
@@ -751,7 +773,9 @@ export function PaperViewerClient({
             className={cn(
               "h-full min-h-0 w-full flex-1",
               doc === "qp" && "hidden",
-              doc === "split" && "hidden lg:block",
+              /* s140: lg:flex (not lg:block) — the pane must stay a flex
+                 column so its scroller keeps its flex-1 bounds at lg */
+              doc === "split" && "hidden lg:flex",
             )}
           />
         )}

@@ -37,7 +37,6 @@
  *     retry/unmount.
  *
  * Text architecture (v3 — Ctrl+F / selection / per-question scoring support):
- *
  *   - a BACKGROUND INDEXER extracts each page's text content once (lazily —
  *     started only when search opens or when a consumer asks for lines via
  *     the imperative handle), cached as {TextContent, page-meta}; it never
@@ -58,6 +57,23 @@
  *   - the same line model, at scale 1, feeds question-structure detection
  *     (lib/ms-questions.ts) — the lazy per-paper alternative to a repo-wide
  *     question index.
+ *
+ * Viewer affordances (v4 — operator audit s140):
+ *
+ *   - the page indicator is an INPUT — type a page, Enter (jumps farther than
+ *     2.5 viewports are instant, not an animated 30k-px scroll);
+ *   - the loading state shows real download progress (pdf.js onProgress) and
+ *     a stalled load fails honestly after LOAD_TIMEOUT_MS (Retry / open raw);
+ *   - zoom is a round ladder (100→300%) clamped to MAX_RENDER_SCALE / fit so
+ *     the shown % is always the rendered % (the old 1.25^n steps drifted to
+ *     156/195/244% and silently capped at scale 4 on wide panes);
+ *   - ROTATION (90° steps): canvases/text layers re-render through rotated
+ *     pdf.js viewports while the line model stays in unrotated space —
+ *     highlight/scroll-to-match rects map through rotRect() (pure 90°-step
+ *     geometry, derived from pdf.js's own viewport transform);
+ *   - the pages region is a focusable role=region (arrow keys scroll,
+ *     +/−/0 zoom); each page holder is a labelled role=img; unpainted
+ *     placeholders carry a "Page N" ghost (CSS .pp-holder:empty).
  *
  * PDFs stream straight from the syllabai-pastpapers corpus on
  * raw.githubusercontent.com (CORS-enabled); nothing is proxied or vendored
@@ -81,6 +97,7 @@ import {
   Minus,
   Plus,
   RotateCcw,
+  RotateCw,
   Search,
   X,
 } from "lucide-react";
@@ -94,6 +111,7 @@ import {
   type ItemGeom,
   type PdfLine,
 } from "@/lib/pdf-lines";
+import { prettyBytes } from "@/lib/pastpapers-shared";
 
 type PdfDoc = import("pdfjs-dist").PDFDocumentProxy;
 type PdfPage = import("pdfjs-dist").PDFPageProxy;
@@ -134,6 +152,21 @@ const MAX_CANVASES = 9;
 const SWEEP_DELAY_MS = 350;
 /** Cap on waiting for a pane's doc to load before extractLines gives up. */
 const DOC_WAIT_TIMEOUT_MS = 30_000;
+/**
+ * Hard cap on a stalled document LOAD before the honest error state (Retry /
+ * Open raw PDF) replaces the spinner (operator audit s140: a wedged fetch
+ * used to spin forever — raw.githubusercontent hiccups need an exit).
+ */
+const LOAD_TIMEOUT_MS = 45_000;
+/**
+ * Zoom ladder — multipliers on fit-width, honest round steps (the old
+ * 1.25^n ladder showed 156% / 195% / 244%). Clamped per-pane by
+ * MAX_RENDER_SCALE / fit so the shown % is always the rendered %.
+ */
+const ZOOM_LADDER = [1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+/** pdf.js render-scale ceiling (canvas memory guard; also honesty cap). */
+const MAX_RENDER_SCALE = 4;
+type Rot = 0 | 90 | 180 | 270;
 
 type Phase = "loading" | "ready" | "error";
 
@@ -183,13 +216,44 @@ function installFindKeydown() {
   );
 }
 
-/** Fetch-or-create an absolutely-positioned aux layer inside a holder. */
+/** Fetch-or-create an absolutely-positioned aux layer inside a holder.
+ * (s140 audit: the create branch used to return a DETACHED node — it worked
+ * only because every caller pre-appended; now appending is the helper's own
+ * job, so a future caller can never render an invisible layer.) */
 function ensureAux(holder: HTMLDivElement, cls: string): HTMLDivElement {
   const existing = holder.querySelector<HTMLDivElement>(`:scope > .${cls}`);
   if (existing) return existing;
   const el = document.createElement("div");
   el.className = cls;
+  holder.appendChild(el);
   return el;
+}
+
+/**
+ * Map a highlight rect from the user-unrotated page space (the line model's
+ * coordinate space) into on-screen space at the current user rotation.
+ * Rotations are multiples of 90°, so the result stays axis-aligned; w0/h0 are
+ * the UNROTATED page box at the SAME scale as the rect's coordinates (pdf.js
+ * applies one uniform scale to the rotated and unrotated viewports alike —
+ * derivation from pdf.js getViewport's transform for viewBox [0,0,W,H]:
+ * rot 90: (x,y)→(H0−y,x), rot 180: (x,y)→(W0−x,H0−y), rot 270: (x,y)→(y,W0−x)).
+ */
+function rotRect(
+  r: { x: number; y: number; w: number; h: number },
+  rot: Rot,
+  w0: number,
+  h0: number,
+): { x: number; y: number; w: number; h: number } {
+  switch (rot) {
+    case 90:
+      return { x: h0 - r.y - r.h, y: r.x, w: r.h, h: r.w };
+    case 180:
+      return { x: w0 - r.x - r.w, y: h0 - r.y - r.h, w: r.w, h: r.h };
+    case 270:
+      return { x: r.y, y: w0 - r.x - r.w, w: r.h, h: r.w };
+    default:
+      return r;
+  }
 }
 
 export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
@@ -209,6 +273,12 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
   const anchorRef = useRef<{ top: number; pageH: number; at: number } | null>(null);
   const sweepTimerRef = useRef<number | null>(null);
   const rafRef = useRef(0);
+  /** user rotation offset (0/90/180/270, composes with each page's own rotate) */
+  const rotRef = useRef<Rot>(0);
+  /** zoom ladder index (ZOOM_LADDER) — ref for math, state mirrors in zoomPct */
+  const zoomIdxRef = useRef(0);
+  /** page-1 unrotated box (honest zoom ceiling + placeholder aspect) */
+  const base1Ref = useRef<{ w: number; h: number } | null>(null);
 
   // ── text index (v3) ──────────────────────────────────────────────────────
   const pdfjsNsRef = useRef<PdfjsNamespace | null>(null);
@@ -243,6 +313,12 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
   const [currentPage, setCurrentPage] = useState(1);
   /** zoom multiplier on fit-width — ref for render math, state for the toolbar */
   const [zoomPct, setZoomPct] = useState(100);
+  const [rot, setRot] = useState<Rot>(0);
+  /** download progress for the loading state (pdf.js onProgress) */
+  const [loadProg, setLoadProg] = useState<{ loaded: number; total: number } | null>(null);
+  /** the page-number input's draft (committed on Enter/blur, synced on scroll) */
+  const [pageDraft, setPageDraft] = useState("1");
+  const pageInputRef = useRef<HTMLInputElement>(null);
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
   const [matchInfo, setMatchInfo] = useState<{ count: number; index: number } | null>(null);
@@ -271,33 +347,53 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
   }, []);
 
   // ── geometry ─────────────────────────────────────────────────────────────
-  /** Fit scale for a page of width baseW at the current zoom. */
+  /** On-screen page width at the current user rotation (what fit-width fits). */
+  const rotW = useCallback(
+    (meta: { baseW: number; baseH: number }) =>
+      rotRef.current % 180 === 90 ? meta.baseH : meta.baseW,
+    [],
+  );
+
+  /** Fit scale for a page of (rotated) width baseW at the current zoom. */
   const scaleFor = useCallback((baseW: number) => {
     const w = scrollRef.current?.clientWidth ?? 800;
     const avail = Math.max(240, w - 24);
-    return Math.min(4, (avail / baseW) * zoomRef.current);
+    return Math.min(MAX_RENDER_SCALE, (avail / baseW) * zoomRef.current);
   }, []);
 
   const fitFor = useCallback(
     (page: PdfPage) => {
-      const base = page.getViewport({ scale: 1 });
+      const base = page.getViewport({
+        scale: 1,
+        rotation: (page.rotate + rotRef.current) % 360,
+      });
       const scale = scaleFor(base.width);
       return { scale, cssW: Math.round(base.width * scale), cssH: Math.round(base.height * scale) };
     },
     [scaleFor],
   );
 
-  /** Size every canvas-less holder from the container width + page-1 aspect. */
+  /** Size every canvas-less holder from the container width + page aspect.
+   * (s140: uses the page's OWN indexed meta when available — mixed-size
+   * papers no longer all borrow page 1's aspect.) */
   const applyPlaceholderStyles = useCallback(() => {
     const scroller = scrollRef.current;
     if (!scroller) return;
     const avail = Math.max(240, scroller.clientWidth - 24);
     const w = Math.round(avail * zoomRef.current);
-    const h = Math.round(w * aspectRef.current);
+    const swapped = rotRef.current % 180 === 90;
     for (const [n, el] of holderRefs.current) {
       if (canvasesRef.current.has(n)) continue;
+      const meta = pageMetaRef.current.get(n);
+      const ar = meta
+        ? swapped
+          ? meta.baseW / meta.baseH
+          : meta.baseH / meta.baseW
+        : swapped
+          ? 1 / aspectRef.current
+          : aspectRef.current;
       el.style.width = `${w}px`;
-      el.style.height = `${h}px`;
+      el.style.height = `${Math.round(w * ar)}px`;
     }
   }, []);
 
@@ -340,7 +436,8 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
       }
       const meta = pageMetaRef.current.get(n);
       if (!meta) continue;
-      const lines = linesFor(n, scaleFor(meta.baseW));
+      const scale = scaleFor(rotW(meta));
+      const lines = linesFor(n, scale);
       if (!layer) {
         layer = document.createElement("div");
         layer.className = "pp-hl-layer";
@@ -351,7 +448,9 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
         if (m.page !== n) return;
         const line = lines[m.lineIdx];
         if (!line) return;
-        for (const r of matchRects(line, m.start, m.end)) {
+        for (const raw of matchRects(line, m.start, m.end)) {
+          // map the unrotated line-model rect onto the rotated page box
+          const r = rotRect(raw, rotRef.current, meta.baseW * scale, meta.baseH * scale);
           const div = document.createElement("div");
           div.className = i === matchIdxRef.current ? "pp-hl pp-hl-current" : "pp-hl";
           div.style.left = `${r.x}px`;
@@ -362,7 +461,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
         }
       });
     }
-  }, [linesFor, scaleFor]);
+  }, [linesFor, scaleFor, rotW]);
 
   const scrollToMatch = useCallback(
     (i: number) => {
@@ -372,19 +471,23 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
       const holder = holderRefs.current.get(m.page);
       const meta = pageMetaRef.current.get(m.page);
       if (!holder || !meta) return;
-      const lines = linesFor(m.page, scaleFor(meta.baseW));
+      const scale = scaleFor(rotW(meta));
+      const lines = linesFor(m.page, scale);
       const line = lines[m.lineIdx];
-      const rects = line ? matchRects(line, m.start, m.end) : [];
-      const targetY = rects.length > 0 ? rects[0].y : 0;
+      const rects0 = line ? matchRects(line, m.start, m.end) : [];
+      const r0 = rects0.length > 0 ? rects0[0] : { x: 0, y: 0, w: 0, h: 0 };
+      const r = rotRect(r0, rotRef.current, meta.baseW * scale, meta.baseH * scale);
       // coordinate-space-safe delta (same trick as scrollToPage)
       const delta = holder.getBoundingClientRect().top - sc.getBoundingClientRect().top;
+      const target = Math.max(0, sc.scrollTop + delta + r.y - sc.clientHeight * 0.3);
       setCurrentPage(m.page);
       sc.scrollTo({
-        top: Math.max(0, sc.scrollTop + delta + targetY - sc.clientHeight * 0.3),
-        behavior: "smooth",
+        top: target,
+        // a match 30 pages away must not animate across 30k px (s140 audit)
+        behavior: Math.abs(target - sc.scrollTop) > sc.clientHeight * 2.5 ? "auto" : "smooth",
       });
     },
-    [linesFor, scaleFor],
+    [linesFor, scaleFor, rotW],
   );
 
   const recomputeMatches = useCallback(
@@ -403,7 +506,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
         if (!itemsRef.current.has(p)) continue;
         const meta = pageMetaRef.current.get(p);
         if (!meta) continue;
-        const lines = linesFor(p, scaleFor(meta.baseW));
+        const lines = linesFor(p, scaleFor(rotW(meta)));
         for (const h of findInLines(lines, re)) {
           out.push({ page: p, lineIdx: h.lineIdx, start: h.start, end: h.end });
         }
@@ -423,7 +526,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
       setMatchInfo({ count: out.length, index: matchIdxRef.current });
       paintHighlights();
     },
-    [linesFor, scaleFor, paintHighlights, scrollToMatch],
+    [linesFor, scaleFor, rotW, paintHighlights, scrollToMatch],
   );
 
   // ── text layer overlay (selection) ───────────────────────────────────────
@@ -441,7 +544,10 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
         const layer = new ns.TextLayer({
           textContentSource: tc,
           container: tl,
-          viewport: page.getViewport({ scale }),
+          viewport: page.getViewport({
+            scale,
+            rotation: (page.rotate + rotRef.current) % 360,
+          }),
         });
         textLayersRef.current.set(n, layer);
         void layer.render().catch(() => {
@@ -493,9 +599,10 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
         return; // doc destroyed while unmounting
       }
       if (docRef.current !== doc || !holder.isConnected) return;
+      const rot = (page.rotate + rotRef.current) % 360;
       const { scale, cssW, cssH } = fitFor(page);
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const viewport = page.getViewport({ scale: scale * dpr });
+      const viewport = page.getViewport({ scale: scale * dpr, rotation: rot });
       const canvas = document.createElement("canvas");
       canvas.width = Math.max(1, Math.floor(viewport.width));
       canvas.height = Math.max(1, Math.floor(viewport.height));
@@ -597,7 +704,10 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
             // a page that already painted needs its selection layer now
             const holder = holderRefs.current.get(n);
             if (holder && canvasesRef.current.has(n) && holder.isConnected) {
-              renderTextLayerInto(holder, n, page, scaleFor(vp1.width));
+              renderTextLayerInto(holder, n, page, scaleFor(rotW({
+                baseW: vp1.width,
+                baseH: vp1.height,
+              })));
             }
             if (findOpenRef.current) {
               setIndexProgress({ done: n, total: doc.numPages });
@@ -616,7 +726,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
       });
       return p;
     },
-    [renderTextLayerInto, scaleFor, recomputeMatches],
+    [renderTextLayerInto, scaleFor, rotW, recomputeMatches],
   );
 
   /** Resolve once every page's text is indexed (false on load failure/timeout). */
@@ -696,21 +806,40 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
     if (!active) return;
     if (docRef.current) return; // re-activated pane — doc, canvases, scroll kept
     let cancelled = false;
+    let adopted = false; // once the doc lands, its lifecycle belongs to the teardown effect
+    setLoadProg(null);
+    /** destroy ONLY a task whose doc we never adopted — a plain `active`
+     * toggle must never kill a loaded doc (it survives toggling by design) */
+    let task: import("pdfjs-dist").PDFDocumentLoadingTask | null = null;
+    let timedOut = false;
+    const timer = window.setTimeout(() => {
+      timedOut = true;
+      task?.destroy().catch(() => undefined);
+    }, LOAD_TIMEOUT_MS);
     (async () => {
       try {
         const pdfjs = await import("pdfjs-dist");
         pdfjs.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.mjs";
         pdfjsNsRef.current = pdfjs;
-        const doc = await pdfjs.getDocument({ url }).promise;
+        task = pdfjs.getDocument({ url });
+        // v4: progress is a property of the loading task, not getDocument params
+        task.onProgress = (p: { loaded: number; total: number }) => {
+          if (!cancelled) setLoadProg({ loaded: p.loaded, total: p.total });
+        };
+        const doc = await task.promise;
+        window.clearTimeout(timer);
+        setLoadProg(null);
         if (cancelled) {
           doc.destroy();
           return;
         }
         docRef.current = doc;
+        adopted = true;
         numPagesRef.current = doc.numPages;
         const p1 = await doc.getPage(1);
         const vp = p1.getViewport({ scale: 1 });
         aspectRef.current = vp.height / vp.width;
+        base1Ref.current = { w: vp.width, h: vp.height };
         setNumPages(doc.numPages);
         centerRef.current = 1;
         setCurrentPage(1);
@@ -719,8 +848,14 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
         for (const fn of waiting) fn(true);
         syncWindow(); // holders may not exist yet — the ready-kick re-runs this
       } catch (err) {
+        window.clearTimeout(timer);
+        setLoadProg(null);
         if (cancelled) return;
-        setErrorMsg((err as Error)?.message ?? "Could not load the PDF");
+        setErrorMsg(
+          timedOut
+            ? "timed out — the archive took too long to respond"
+            : (err as Error)?.message ?? "Could not load the PDF",
+        );
         setPhase("error");
         const waiting = pendingReadyRef.current.splice(0);
         for (const fn of waiting) fn(false);
@@ -728,6 +863,8 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
     })();
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
+      if (!adopted) task?.destroy().catch(() => undefined);
     };
   }, [url, active, reloadKey, syncWindow]);
 
@@ -762,6 +899,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
       canvasesRef.current.clear();
       holderRefs.current.clear();
       anchorRef.current = null;
+      base1Ref.current = null;
       itemsRef.current.clear();
       pageMetaRef.current.clear();
       linesCacheRef.current.clear();
@@ -865,21 +1003,30 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
     };
   }, []);
 
-  // repaint highlight rects when the visible match / zoom changes
+  // repaint highlight rects when the visible match / zoom / rotation changes
   useEffect(() => {
     if (phase !== "ready") return;
     paintHighlights();
-  }, [phase, matchInfo, zoomPct, paintHighlights]);
+  }, [phase, matchInfo, zoomPct, rot, paintHighlights]);
+
+  // the page-input draft follows the tracked page unless the user is typing
+  useEffect(() => {
+    if (document.activeElement !== pageInputRef.current) setPageDraft(String(currentPage));
+  }, [currentPage]);
 
   // ── find handlers ────────────────────────────────────────────────────────
   const openFindAndIndex = useCallback(() => {
     setFindOpen(true);
     requestAnimationFrame(() => findInputRef.current?.focus());
+    // s140 audit (B2): a REOPENED bar must show its live results again —
+    // closing clears matches, so the old query would render zero highlights
+    // until the next keystroke. Recompute before the user types.
+    if (queryRef.current.trim()) recomputeMatches(true);
     if (!fullTextPromiseRef.current) {
       const doc = docRef.current;
       if (doc) runIndexer(doc);
     }
-  }, [runIndexer]);
+  }, [runIndexer, recomputeMatches]);
 
   const closeFind = useCallback(() => {
     setFindOpen(false);
@@ -923,7 +1070,12 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
     if (el && scroller) {
       // rect-based, coordinate-space-safe (see computeCenter)
       const delta = el.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
-      scroller.scrollTo({ top: scroller.scrollTop + delta - 8, behavior: "smooth" });
+      const target = scroller.scrollTop + delta - 8;
+      scroller.scrollTo({
+        top: Math.max(0, target),
+        // page 1 → page 40 must not animate across the whole document (s140)
+        behavior: Math.abs(target - scroller.scrollTop) > scroller.clientHeight * 2.5 ? "auto" : "smooth",
+      });
     }
   }, []);
 
@@ -937,23 +1089,87 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
   );
 
   // ── toolbar actions ──────────────────────────────────────────────────────
+  /** Honest ceiling: the ladder step must never exceed MAX_RENDER_SCALE × the
+   * fit scale, or the shown % would lie about what actually rendered. */
+  const maxZoomMult = useCallback(() => {
+    const b = base1Ref.current;
+    if (!b) return ZOOM_LADDER[ZOOM_LADDER.length - 1];
+    const avail = Math.max(240, (scrollRef.current?.clientWidth ?? 800) - 24);
+    const fit1 = avail / (rotRef.current % 180 === 90 ? b.h : b.w);
+    return Math.max(1, Math.min(ZOOM_LADDER[ZOOM_LADDER.length - 1], MAX_RENDER_SCALE / fit1));
+  }, []);
+
+  /** Step the ladder (dir ±1), clamped by the honest ceiling. */
   const zoomBy = useCallback(
-    (factor: number) => {
-      const next = Math.min(3, Math.max(1, zoomRef.current * factor));
-      if (next === zoomRef.current) return;
-      zoomRef.current = next;
-      setZoomPct(Math.round(next * 100));
+    (dir: 1 | -1) => {
+      const max = maxZoomMult();
+      let idx = Math.min(ZOOM_LADDER.length - 1, Math.max(0, zoomIdxRef.current + dir));
+      while (idx > 0 && ZOOM_LADDER[idx] > max) idx--;
+      if (ZOOM_LADDER[idx] === zoomRef.current) return;
+      zoomIdxRef.current = idx;
+      zoomRef.current = ZOOM_LADDER[idx];
+      setZoomPct(Math.round(ZOOM_LADDER[idx] * 100));
       refreeze();
     },
-    [refreeze],
+    [refreeze, maxZoomMult],
   );
 
   const resetFit = useCallback(() => {
     if (zoomRef.current === 1) return;
+    zoomIdxRef.current = 0;
     zoomRef.current = 1;
     setZoomPct(100);
     refreeze();
   }, [refreeze]);
+
+  /** Rotate the whole document 90° — canvases re-render double-buffered, the
+   * line model stays in unrotated space and highlight rects map through
+   * rotRect(). Zoom is re-clamped to stay honest at the new aspect. */
+  const rotateBy90 = useCallback(() => {
+    const next = ((rotRef.current + 90) % 360) as Rot;
+    rotRef.current = next;
+    setRot(next);
+    const max = maxZoomMult();
+    let idx = zoomIdxRef.current;
+    while (idx > 0 && ZOOM_LADDER[idx] > max) idx--;
+    if (ZOOM_LADDER[idx] !== zoomRef.current) {
+      zoomIdxRef.current = idx;
+      zoomRef.current = ZOOM_LADDER[idx];
+      setZoomPct(Math.round(ZOOM_LADDER[idx] * 100));
+    }
+    refreeze();
+  }, [refreeze, maxZoomMult]);
+
+  /** Commit the page-number input (Enter or blur). */
+  const commitPageDraft = useCallback(() => {
+    const n = Math.min(
+      Math.max(1, numPagesRef.current),
+      Math.max(1, Number.parseInt(pageDraft, 10) || 1),
+    );
+    setPageDraft(String(n));
+    if (n !== centerRef.current) {
+      setCurrentPage(n);
+      scrollToPage(n);
+    }
+  }, [pageDraft, scrollToPage]);
+
+  /** +/−/0 zoom shortcuts while the pages region holds focus. */
+  const onScrollerKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === "+" || e.key === "=") {
+        e.preventDefault();
+        zoomBy(1);
+      } else if (e.key === "-") {
+        e.preventDefault();
+        zoomBy(-1);
+      } else if (e.key === "0") {
+        e.preventDefault();
+        resetFit();
+      }
+    },
+    [zoomBy, resetFit],
+  );
 
   /** Stable holder ref — sizes the placeholder on mount without React state.
    * (React 19 ref-cleanup form: the returned fn runs on unmount.) */
@@ -964,8 +1180,17 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
     if (!canvasesRef.current.has(n) && !el.style.width) {
       const avail = Math.max(240, (el.parentElement?.clientWidth ?? 800) - 24);
       const w = Math.round(avail * zoomRef.current);
+      const meta = pageMetaRef.current.get(n);
+      const swapped = rotRef.current % 180 === 90;
+      const ar = meta
+        ? swapped
+          ? meta.baseW / meta.baseH
+          : meta.baseH / meta.baseW
+        : swapped
+          ? 1 / aspectRef.current
+          : aspectRef.current;
       el.style.width = `${w}px`;
-      el.style.height = `${Math.round(w * aspectRef.current)}px`;
+      el.style.height = `${Math.round(w * ar)}px`;
     }
     return () => {
       holderRefs.current.delete(n);
@@ -986,6 +1211,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
   return (
     <div
       ref={rootRef}
+      data-rot={rot}
       className={cn(
         "pp-pane relative flex min-h-0 flex-col overflow-hidden rounded-lg border bg-muted/30",
         className,
@@ -1010,8 +1236,26 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
             >
               <ChevronUp className="size-3.5" aria-hidden />
             </Button>
-            <span className="min-w-14 text-center font-mono text-[11px] tabular-nums">
-              {currentPage} / {numPages}
+            {/* s140: the page indicator is now an input — type a page, Enter.
+             * The draft only follows the tracked page when NOT being typed in. */}
+            <input
+              ref={pageInputRef}
+              value={pageDraft}
+              onChange={(e) => setPageDraft(e.target.value.replace(/\D/g, ""))}
+              onBlur={commitPageDraft}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  commitPageDraft();
+                }
+              }}
+              inputMode="numeric"
+              aria-label={`Page number of ${numPages}`}
+              title={`Go to page (1–${numPages})`}
+              className="h-7 w-9 rounded-md bg-transparent text-center font-mono text-[11px] tabular-nums outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            />
+            <span className="pointer-events-none font-mono text-[11px] tabular-nums text-muted-foreground">
+              / {numPages}
             </span>
             <Button
               variant="ghost"
@@ -1028,7 +1272,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
               variant="ghost"
               size="sm"
               className="h-9 w-9 px-0"
-              onClick={() => zoomBy(1 / 1.25)}
+              onClick={() => zoomBy(-1)}
               aria-label="Zoom out"
               disabled={zoomPct <= 100}
               title={`Zoom: ${zoomPct}% of fit width`}
@@ -1039,7 +1283,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
               variant="ghost"
               size="sm"
               className="h-9 w-9 px-0"
-              onClick={() => zoomBy(1.25)}
+              onClick={() => zoomBy(1)}
               aria-label="Zoom in"
               title={`Zoom: ${zoomPct}% of fit width`}
             >
@@ -1055,6 +1299,16 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
             >
               <RotateCcw className="size-3.5" aria-hidden />
             </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-9 w-9 px-0"
+              onClick={rotateBy90}
+              aria-label={`Rotate 90 degrees clockwise (now ${rot} degrees)`}
+              title="Rotate 90° clockwise"
+            >
+              <RotateCw className="size-3.5" aria-hidden />
+            </Button>
             <span className="mx-0.5 h-4 w-px bg-border" aria-hidden />
             <Button
               variant="ghost"
@@ -1063,6 +1317,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
               onClick={() => (findOpen ? closeFind() : openFindAndIndex())}
               aria-label="Find in document"
               aria-pressed={findOpen}
+              aria-keyshortcuts="Control+F"
               title="Find (Ctrl+F)"
             >
               <Search className="size-3.5" aria-hidden />
@@ -1163,7 +1418,16 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
       {phase === "loading" && (
         <div className="flex min-h-48 flex-1 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="size-5 animate-spin text-primary" aria-hidden />
-          Loading {label}…
+          <span>Loading {label}…</span>
+          {/* s140: pdf.js onProgress — a 6 MB scan over a cold raw.github
+           * connection is no longer an indeterminate spinner */}
+          {loadProg && (
+            <span className="text-xs tabular-nums" aria-live="polite">
+              {loadProg.total > 0
+                ? `${Math.min(100, Math.round((loadProg.loaded / loadProg.total) * 100))}% · ${prettyBytes(loadProg.loaded)} of ${prettyBytes(loadProg.total)}`
+                : prettyBytes(loadProg.loaded)}
+            </span>
+          )}
         </div>
       )}
       {phase === "error" && (
@@ -1196,7 +1460,14 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
         </div>
       )}
       {phase === "ready" && (
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3">
+        <div
+          ref={scrollRef}
+          tabIndex={0}
+          role="region"
+          aria-label={`${label} — pages (arrow keys scroll, + − 0 zoom)`}
+          onKeyDown={onScrollerKeyDown}
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:ring-inset"
+        >
           {Array.from({ length: numPages }, (_, i) => {
             const n = i + 1;
             return (
@@ -1204,7 +1475,9 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
                 key={n}
                 data-page={n}
                 ref={holderRefCb}
-                className="relative mx-auto mb-3 rounded bg-background shadow-sm"
+                role="img"
+                aria-label={`Page ${n} of ${numPages}`}
+                className="pp-holder relative mx-auto mb-3 rounded bg-background shadow-sm"
               />
             );
           })}
