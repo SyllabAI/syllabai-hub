@@ -1,52 +1,75 @@
 "use client";
 
 /**
- * Teacher workspace — subject-scoped overview (teacher-console tranche,
- * 2026-09-28: the marking queue and class intelligence now run on live core
- * data, completing the port of the last web-only capability).
+ * Teacher workspace — REBUILT to the operator's vision (HUB-TEACHER-DASH
+ * wave 1, trace 1a0ec61d5612aa6d: "The teacher dashboard (in syllabai-hub)
+ * is not how I envisioned. All the tools, resources will be inside a certain
+ * Subject/Class/Section. Basically the dashboard will look like student one,
+ * but instead of subject it is a class card. Teacher will add class, then
+ * select subjects. Then inside there, all the tools and course resources
+ * will exist.").
  *
- * TEACHER_ARCHITECTURE.md §3: the teacher works subject-first, and §5:
- * teachers get subject-scoped access to the SAME resource families students
- * use (revision notes, exam questions, past papers, flashcards) plus
- * teacher-specific assessment/analytics surfaces. The overview therefore
- * shows, for the selected subject:
- *   1. the LIVE teacher console surfaces (marking review, class
- *      intelligence — real cohort data, RBAC on every call),
- *   2. the resource families deep-linking into the existing hub surfaces,
- *   3. the corpus-local tools (Test Builder, assignments, validation) with
- *      their honest SAMPLE/local framing,
- *   4. the remaining roadmap compactly.
+ * The anatomy now mirrors the student dashboard (src/app/dashboard/
+ * dashboard-client.tsx) beat for beat, with CLASS as the card entity:
+ *   1. Greeting header ("Hi {name} 👋" — the student dashboard's pattern)
+ *   2. My classes — one card per class (SubjectCard parity): eyebrow, name,
+ *      per-SUBJECT rows with real corpus counts from /api/course-stats,
+ *      open-workspace link, remove X. The trailing slot card ("Got another
+ *      class?") and the empty-state CTA open the add-class overlay (the
+ *      add-course cascade, name + multi-subject).
+ *   3. The old overview's sections moved INSIDE the class workspace
+ *      (/teacher/classes/[id]) — that is the directive's whole point:
+ *      tools and course resources live inside the class, not on the
+ *      dashboard.
+ *   4. TeacherNav stays (the marking / live-roster / intelligence surfaces
+ *      are workspace chrome, not class content) + the compact honesty
+ *      footnote carries the old overview's live-vs-demo provenance line.
+ *
+ * Honesty: a class here is a browser-local container (lib/teacher/
+ * my-classes.ts — the same demo-truth class as the student's subject
+ * roster); the live core roster (/teacher/classes, RBAC) is a separate,
+ * database-backed surface and every label keeps them distinct.
  */
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowRight,
-  Atom,
-  BookOpen,
-  ChevronDown,
-  CircleHelp,
-  ClipboardCheck,
-  ClipboardList,
+  ChevronRight,
   Database,
-  FileCheck2,
-  FileQuestion,
   GraduationCap,
-  LibraryBig,
-  ListChecks,
-  Network,
+  Plus,
   ShieldCheck,
-  Sparkles,
+  Users,
+  X,
 } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { TeacherNav } from "@/components/teacher/teacher-nav";
-import { clearIdentity, useIdentity } from "@/lib/identity";
-import type { TeacherCourseData } from "@/lib/teacher/types";
-import type { SwitchableCourse } from "@/lib/teacher/types";
-import { cn } from "@/lib/utils";
+import { useIdentity } from "@/lib/identity";
+import { useMyClasses, type TeacherClass } from "@/lib/teacher/my-classes";
+import { AddClassOverlay } from "./add-class-overlay";
+
+/** The page passes the registry subset this dashboard renders. */
+export interface TeacherCourseLite {
+  slug: string;
+  label: string;
+  subject: string;
+  code: string;
+  level: string;
+}
+
+/** Same shape the student dashboard reads from /api/course-stats. */
+interface CourseStat {
+  slug: string;
+  hasBundle: boolean;
+  topics: number;
+  notes: number;
+  questionSets: number;
+  questions: number;
+  flashcards: number;
+}
 
 const ROADMAP = [
   { title: "Announcements", phase: "Phase 2" },
@@ -57,376 +80,271 @@ const ROADMAP = [
   { title: "Data Assistant (structured analytics)", phase: "Phase 3" },
 ] as const;
 
-const RESOURCES = [
-  {
-    href: "/revision-notes",
-    icon: BookOpen,
-    title: "Revision Notes",
-    desc: "Spec-anchored notes with worked examples and exam hints.",
-  },
-  {
-    href: "/exam-questions",
-    icon: FileQuestion,
-    title: "Exam Questions",
-    desc: "Exam-style sets by subtopic with mark schemes and AI marking.",
-  },
-  {
-    href: "/flashcards",
-    icon: CircleHelp,
-    title: "Flashcards",
-    desc: "Per-subtopic decks with still-learning / know ratings.",
-  },
-  {
-    href: "/past-papers",
-    icon: LibraryBig,
-    title: "Past Papers",
-    desc: "Reconstructed papers where source provenance attests.",
-  },
-] as const;
+function rowValue(value: number | undefined, unit: string) {
+  if (value === undefined) return <Skeleton className="h-3 w-10" />;
+  return (
+    <span className="text-xs font-medium tabular-nums text-foreground">
+      {value} {unit}
+      {value === 1 ? "" : "s"}
+    </span>
+  );
+}
 
-export function TeacherClient({
-  courses,
-  initialCourse,
+/** One subject row on a class card — ResourceRow parity from the student
+ *  dashboard (icon-ish dot, label, counts, chevron), navigating into the
+ *  class workspace where that subject's tools and resources live. */
+function SubjectRow({
+  classId,
+  label,
+  code,
+  stat,
 }: {
-  courses: SwitchableCourse[];
-  initialCourse: string | null;
+  classId: string;
+  label: string;
+  code: string;
+  stat: CourseStat | undefined;
 }) {
+  return (
+    <li>
+      <Link
+        href={`/teacher/classes/${classId}`}
+        className="flex items-center gap-2.5 rounded-md px-2 py-2 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <Users className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm">{label}</span>
+          <span className="block truncate font-mono text-[10px] text-muted-foreground">
+            {code}
+          </span>
+        </span>
+        {stat?.hasBundle ? (
+          <span className="shrink-0 text-right text-[11px] leading-tight text-muted-foreground">
+            {rowValue(stat.notes, "note")} · {rowValue(stat.questions, "question")} ·{" "}
+            {rowValue(stat.flashcards, "card")}
+          </span>
+        ) : (
+          <Skeleton className="h-3 w-24 shrink-0" />
+        )}
+        <ChevronRight className="size-4 shrink-0 text-muted-foreground/60" aria-hidden />
+      </Link>
+    </li>
+  );
+}
+
+function ClassCard({
+  cls,
+  bySlug,
+  stats,
+  onRemove,
+  onEdit,
+}: {
+  cls: TeacherClass;
+  bySlug: Map<string, TeacherCourseLite>;
+  stats: Record<string, CourseStat>;
+  onRemove: (id: string) => void;
+  onEdit: (cls: TeacherClass) => void;
+}) {
+  // selection order preserved; unknown slugs filtered at render (registry truth)
+  const subjects = cls.subjectSlugs
+    .map((s) => bySlug.get(s))
+    .filter((c): c is TeacherCourseLite => !!c);
+
+  return (
+    <Card className="relative h-full border-primary/25 transition-colors hover:border-primary/60">
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label={`Remove ${cls.name} from my classes`}
+        onClick={() => onRemove(cls.id)}
+        className="absolute top-1 right-1 size-9 rounded-full text-muted-foreground hover:text-destructive"
+      >
+        <X className="size-4" aria-hidden />
+      </Button>
+      <CardContent className="flex h-full flex-col gap-1 p-4 pr-11">
+        {/* eyebrow (SubjectCard parity) */}
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Edexcel · {subjects.length} {subjects.length === 1 ? "subject" : "subjects"}
+        </p>
+
+        {/* class name */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href={`/teacher/classes/${cls.id}`} className="group min-w-0">
+            <span className="block truncate text-base font-bold group-hover:text-primary">
+              {cls.name}
+            </span>
+          </Link>
+        </div>
+
+        <Link
+          href={`/teacher/classes/${cls.id}`}
+          className="mt-1 inline-flex w-fit items-center gap-1 text-xs font-semibold text-primary hover:underline"
+        >
+          Open class workspace
+          <ChevronRight className="size-3.5" aria-hidden />
+        </Link>
+
+        {/* per-subject rows with real corpus counts (course-stats) */}
+        {subjects.length > 0 ? (
+          <ul className="mt-1 space-y-0.5 border-t pt-1">
+            {subjects.map((c) => (
+              <SubjectRow
+                key={c.slug}
+                classId={cls.id}
+                label={c.subject}
+                code={c.code || "code pending"}
+                stat={stats[c.slug]}
+              />
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 border-t pt-2 text-xs text-muted-foreground">
+            No valid subjects left — edit the class to pick its lanes.
+          </p>
+        )}
+
+        <div className="mt-auto flex items-center gap-2 pt-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
+            onClick={() => onEdit(cls)}
+          >
+            Edit subjects
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export function TeacherClient({ courses }: { courses: TeacherCourseLite[] }) {
   const identity = useIdentity();
-  const isTeacher = identity?.role === "teacher";
-  const [course, setCourse] = useState<string | null>(initialCourse);
-  // course-tagged payload state; loading derives from it (no sync setState)
-  const [state, setState] = useState<{
-    course: string;
-    data?: TeacherCourseData;
-    error?: string;
-  } | null>(null);
-  const data = state?.course === course ? state.data : undefined;
-  const loadError = state?.course === course ? state.error : undefined;
-  const loading = course !== null && state?.course !== course;
+  const { classes, add, update, remove } = useMyClasses();
+  const [addOpen, setAddOpen] = useState(false);
+  const [editClass, setEditClass] = useState<TeacherClass | null>(null);
+  const [stats, setStats] = useState<Record<string, CourseStat>>({});
+
+  const bySlug = useMemo(() => {
+    const m = new Map<string, TeacherCourseLite>();
+    for (const c of courses) m.set(c.slug, c);
+    return m;
+  }, [courses]);
+
+  // one course-stats read for the UNION of every class's subjects — the
+  // student dashboard's slugsKey pattern verbatim
+  const slugsKey = useMemo(
+    () => [...new Set(classes.flatMap((c) => c.subjectSlugs))].sort().join(","),
+    [classes],
+  );
 
   useEffect(() => {
-    if (!course) return;
+    if (!slugsKey) return;
     let cancelled = false;
-    fetch(`/api/teacher/course-data?slug=${encodeURIComponent(course)}`)
-      .then(async (res) => {
-        if (!res.ok) throw new Error("unavailable");
-        return (await res.json()) as TeacherCourseData;
+    fetch(`/api/course-stats?slugs=${encodeURIComponent(slugsKey)}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((data: { stats?: Record<string, CourseStat> }) => {
+        if (!cancelled && data.stats) setStats((prev) => ({ ...prev, ...data.stats }));
       })
-      .then((payload) => {
-        if (!cancelled) setState({ course, data: payload });
-      })
-      .catch((err) => {
-        // P2 honesty fix (demo port): a swallowed fetch error used to render
-        // as a false empty state — the snapshot cards below would sit blank
-        // with no explanation. Surface the failure instead.
-        if (!cancelled)
-          setState({
-            course,
-            error: err instanceof Error ? err.message : "failed to load course data",
-          });
+      .catch(() => {
+        /* keep previous stats; rows fall back to skeletons */
       });
     return () => {
       cancelled = true;
     };
-  }, [course]);
-
-  const hub = (rest: string) => `/courses/${course ?? ""}${rest}`;
-  const current = useMemo(
-    () => courses.find((c) => c.slug === course) ?? null,
-    [courses, course],
-  );
+  }, [slugsKey]);
 
   return (
     <div className="space-y-8">
-      {/* header */}
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div className="min-w-0">
-          {/* flex-wrap: the status badge's nowrap min-content is 260px; next to
-              "Teacher mode" it ran 11px past a 375px phone. It drops to its own
-              line below ~360px, no-op on desktop */}
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline" className="gap-1 text-[10px] font-normal">
-              <Atom className="size-3" aria-hidden />
-              Teacher mode
-            </Badge>
-            <Badge variant="secondary" className="text-[10px] font-normal">
-              marking + class intelligence live · corpus tools demo
-            </Badge>
-          </div>
-          <h1 className="mt-2 font-display text-3xl font-bold tracking-tight sm:text-4xl">
-            Teacher workspace
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-            A role-specific operating surface on the same academic substrate the students use — the
-            marking console and class intelligence read live cohort data from the backend; the
-            corpus tools stay subject-scoped and local (spec:{" "}
-            <span className="font-mono text-xs">TEACHER_ARCHITECTURE.md</span>).
-          </p>
-        </div>
-
-        {/* identity card — min-w-0 matters: without it the card's
-            min-width:auto is its full min-content (a nowrap email can't
-            shrink), pushing it 130px past a 375px viewport; with it the
-            card wraps + truncates instead */}
-        {identity ? (
-          <div className="flex min-w-0 max-w-full items-center gap-3 rounded-lg border bg-card px-3 py-2">
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
-              {identity.name.slice(0, 2).toUpperCase()}
-            </span>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{identity.name}</p>
-              <p className="truncate text-xs text-muted-foreground">
-                {identity.email} · signed in as {identity.role}
-              </p>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="ml-2 h-8 shrink-0 text-xs text-muted-foreground"
-              onClick={() => clearIdentity()}
-            >
-              Sign out
-            </Button>
-          </div>
-        ) : (
-          <Button asChild variant="outline" size="sm" className="gap-1.5">
-            <Link href="/login">
-              <GraduationCap className="size-3.5" aria-hidden />
-              Sign in as a teacher
-            </Link>
-          </Button>
-        )}
-      </div>
+      {/* greeting (student dashboard parity) */}
+      <header className="space-y-1.5">
+        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+          Hi {identity?.name ?? "there"} 👋
+        </h1>
+        <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+          Welcome to your teacher workspace — add a class, pick the subjects it covers, and every
+          tool and course resource for them lives inside it. Marking review and class intelligence
+          read live cohort data; the corpus tools run on the local sample bank.
+        </p>
+      </header>
 
       <TeacherNav />
 
-      {loadError && (
-        <Alert variant="destructive">
-          <AlertTitle>Course data unavailable</AlertTitle>
-          <AlertDescription>
-            {loadError}. The snapshot cards below are blank because the request failed — switch
-            subject and back to retry.
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* subject selector — teachers work subject-first (§3) */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative">
-          <select
-            aria-label="Teaching subject"
-            value={course ?? ""}
-            onChange={(e) => setCourse(e.target.value || null)}
-            className="h-9 w-full appearance-none rounded-md border bg-background pr-8 pl-3 text-sm sm:w-80"
-          >
-            {courses.map((c) => (
-              <option key={c.slug} value={c.slug}>
-                {c.label} ({c.code})
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="pointer-events-none absolute top-1/2 right-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-        </div>
-        {current && (
-          <Badge variant="outline" className="gap-1 font-mono text-[10px] font-normal">
-            {current.code} · {current.level}
-          </Badge>
-        )}
-        <span className="text-[11px] text-muted-foreground">
-          Class: {loading ? "…" : loadError ? "unavailable" : (data?.class.className ?? "—")}
-        </span>
-      </div>
-
-      {/* live teacher console — ported from the web console (2026-09-28) */}
-      <section aria-labelledby="teacher-console">
-        <div className="flex items-baseline justify-between gap-2">
-          <h2 id="teacher-console" className="text-sm font-semibold">
-            Teacher console
+      {/* ---- My classes ---- */}
+      <section aria-label="My classes" className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold">
+            My classes{" "}
+            <span className="text-sm font-normal text-muted-foreground">· {classes.length}</span>
           </h2>
-          <span className="text-[11px] text-muted-foreground">
-            live cohort data — the same surfaces the internal web console served, now on the hub
-          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
+            onClick={() => {
+              setEditClass(null);
+              setAddOpen(true);
+            }}
+          >
+            <Plus className="size-3.5" aria-hidden />
+            Add class
+          </Button>
         </div>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <Card className="py-0 transition-shadow hover:shadow-md">
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between gap-2">
-                <span className="flex size-9 items-center justify-center rounded-md bg-primary/10">
-                  <ClipboardCheck className="size-4 text-primary" aria-hidden />
-                </span>
-                <Badge variant="outline" className="border-success/40 text-success text-[10px] font-normal">
-                  live
-                </Badge>
-              </div>
-              <h3 className="mt-3 text-sm font-semibold">Marking review</h3>
-              <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                The Smart Mark review queue grouped by paper, human-mark overrides with per-point
-                decisions, the κ agreement gate and marking throughput — every number a backend
-                read model, never an estimate.
-              </p>
-              <Button asChild size="sm" variant="outline" className="mt-3 gap-1.5">
-                <Link href="/teacher/marking">
-                  Open the marking queue
-                  <ArrowRight className="size-3.5" aria-hidden />
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
-          <Card className="py-0 transition-shadow hover:shadow-md">
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between gap-2">
-                <span className="flex size-9 items-center justify-center rounded-md bg-primary/10">
-                  <Network className="size-4 text-primary" aria-hidden />
-                </span>
-                <Badge variant="outline" className="border-success/40 text-success text-[10px] font-normal">
-                  live
-                </Badge>
-              </div>
-              <h3 className="mt-3 text-sm font-semibold">Class intelligence</h3>
-              <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                Topic heatmap, weak prerequisites, drill-down to affected learners and evidence,
-                remediation assembly, and the class knowledge graph — mastery from graded BKT
-                evidence, misconceptions from BDT estimates, unmeasured reads unmeasured.
-              </p>
-              <Button asChild size="sm" variant="outline" className="mt-3 gap-1.5">
-                <Link href="/teacher/class">
-                  Open class intelligence
-                  <ArrowRight className="size-3.5" aria-hidden />
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </section>
 
-      {/* corpus-local tools — honest SAMPLE framing kept */}
-      <section aria-labelledby="teacher-surfaces">
-        <h2 id="teacher-surfaces" className="text-sm font-semibold">
-          Corpus tools
-          <span className="ml-2 text-xs font-normal text-muted-foreground">
-            local question-bank surfaces (demo-truth data)
-          </span>
-        </h2>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <Card className="py-0 transition-shadow hover:shadow-md">
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between gap-2">
-                <span className="flex size-9 items-center justify-center rounded-md bg-primary/10">
-                  <ClipboardList className="size-4 text-primary" aria-hidden />
-                </span>
-                <Badge variant="outline" className="text-[10px] font-normal">
-                  §6
-                </Badge>
-              </div>
-              <h3 className="mt-3 text-sm font-semibold">Test Builder</h3>
-              <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                Assemble a printable, marks-aware test from the committed question bank — target
-                the class&apos;s weakest areas, include the answer key, print-ready.
+        {classes.length === 0 ? (
+          <Card className="border-dashed">
+            <CardContent className="flex flex-col items-start gap-3 p-6">
+              <p className="flex items-center gap-2 text-sm font-medium">
+                <GraduationCap className="size-4 text-primary" aria-hidden />
+                No classes yet — add your first one.
               </p>
-              <Button asChild size="sm" variant="outline" className="mt-3 gap-1.5">
-                <Link href={course ? `/teacher/test-builder?course=${course}` : "/teacher/test-builder"}>
-                  Open Test Builder
-                  <ArrowRight className="size-3.5" aria-hidden />
-                </Link>
+              <p className="text-sm text-muted-foreground">
+                Name the class, then select the subjects it covers. The tools and course resources
+                for those subjects live inside the class workspace.
+              </p>
+              <Button size="sm" className="gap-1.5" onClick={() => setAddOpen(true)}>
+                <Plus className="size-3.5" aria-hidden />
+                Create a class
               </Button>
             </CardContent>
           </Card>
-          <Card className="py-0 transition-shadow hover:shadow-md">
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between gap-2">
-                <span className="flex size-9 items-center justify-center rounded-md bg-primary/10">
-                  <ListChecks className="size-4 text-primary" aria-hidden />
-                </span>
-                <Badge variant="outline" className="text-[10px] font-normal">
-                  Phase 2
-                </Badge>
-              </div>
-              <h3 className="mt-3 text-sm font-semibold">Assignments</h3>
-              <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                The full cycle: build from the bank (same assembly rules as the Test Builder),
-                assign with a due date, track completion on the SAMPLE roster, remediate in one
-                click.
-              </p>
-              <Button asChild size="sm" variant="outline" className="mt-3 gap-1.5">
-                <Link href={course ? `/teacher/assignments?course=${course}` : "/teacher/assignments"}>
-                  Open assignments
-                  <ArrowRight className="size-3.5" aria-hidden />
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
-          <Card className="py-0 transition-shadow hover:shadow-md">
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between gap-2">
-                <span className="flex size-9 items-center justify-center rounded-md bg-primary/10">
-                  <FileCheck2 className="size-4 text-primary" aria-hidden />
-                </span>
-                <Badge variant="outline" className="text-[10px] font-normal">
-                  Phase 2
-                </Badge>
-              </div>
-              <h3 className="mt-3 text-sm font-semibold">AI content validation</h3>
-              <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                The teacher gate in the content loop: review real AI-authored model solutions from
-                the bank and record approve / edit / reject verdicts before they count.
-              </p>
-              <Button asChild size="sm" variant="outline" className="mt-3 gap-1.5">
-                <Link href={course ? `/teacher/validation?course=${course}` : "/teacher/validation"}>
-                  Open the validation queue
-                  <ArrowRight className="size-3.5" aria-hidden />
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </section>
-
-      {/* resource access — the same families students use (§5) */}
-      <section aria-labelledby="resource-access">
-        <h2 id="resource-access" className="text-sm font-semibold">
-          {current ? `${current.label} resources` : "Course resources"}
-          <span className="ml-2 text-xs font-normal text-muted-foreground">
-            same surfaces students use, opened in teacher context
-          </span>
-        </h2>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {RESOURCES.map((r) => (
-            <Link
-              key={r.href}
-              href={hub(r.href)}
-              className={cn(
-                "group rounded-lg border bg-card p-4 transition-shadow hover:shadow-md",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              )}
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {classes.map((cls) => (
+              <ClassCard
+                key={cls.id}
+                cls={cls}
+                bySlug={bySlug}
+                stats={stats}
+                onRemove={remove}
+                onEdit={(c) => {
+                  setEditClass(c);
+                  setAddOpen(true);
+                }}
+              />
+            ))}
+            {/* the student dashboard's trailing slot cell, class edition */}
+            <button
+              type="button"
+              onClick={() => {
+                setEditClass(null);
+                setAddOpen(true);
+              }}
+              className="flex min-h-[10rem] flex-col items-start justify-center gap-2 rounded-xl border border-dashed border-muted-foreground/40 p-4 text-left transition-colors hover:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <span className="flex size-9 items-center justify-center rounded-md bg-muted">
-                <r.icon className="size-4" aria-hidden />
-              </span>
-              <p className="mt-3 flex items-center gap-1 text-sm font-semibold">
-                {r.title}
-                <ArrowRight className="size-3.5 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden />
+              <p className="text-sm font-semibold">Got another class?</p>
+              <p className="text-xs text-muted-foreground">
+                Add a class, then select its subjects.
               </p>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{r.desc}</p>
-            </Link>
-          ))}
-        </div>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Button asChild variant="outline" size="sm" className="gap-1.5">
-            <Link href={hub("")}>
-              <GraduationCap className="size-3.5" aria-hidden />
-              Open the full course hub
-            </Link>
-          </Button>
-          <Button asChild variant="outline" size="sm" className="gap-1.5">
-            <Link href="/tutor">
-              <Sparkles className="size-3.5" aria-hidden />
-              AI Tutor (grounded in this corpus)
-            </Link>
-          </Button>
-        </div>
+              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary">
+                <Plus className="size-3.5" aria-hidden />
+                Add class
+              </span>
+            </button>
+          </div>
+        )}
       </section>
 
-      {/* remaining roadmap — compact */}
+      {/* remaining roadmap — compact (carried from the old overview) */}
       <section aria-labelledby="teacher-roadmap">
         <h2 id="teacher-roadmap" className="text-sm font-semibold">
           Still on the teacher roadmap
@@ -447,9 +365,23 @@ export function TeacherClient({
         <div className="mt-4 flex items-start gap-2 rounded-md border border-dashed bg-muted/40 p-3 text-xs leading-relaxed text-muted-foreground">
           <Database className="mt-0.5 size-3.5 shrink-0" aria-hidden />
           <span>
-            Marking review and class intelligence read live backend data (core RBAC on every
-            call); the corpus tools above still run on the local SAMPLE data-provider seam. Full
-            plan in{" "}
+            Classes on this dashboard are browser-local containers (the student roster works the
+            same way); the live core roster with enrolled students is the{" "}
+            <Link href="/teacher/classes" className="font-medium text-foreground underline underline-offset-2">
+              Classes
+            </Link>{" "}
+            surface — marking review and class intelligence read live backend data (core RBAC on
+            every call).{" "}
+            {!identity && (
+              <>
+                Sign in from{" "}
+                <Link href="/login" className="font-medium underline underline-offset-2">
+                  /login
+                </Link>{" "}
+                as a teacher for the full experience.{" "}
+              </>
+            )}
+            Full plan in{" "}
             <a
               href="https://github.com/SyllabAI/syllabai-hub/blob/main/docs/TEACHER_MODE_PLAN.md"
               target="_blank"
@@ -458,20 +390,40 @@ export function TeacherClient({
             >
               docs/TEACHER_MODE_PLAN.md
             </a>
-            . Production surfaces enforce authorization at the backend boundary (ADR-027).
+            .
           </span>
         </div>
-        {!isTeacher && (
+        {identity && identity.role !== "teacher" && (
           <p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground">
             <ShieldCheck className="size-3.5" aria-hidden />
-            Tip: sign in as a teacher from{" "}
+            You are signed in as a <strong>{identity.role}</strong> — this is the teacher mode.{" "}
             <Link href="/login" className="font-medium underline underline-offset-2">
-              /login
-            </Link>{" "}
-            for the full mock-identity experience.
+              Switch role
+            </Link>
           </p>
         )}
       </section>
+
+      {/* ---- Add / edit class — name → board → subject multi-select ---- */}
+      <AddClassOverlay
+        open={addOpen}
+        onOpenChange={(next) => {
+          setAddOpen(next);
+          if (!next) setEditClass(null);
+        }}
+        courses={courses}
+        editClass={
+          editClass
+            ? { id: editClass.id, name: editClass.name, subjectSlugs: editClass.subjectSlugs }
+            : null
+        }
+        onCreate={(name, subjectSlugs) => {
+          add(name, subjectSlugs);
+        }}
+        onUpdate={(id, patch) => {
+          update(id, patch);
+        }}
+      />
     </div>
   );
 }
