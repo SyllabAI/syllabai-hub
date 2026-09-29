@@ -4,7 +4,7 @@
  * Run: bun test src/lib/answer-format.test.ts
  */
 import { describe, expect, test } from "bun:test";
-import { parseAnswerText, serializeAnswerDoc, type AnswerDoc } from "./answer-format";
+import { normalizeMathPlaceholders, parseAnswerText, serializeAnswerDoc, type AnswerDoc } from "./answer-format";
 
 const doc = (paragraphs: AnswerDoc["content"]): AnswerDoc => ({ type: "doc", content: paragraphs });
 const t = (text: string, marks?: AnswerDoc["content"][number]["content"][number] extends never ? never : any): any =>
@@ -92,5 +92,34 @@ describe("answer format v2 — parse (incl. legacy v1 passthrough)", () => {
   });
   test("stray sub tag degrades to literal text (renderer-safe escape)", () => {
     expect(roundTrip("a <sub> loose")).toBe("a &lt;sub> loose");
+  });
+});
+
+describe("answer format v2 — MathLive placeholder hygiene (wave 6)", () => {
+  test("unfilled Insert-Matrix cells strip to empty cells", () => {
+    const raw = "\\begin{pmatrix}\\placeholder{} & \\placeholder{}\\\\\\placeholder{} & \\placeholder{}\\end{pmatrix}";
+    expect(normalizeMathPlaceholders(raw)).toBe("\\begin{pmatrix} & \\\\ & \\end{pmatrix}");
+  });
+  test("a filled placeholder is content and stays verbatim", () => {
+    // MathLive REPLACES the placeholder atom when the learner types into it,
+    // so \\placeholder{x} cannot occur from the stock UI — the helper strips
+    // EXACTLY empty groups only, defensively leaving anything else intact
+    expect(normalizeMathPlaceholders("x + \\placeholder{x}")).toBe("x + \\placeholder{x}");
+  });
+  test("placeholder-free latex passes through byte-faithfully", () => {
+    expect(normalizeMathPlaceholders("\\frac{1}{2}mv^{2}")).toBe("\\frac{1}{2}mv^{2}");
+    expect(normalizeMathPlaceholders("")).toBe("");
+  });
+  test("normalized matrix latex renders clean in KaTeX and round-trips the dialect", () => {
+    const clean = normalizeMathPlaceholders(
+      "\\begin{pmatrix}\\placeholder{} & \\placeholder{}\\\\\\placeholder{} & 3\\end{pmatrix}",
+    );
+    const produced = serializeAnswerDoc(doc([{ type: "paragraph", content: [eq(clean)] }]));
+    expect(produced).toBe(`$${clean}$`);
+    expect(roundTrip(produced)).toBe(produced); // stable under parse → serialize
+    // KaTeX must not paint the stored string as an error
+    // (renderToString is checked in the browser probe; here the invariant
+    // is the string itself: no \\placeholder{} survives)
+    expect(clean.includes("\\placeholder{}")).toBe(false);
   });
 });

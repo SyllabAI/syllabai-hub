@@ -23,7 +23,15 @@
  *     your typed answers shown alongside for comparison);
  *   - "Question help" → the question↔note help panel (revision notes joined
  *     through the question's spec-point codes), with the grounded tutor as
- *     the escape hatch.
+ *     the escape hatch;
+ *   - the FLOATING CLA button (Revision Notes parity, operator 2026-09-29
+ *     trace 1a0ec14f2f7e3581): one page holds many questions, so the button
+ *     tracks the ACTIVE question — the card the learner last engaged with
+ *     (CLA open / full screen / mark scheme / grid jump), else the card
+ *     dominating the viewport — and shows its anchor as a chip ("Q3").
+ *     The per-card header button is gone (one entry, like notes); the
+ *     per-part lightbulbs stay as precision shortcuts that pre-aim the
+ *     Approach target.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -178,8 +186,65 @@ export function QuestionPlayer({
    *  question gets no entries at all (same honesty rule as attempts) */
   const openCla = (q: ExamQuestion, index: number, targetId: string | null) => {
     if (bridge.kind !== "ready" || !bridge.data.questions[q.id]) return;
+    setActiveIdx(index);
     setClaFor({ q, index, targetId });
   };
+
+  // ── the floating CLA button's anchor ─────────────────────────────────
+  // In Revision Notes one page = one note, so the floating button needs no
+  // anchor logic. This page holds MANY questions, so the button tracks the
+  // ACTIVE question: pinned by real engagement (openCla / full screen /
+  // mark scheme / grid jump below), otherwise the card dominating the
+  // viewport (IntersectionObserver over the cards). The anchor then
+  // resolves through the same verified-join gate openCla enforces — if the
+  // active card cannot anchor, the nearest question that can is chosen, so
+  // the chip ALWAYS names the question that will actually open, never a
+  // guess and never a dead button.
+  const [activeIdx, setActiveIdx] = useState<number | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const root = listRef.current;
+    if (!root || typeof IntersectionObserver === "undefined") return;
+    const ratios = new Map<Element, number>();
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          ratios.set(e.target, e.isIntersecting ? e.intersectionRatio : 0);
+        }
+        let best: number | null = null;
+        let bestRatio = 0;
+        ratios.forEach((r, el) => {
+          if (r > bestRatio) {
+            bestRatio = r;
+            best = Number((el as HTMLElement).dataset.qidx);
+          }
+        });
+        if (best !== null) setActiveIdx(best);
+      },
+      // bias toward the reading zone: cards hugging the very top/bottom
+      // edges of the viewport don't steal the anchor from the one being read
+      { rootMargin: "-10% 0px -35% 0px" },
+    );
+    root.querySelectorAll("article[data-qidx]").forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, [visible]);
+
+  /** the question the floating button will anchor — the active one when it
+   *  can anchor (verified join), else the nearest that can; null = no
+   *  question on this page is anchorable, so no floating button at all */
+  const claAnchorIdx = useMemo(() => {
+    if (visible.length === 0) return null;
+    const canAnchor = (i: number) =>
+      !!visible[i] && bridge.kind === "ready" && !!bridge.data.questions[visible[i].id];
+    const a = activeIdx ?? 0;
+    if (canAnchor(a)) return a;
+    for (let d = 1; d < visible.length; d++) {
+      if (canAnchor(a + d)) return a + d;
+      if (canAnchor(a - d)) return a - d;
+    }
+    return null;
+  }, [activeIdx, visible, bridge]);
 
   const scrollTo = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -222,7 +287,10 @@ export function QuestionPlayer({
         {visible.map((q, i) => (
           <button
             key={q.id}
-            onClick={() => scrollTo(`q-${q.id}`)}
+            onClick={() => {
+              setActiveIdx(i);
+              scrollTo(`q-${q.id}`);
+            }}
             aria-label={`Question ${i + 1}${isAttempted(q) ? " (attempted)" : ""}`}
             className={cn(
               "flex size-10 items-center justify-center rounded-md border text-[13px] font-medium transition-colors",
@@ -236,10 +304,10 @@ export function QuestionPlayer({
         ))}
       </div>
 
-      {/* questions */}
-      <div className="space-y-4">
+      {/* questions — data-qidx feeds the floating button's anchor tracker */}
+      <div ref={listRef} className="space-y-4">
         {visible.map((q, qi) => (
-          <article key={q.id} id={`q-${q.id}`} className="scroll-mt-24 rounded-xl border bg-card">
+          <article key={q.id} id={`q-${q.id}`} data-qidx={qi} className="scroll-mt-24 rounded-xl border bg-card">
             <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2.5">
               <span className="rounded-md bg-muted px-2 py-0.5 text-[13px] font-semibold">{qi + 1}</span>
               <Badge variant="outline" className="text-[10px]">
@@ -256,23 +324,14 @@ export function QuestionPlayer({
                 </Badge>
               )}
               <div className="ml-auto flex items-center gap-1">
-                {bridge.kind === "ready" && bridge.data.questions[q.id] && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-9 gap-1.5 px-2 text-xs"
-                    onClick={() => openCla(q, qi, null)}
-                    aria-haspopup="dialog"
-                    title="Ask the contextual assistant about this question"
-                  >
-                    <Sparkles className="size-3.5 text-primary" aria-hidden /> Ask CLA
-                  </Button>
-                )}
                 <Button
                   size="sm"
                   variant="ghost"
                   className="h-9 gap-1.5 px-2 text-xs"
-                  onClick={() => setFullFor({ q, index: qi })}
+                  onClick={() => {
+                    setActiveIdx(qi);
+                    setFullFor({ q, index: qi });
+                  }}
                 >
                   <Maximize2 className="size-3.5" aria-hidden /> Full screen
                 </Button>
@@ -303,7 +362,10 @@ export function QuestionPlayer({
                 topicSlug={topicSlug}
                 subtopicCode={subtopicCode}
                 subtopicTitle={subtopicTitle}
-                onViewModel={() => setSchemeFor(q)}
+                onViewModel={() => {
+                  setActiveIdx(qi);
+                  setSchemeFor(q);
+                }}
                 bridge={bridge}
                 onAskCla={() => openCla(q, qi, null)}
                 onAskClaPart={(partId) => openCla(q, qi, partId)}
@@ -317,6 +379,42 @@ export function QuestionPlayer({
           </p>
         )}
       </div>
+
+      {/* the FLOATING CLA entry (Revision Notes parity — operator 2026-09-29,
+          trace 1a0ec14f2f7e3581). One page holds MANY questions, so the
+          button CARRIES its anchor: the chip names the question that will
+          open (the active card, join-gated to the nearest anchorable one),
+          and the title says so too. Hidden while the panel is open (SME
+          hides their chat button when the widget is open), absent when no
+          question on the page can anchor. The per-part lightbulbs remain
+          the precision path; the per-card header button is retired. */}
+      {claAnchorIdx !== null && claFor === null && (
+        <Button
+          size="sm"
+          className="fixed bottom-6 right-6 z-40 h-12 gap-2 rounded-full px-5 shadow-lg"
+          aria-haspopup="dialog"
+          aria-label={`Ask the contextual assistant about question ${claAnchorIdx + 1}${
+            activeIdx !== null && activeIdx !== claAnchorIdx
+              ? ` (question ${activeIdx + 1} is not anchored for the assistant yet)`
+              : ""
+          }`}
+          title={`Ask CLA about question ${claAnchorIdx + 1}${
+            activeIdx !== null && activeIdx !== claAnchorIdx
+              ? ` (question ${activeIdx + 1} is not anchored for the assistant yet)`
+              : ""
+          }`}
+          onClick={() => openCla(visible[claAnchorIdx], claAnchorIdx, null)}
+        >
+          <Sparkles className="size-4" aria-hidden />
+          Ask CLA
+          <span
+            className="rounded-full bg-primary-foreground/15 px-2 py-0.5 text-[11px] font-semibold tabular-nums"
+            aria-hidden
+          >
+            Q{claAnchorIdx + 1}
+          </span>
+        </Button>
+      )}
 
       {/* full-screen question */}
       <Dialog open={!!fullFor} onOpenChange={(o) => !o && setFullFor(null)}>
@@ -338,6 +436,7 @@ export function QuestionPlayer({
               subtopicCode={subtopicCode}
               subtopicTitle={subtopicTitle}
               onViewModel={() => {
+                setActiveIdx(fullFor.index);
                 setSchemeFor(fullFor.q);
               }}
               bridge={bridge}

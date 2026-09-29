@@ -53,7 +53,11 @@ import { useLastOpened, resourceLabel } from "@/lib/last-opened";
 import { useCourseProgress } from "@/lib/progress";
 import { api, getToken } from "@/lib/api";
 import { fetchPilotInfo, PILOT_COURSE_SLUG } from "@/lib/attempt-bridge";
+import { useDashboardCore } from "@/lib/dashboard-core";
+import { fetchBridge, type LearnerBridge } from "@/lib/learner-state";
+import { daysAgo, subtopicSetFor } from "@/lib/next-best-actions";
 import { NextBestActionsCard } from "./next-best-actions-card";
+import { ReviewDueStrip } from "./review-due-strip";
 import { AddCourseOverlay } from "./add-course-overlay";
 import type { CourseMeta } from "@/lib/courses";
 import type { CourseStatsView } from "@/lib/types";
@@ -409,15 +413,59 @@ export function DashboardClient({ courses }: { courses: CourseMeta[] }) {
   }, [slugsKey]);
 
   // "Jump back in" — only if the recorded course still resolves in the registry
-  const jumpBack =
-    lastOpened && bySlug.has(lastOpened.slug)
-      ? { course: bySlug.get(lastOpened.slug) as CourseMeta, resource: lastOpened.resource }
-      : null;
+  // (memoized: the core jump-back's derivation depends on it below)
+  const jumpBack = useMemo(
+    () =>
+      lastOpened && bySlug.has(lastOpened.slug)
+        ? { course: bySlug.get(lastOpened.slug) as CourseMeta, resource: lastOpened.resource }
+        : null,
+    [lastOpened, bySlug],
+  );
 
   // pilot card only — the account strip needs the pilot's core join AND the
   // learner's roster to actually hold the course
   const pilotInRoster = mySubjects.some((c) => c.slug === PILOT_COURSE_SLUG);
   const accountStats = usePilotAccountStats(pilotInRoster);
+
+  // P1-7 — cross-device jump back in (HUB-DASH-CORE, trace 1a0ec29c8c8cfb71):
+  // when THIS device has no navigation history, the account's most recent
+  // measured topic takes the slot — the account trail is real evidence of
+  // where the learner left off, even from another device. Silently absent
+  // when signed out, non-pilot roster, core down, or no measured evidence.
+  const core = useDashboardCore();
+  const [pilotBridge, setPilotBridge] = useState<LearnerBridge | null>(null);
+  useEffect(() => {
+    if (core.kind !== "ready") return;
+    let cancelled = false;
+    fetchBridge(PILOT_COURSE_SLUG).then((bridge) => {
+      if (!cancelled) setPilotBridge(bridge);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [core]);
+
+  const coreJumpBack = useMemo(() => {
+    if (jumpBack || !pilotInRoster || !pilotBridge || core.kind !== "ready") return null;
+    const top = [...core.model.state.skillStates]
+      .filter((s) => s.attempts > 0 && s.lastPracticedAt)
+      .sort((a, b) => Date.parse(b.lastPracticedAt) - Date.parse(a.lastPracticedAt))[0];
+    if (!top) return null;
+    const meta = bySlug.get(PILOT_COURSE_SLUG) as CourseMeta | undefined;
+    if (!meta) return null;
+    const node = core.model.kg?.nodes.find((n) => n.id === top.nodeId) ?? null;
+    // node code → the hub's own question set for that sub-topic (the bridge's
+    // additive join); the exam-questions index is the honest fallback
+    const setSlug = subtopicSetFor(node?.code, pilotBridge);
+    return {
+      title: top.nodeName ?? node?.title ?? "Your most recent topic",
+      href: setSlug
+        ? `/courses/${PILOT_COURSE_SLUG}/exam-questions/${setSlug}`
+        : `/courses/${PILOT_COURSE_SLUG}/exam-questions`,
+      lastPractised: daysAgo(Date.now(), Date.parse(top.lastPracticedAt)),
+      meta,
+    };
+  }, [jumpBack, pilotInRoster, pilotBridge, core, bySlug]);
 
   return (
     <div className="space-y-8">
@@ -430,9 +478,23 @@ export function DashboardClient({ courses }: { courses: CourseMeta[] }) {
         <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
           Welcome to your SyllabAI dashboard — your launchpad for stress-free, spec-anchored
           study. Add the courses you are taking, then revise each one from notes, exam questions
-          and flashcards mapped to its syllabus. Your progress is saved on this device.
+          and flashcards mapped to its syllabus.{" "}
+          {/* HUB-DASH-CORE P0-2 (operator trace 1a0ec29c8c8cfb71): the progress
+              sentence tells the truth per session state — the old static line
+              claimed device-only storage to learners whose account trail
+              follows them across devices (the exact split-brain the account
+              strip's tooltip already contradicted). Mirrors the identity
+              store's reactivity: login/logout rewrites it in place. */}
+          {identity
+            ? "Your measured progress follows your account across devices — self-marked answers and reading history stay on this device."
+            : "Your progress is saved on this device."}
         </p>
       </header>
+
+      {/* ---- Review due (HUB-DASH-CORE P1-5): the retention loop's headline.
+          Account queue when the pilot's core path is live, the device's
+          Ebbinghaus derivation otherwise; renders nothing when nothing is due ---- */}
+      <ReviewDueStrip courses={mySubjects} />
 
       {/* ---- My courses ---- */}
       <section aria-label="My subjects" className="space-y-3">
@@ -539,6 +601,43 @@ export function DashboardClient({ courses }: { courses: CourseMeta[] }) {
                 <span className="text-sm text-muted-foreground">
                   Edexcel · {jumpBack.course.level} · {jumpBack.course.code}
                 </span>
+                <ChevronRight className="ml-auto size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden />
+              </CardContent>
+            </Card>
+          </Link>
+        </section>
+      )}
+
+      {/* ---- Jump back in (cross-device, HUB-DASH-CORE P1-7) — the account's
+          most recent measured topic when this device has no history of its
+          own; provenance-labelled and silently absent otherwise ---- */}
+      {!jumpBack && coreJumpBack && (
+        <section aria-label="Jump back in" className="space-y-2">
+          <h2 className="flex items-center gap-2 text-lg font-semibold">
+            <RotateCcw className="size-4 text-primary" aria-hidden />
+            Jump back in
+          </h2>
+          <Link
+            href={coreJumpBack.href}
+            className="group block focus-visible:outline-none"
+          >
+            <Card className="transition-colors group-hover:border-primary/50">
+              <CardContent className="flex flex-wrap items-center gap-x-3 gap-y-1 p-4">
+                <Badge variant="secondary" className="font-medium">
+                  {resourceLabel("exam-questions")}
+                </Badge>
+                <span className="text-sm font-semibold">{coreJumpBack.title}</span>
+                <span className="text-sm text-muted-foreground">
+                  Edexcel · {coreJumpBack.meta.level} · {coreJumpBack.meta.code}
+                </span>
+                <Badge
+                  variant="outline"
+                  className="gap-1 px-1.5 py-0 text-[10px] font-medium text-primary"
+                  title="From your SyllabAI account — it follows you across devices"
+                >
+                  <CloudCheck className="size-3" aria-hidden />
+                  from your account · last practised {coreJumpBack.lastPractised}
+                </Badge>
                 <ChevronRight className="ml-auto size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden />
               </CardContent>
             </Card>

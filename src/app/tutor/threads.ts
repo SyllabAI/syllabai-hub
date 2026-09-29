@@ -158,11 +158,11 @@ export function newThreadId(): string {
 /** Title case: first user message, trimmed to a readable label. */
 export function titleFrom(text: string): string {
   const t = text.replace(/\s+/g, " ").trim();
-  if (!t) return "New conversation";
+  if (!t) return "New chat";
   return t.length > 52 ? `${t.slice(0, 52).trimEnd()}…` : t;
 }
 
-export function createThread(title = "New conversation"): Thread {
+export function createThread(title = "New chat"): Thread {
   const now = Date.now();
   const thread: Thread = { id: newThreadId(), title, createdAt: now, updatedAt: now, messages: [] };
   commit({ threads: [thread, ...state.threads].slice(0, MAX_THREADS), activeId: thread.id });

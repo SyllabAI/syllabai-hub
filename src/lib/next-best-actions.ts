@@ -16,16 +16,27 @@
  *       mastery, review-due flags, misconception watch)
  *     × forgetting-decay model (lib/forgetting.ts — effective mastery)
  *
- * Action tiers mirror the web read model's priorities — remediation before
- * review before retry before practice before coverage:
+ * Action tiers — HUB-DASH-CORE re-ranking (operator trace 1a0ec29c8c8cfb71).
+ * On the LOCAL path the learner's own measured evidence always outranks the
+ * seeded sim learner's guesses: remediation-before-review-before-retry
+ * becomes review before retry before practice before SIMULATED misconception
+ * watch before coverage:
  *
- *   0 REMEDIATE_MISCONCEPTION (MISCONCEPTION_SUSPECTED) — active sim states
- *     from the course misconception corpus (KG phase 3)
- *   1 REVIEW_TOPIC (DUE_REVIEW) — points whose Ebbinghaus-decayed effective
+ *   0 REVIEW_TOPIC (DUE_REVIEW) — points whose Ebbinghaus-decayed effective
  *     mastery crossed their review threshold
- *   2 RETRY_PROBLEM_QUESTION (PROBLEM_QUESTION) — a marked attempt under 50%
- *   3 PRACTISE_QUESTIONS (LOW_MASTERY) — measured but below the low band
+ *   1 RETRY_PROBLEM_QUESTION (PROBLEM_QUESTION) — a marked attempt under 50%
+ *   2 PRACTISE_QUESTIONS (LOW_MASTERY) — measured but below the low band
+ *   3 REMEDIATE_MISCONCEPTION (MISCONCEPTION_SUSPECTED) — active sim states
+ *     from the course misconception corpus (KG phase 3), SIMULATED — demoted
+ *     below measured evidence because a deterministic demo overlay must not
+ *     outrank what the learner actually did
  *   4 UNCOVERED_NOTE (UNCOVERED_TOPIC) — a note the learner never opened
+ *
+ * When the core read model is live (lib/dashboard-core.ts), the pilot course's
+ * rows come from core's T-033 recommendations instead (coreActionsToDashboard)
+ * and keep core's own rank order — there, misconception rows are the
+ * account's evidence-gated BDT states (measured, not the sim learner), so
+ * their priority is core's call, not this module's.
  *
  * Honesty rules inherited from the web card: every reason line is derived
  * from the learner's own measured evidence (never invented), misconception
@@ -41,13 +52,19 @@ import {
 } from "./forgetting";
 import { buildOverlay, normalizeCode, type LearnerBridge } from "./learner-state";
 import type { CourseProgress } from "./progress";
+import type { NextBestActionView, NextBestActionsView } from "./types";
 
 export type NbaActionType =
   | "REMEDIATE_MISCONCEPTION"
   | "REVIEW_TOPIC"
   | "RETRY_PROBLEM_QUESTION"
   | "PRACTISE_QUESTIONS"
-  | "UNCOVERED_NOTE";
+  | "UNCOVERED_NOTE"
+  // core-only action types (HUB-DASH-CORE P1-4) — the local rules never
+  // produce these, but core's T-033 read model can; the card gives each a chip
+  | "REVIEW_PREREQUISITE"
+  | "ASK_TUTOR"
+  | "TIMED_EXERCISE";
 
 export type NbaReasonCode =
   | "MISCONCEPTION_SUSPECTED"
@@ -64,7 +81,9 @@ export interface DashboardAction {
   courseLevel: string;
   tier: number;
   actionType: NbaActionType;
-  reasonCode: NbaReasonCode;
+  /** the deterministic rule that produced the row — local reason codes or
+   *  core's nba-rules vocabulary (humanized for the policy footer) */
+  reasonCode: string;
   title: string;
   /** deterministic, evidence-derived explanation — never an invented claim */
   detail: string;
@@ -97,12 +116,31 @@ function truncate(text: string, max = 90): string {
   return `${(sp > max * 0.6 ? cut.slice(0, sp) : cut).trimEnd()}…`;
 }
 
-function daysAgo(now: number, at: number): string {
+export function daysAgo(now: number, at: number): string {
   const d = Math.floor((now - at) / DAY);
   if (d <= 0) return "today";
   if (d === 1) return "yesterday";
   if (d < 30) return `${d}d ago`;
   return `${Math.round(d / 30)}mo ago`;
+}
+
+/**
+ * Full/normalized sub-topic code → the hub question-set slug anchored there
+ * (HUB-DASH-CORE P1). Tolerant of both code spellings ("4CH1-S4-d" and
+ * "S4-d"); null when the bridge didn't publish the join or the code isn't an
+ * anchored sub-topic — callers fall back to the exam-questions index.
+ */
+export function subtopicSetFor(
+  code: string | null | undefined,
+  bridge: Pick<LearnerBridge, "codePrefix" | "subtopicSets"> | null | undefined,
+): string | null {
+  if (!code || !bridge?.subtopicSets) return null;
+  const sets = bridge.subtopicSets;
+  if (sets[code]) return sets[code];
+  const prefix = bridge.codePrefix;
+  if (!prefix) return null;
+  if (code.startsWith(`${prefix}-`)) return sets[code] ?? null; // already prefixed, miss is a miss
+  return sets[`${prefix}-${code}`] ?? null; // bare code → prefixed key
 }
 
 function plural(n: number, word: string): string {
@@ -205,33 +243,7 @@ function deriveCourseActions(input: NbaCourseInput, now: number): DashboardActio
   const pointText = (id: string) =>
     bridge.pointTexts?.[id] ? truncate(bridge.pointTexts[id]) : null;
 
-  // ── tier 0 — misconception remediation (KG phase 3 watch, SIMULATED) ──
-  for (const m of bridge.misconceptions) {
-    if (!m.active) continue;
-    const pts = misPoints(bridge, m.points);
-    if (pts.length === 0) continue;
-    const noteId = bestNoteFor(bridge, noteMap, pts);
-    const pct = Math.round(m.probability * 100);
-    actions.push({
-      ...base,
-      key: `${slug}:mis:${m.id}`,
-      tier: 0,
-      actionType: "REMEDIATE_MISCONCEPTION",
-      reasonCode: "MISCONCEPTION_SUSPECTED",
-      title: m.title,
-      detail:
-        `SIMULATED likelihood ${pct}% · ${plural(m.evidenceCount, "evidence signal")} · ` +
-        `mapped to ${plural(pts.length, "spec point")}`,
-      href: noteId
-        ? `/courses/${slug}/revision-notes/${noteId}`
-        : `/knowledge-graph?course=${slug}`,
-      cta: noteId ? "Review note" : "Open graph",
-      score: m.probability,
-    });
-    if (actions.filter((a) => a.tier === 0).length >= 2) break;
-  }
-
-  // ── tier 1 — review-due points (forgetting-decay model) ──────────────
+  // ── tier 0 — review-due points (forgetting-decay model) ──────────────
   const model = buildOverlay(progress, bridge, now);
   const due = model.details.filter((d) => d.reviewDue && d.mastery != null);
   if (due.length > 0) {
@@ -251,7 +263,7 @@ function deriveCourseActions(input: NbaCourseInput, now: number): DashboardActio
     actions.push({
       ...base,
       key: `${slug}:review:${noteId ?? weakest.pointId}`,
-      tier: 1,
+      tier: 0,
       actionType: "REVIEW_TOPIC",
       reasonCode: "DUE_REVIEW",
       title,
@@ -266,7 +278,7 @@ function deriveCourseActions(input: NbaCourseInput, now: number): DashboardActio
     });
   }
 
-  // ── tier 2 — problem question retry (marked attempt under 50%) ───────
+  // ── tier 1 — problem question retry (marked attempt under 50%) ───────
   let worst: { questionId: string; ratio: number; at: number; score: number; max: number } | null =
     null;
   let wrongMcq: { questionId: string; at: number } | null = null;
@@ -298,7 +310,7 @@ function deriveCourseActions(input: NbaCourseInput, now: number): DashboardActio
     actions.push({
       ...base,
       key: `${slug}:retry:${q.questionId}`,
-      tier: 2,
+      tier: 1,
       actionType: "RETRY_PROBLEM_QUESTION",
       reasonCode: "PROBLEM_QUESTION",
       title: firstPoint ?? "Exam question",
@@ -313,7 +325,7 @@ function deriveCourseActions(input: NbaCourseInput, now: number): DashboardActio
     });
   }
 
-  // ── tier 3 — low-mastery practise (measured, below the low band) ─────
+  // ── tier 2 — low-mastery practise (measured, below the low band) ────
   const low = model.details
     .filter((d) => d.mastery != null && d.mastery < MASTERY_BANDS.low && d.attempts > 0)
     .sort((a, b) => (a.mastery as number) - (b.mastery as number) || b.attempts - a.attempts);
@@ -323,7 +335,7 @@ function deriveCourseActions(input: NbaCourseInput, now: number): DashboardActio
     actions.push({
       ...base,
       key: `${slug}:practise:${weakest.pointId}`,
-      tier: 3,
+      tier: 2,
       actionType: "PRACTISE_QUESTIONS",
       reasonCode: "LOW_MASTERY",
       title,
@@ -332,6 +344,39 @@ function deriveCourseActions(input: NbaCourseInput, now: number): DashboardActio
       cta: "Practise",
       score: weakest.mastery as number,
     });
+  }
+
+  // ── tier 3 — misconception watch (KG phase 3 — SIMULATED, DEMOTED) ──
+  // HUB-DASH-CORE (P1-6, operator trace 1a0ec29c8c8cfb71): the sim learner's
+  // states are a deterministic demo overlay, not the learner's evidence —
+  // they used to outrank review/retry/practise rows derived from the marks
+  // the learner actually recorded. On the LOCAL path they now rank below all
+  // measured tiers. When the core model is live, misconception rows come
+  // from core's evidence-gated BDT states via coreActionsToDashboard and
+  // core owns their priority (this branch isn't consulted for the pilot).
+  for (const m of bridge.misconceptions) {
+    if (!m.active) continue;
+    const pts = misPoints(bridge, m.points);
+    if (pts.length === 0) continue;
+    const noteId = bestNoteFor(bridge, noteMap, pts);
+    const pct = Math.round(m.probability * 100);
+    actions.push({
+      ...base,
+      key: `${slug}:mis:${m.id}`,
+      tier: 3,
+      actionType: "REMEDIATE_MISCONCEPTION",
+      reasonCode: "MISCONCEPTION_SUSPECTED",
+      title: m.title,
+      detail:
+        `SIMULATED likelihood ${pct}% · ${plural(m.evidenceCount, "evidence signal")} · ` +
+        `mapped to ${plural(pts.length, "spec point")}`,
+      href: noteId
+        ? `/courses/${slug}/revision-notes/${noteId}`
+        : `/knowledge-graph?course=${slug}`,
+      cta: noteId ? "Review note" : "Open graph",
+      score: m.probability,
+    });
+    if (actions.filter((a) => a.tier === 3).length >= 2) break;
   }
 
   // ── tier 4 — coverage: a note the learner never opened ───────────────
@@ -375,13 +420,13 @@ function tierLess(a: DashboardAction, b: DashboardAction): boolean {
   if (a.tier !== b.tier) return a.tier < b.tier;
   switch (a.tier) {
     case 0:
-      return a.score > b.score; // highest sim likelihood first
-    case 1:
       return a.score > b.score; // most overdue first
-    case 2:
+    case 1:
       return a.score < b.score; // worst marked ratio first
-    case 3:
+    case 2:
       return a.score < b.score; // weakest mastery first
+    case 3:
+      return a.score > b.score; // highest sim likelihood first
     default:
       return false;
   }
@@ -417,4 +462,75 @@ export function humanizeCode(code: string): string {
     .split("_")
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
+}
+
+// ── core read model rows (HUB-DASH-CORE P1-4, trace 1a0ec29c8c8cfb71) ────
+
+export interface CoreActionInput {
+  course: string;
+  courseLabel: string;
+  courseLevel: string;
+  /** the pilot's content bridge — codePrefix + subtopicSets deep-link core
+   *  target codes into the hub's own question sets; null degrades to the
+   *  exam-questions index (the honest, always-correct destination) */
+  bridge: LearnerBridge | null;
+}
+
+function coreHref(
+  raw: NextBestActionView,
+  input: CoreActionInput,
+): { href: string; cta: string } {
+  const base = `/courses/${input.course}`;
+  if (raw.actionType === "ASK_TUTOR") return { href: "/tutor", cta: "Ask the AI Tutor" };
+  const setSlug = subtopicSetFor(raw.targetCode, input.bridge);
+  if (setSlug) {
+    const cta =
+      raw.actionType === "RETRY_PROBLEM_QUESTION"
+        ? "Retry now"
+        : raw.actionType === "TIMED_EXERCISE"
+          ? "Practise timed"
+          : raw.actionType === "REVIEW_TOPIC" || raw.actionType === "REVIEW_PREREQUISITE"
+            ? "Revise"
+            : "Practise";
+    return { href: `${base}/exam-questions/${setSlug}`, cta };
+  }
+  return { href: `${base}/exam-questions`, cta: "Practise" };
+}
+
+/**
+ * Map core's T-033 recommendation rows onto the dashboard's action shape.
+ * The rows are rendered in core's own rank order — core's ranking IS the
+ * audited deterministic read model this card's local rules are a port of,
+ * so re-ranking it client-side would only add a second opinion. Every
+ * reason line is core's evidence-derived reasonDetail verbatim; nothing is
+ * reworded or invented here.
+ */
+export function coreActionsToDashboard(
+  view: NextBestActionsView,
+  input: CoreActionInput,
+): DashboardAction[] {
+  return [...view.actions]
+    .sort((a, b) => a.rank - b.rank || a.targetCode.localeCompare(b.targetCode))
+    .map((raw) => {
+      const { href, cta } = coreHref(raw, input);
+      return {
+        key: `core:${raw.actionType}:${raw.targetNodeId}:${raw.questionId ?? ""}`,
+        course: input.course,
+        courseLabel: input.courseLabel,
+        courseLevel: input.courseLevel,
+        // rank-order flag — the local tier comparator is bypassed for
+        // core rows (the card keeps core's order); 0 keeps type sanity
+        tier: -1,
+        actionType: raw.actionType as NbaActionType,
+        reasonCode: raw.reasonCode as string,
+        title: raw.targetTitle || "Next step",
+        detail:
+          raw.servableQuestionCount === 0
+            ? `${raw.reasonDetail} — no validated questions are mapped there yet`
+            : raw.reasonDetail,
+        href,
+        cta,
+        score: raw.rank,
+      };
+    });
 }

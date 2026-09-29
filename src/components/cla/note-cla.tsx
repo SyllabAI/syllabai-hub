@@ -57,6 +57,7 @@ import {
   PanelRightOpen,
   Send,
   Sparkles,
+  SquarePen,
   TriangleAlert,
   X,
   FileText,
@@ -423,13 +424,34 @@ export function NoteCla({
     </>
   );
 
+  // SME's New chat header action, now ported (the last honest-absent
+  // circle button): their edit-square glyph, their order — New chat sits
+  // before Collapse/Close and resets THIS note's transcript, bringing the
+  // quick actions back (the empty state). Disabled while a turn is
+  // in-flight — the hub's ask has no abort, and a reply landing in a just-
+  // cleared thread would be worse than a brief grey-out.
+  const newChat = () => {
+    setThread([]);
+    setError(null);
+  };
+
   // SME keeps ONE header across their forms: icon + gradient title + the
-  // circle buttons (theirs also has New chat — honest-absent here, the hub's
-  // transcript-reset semantics differ; recorded as a follow-up candidate)
+  // circle buttons — New chat, then the form toggle, then Close (their
+  // verbatim order)
   const panelHeader = (closeAffordance: React.ReactNode) => (
     <div className="flex items-center gap-1 border-b px-3 py-2.5">
       <Sparkles className="size-4 shrink-0 text-primary" aria-hidden />
       <p className="min-w-0 flex-1 truncate pl-1 text-sm font-semibold">{panelTitle}</p>
+      <button
+        type="button"
+        onClick={newChat}
+        aria-label="New chat"
+        title="New chat"
+        disabled={busy}
+        className={claHeaderCircleBtn}
+      >
+        <SquarePen className="size-4" aria-hidden />
+      </button>
       {formToggleButton}
       {closeAffordance}
     </div>
@@ -550,8 +572,21 @@ export function NoteCla({
                 Answers are grounded in this note only.
               </SheetDescription>
             </div>
-            {/* pr-9 clears the Sheet's built-in close affordance */}
-            <div className="flex shrink-0 items-center pr-9">{formToggleButton}</div>
+            {/* pr-9 clears the Sheet's built-in close affordance; the New
+                chat circle rides here too — same reset on every shell */}
+            <div className="flex shrink-0 items-center gap-1 pr-9">
+              <button
+                type="button"
+                onClick={newChat}
+                aria-label="New chat"
+                title="New chat"
+                disabled={busy}
+                className={claHeaderCircleBtn}
+              >
+                <SquarePen className="size-4" aria-hidden />
+              </button>
+              {formToggleButton}
+            </div>
           </SheetHeader>
           {panelBody}
         </SheetContent>
