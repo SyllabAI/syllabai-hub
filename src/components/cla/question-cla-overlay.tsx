@@ -45,13 +45,27 @@
  * question id (one transcript per whole question — switching questions
  * switches transcripts, and answers anchored to one question never read as
  * anchored to another).
+ *
+ * SME chat-widget dual form (HUB-CLA-POPUP + HUB-CLA-SIDEBAR): popup
+ * (floating, bottom-right) or sidebar — a PHYSICALLY DOCKED right column,
+ * not an overlay (SME's expanded chat goes `flex: 0 0 400px; position:
+ * static` in the page row; the hub's .course-shell-row cedes the 400px via
+ * globals.css). Below 1400px the dock can't exist (SME's expand button is
+ * display:none there) and a stored "sidebar" pref degrades to the popup;
+ * below lg the Sheet's fullscreen wash carries SME's mobile behaviour.
+ * Density (HUB-CLA-SIDEBAR): SME's panel anatomy — one-line verbatim banner,
+ * ONE anchor line (question number · marks · parts, with the Approach part
+ * pills merged in), the 2 quick options as SME-style prefilled chips in the
+ * empty state only, then chat + input; the per-answer trace collapses
+ * behind a tiny disclosure. CHECK/SUMMARIZE stay out of this surface by
+ * operator decision (post-attempt review belongs to Smart Mark;
+ * SUMMARIZE is a topic/notes mode) — see this header's mode notes below.
  */
 
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Markdown } from "@/components/markdown";
 import { ApiError, aiAskErrorMessage, api } from "@/lib/api";
@@ -72,11 +86,10 @@ import {
   Send,
   Sparkles,
   TriangleAlert,
-  Wrench,
   X,
 } from "lucide-react";
 
-import { useClaPanelForm, useIsDesktop, claHeaderCircleBtn } from "./cla-panel-mode";
+import { useClaPanelForm, useClaDock, useIsDesktop, useIsWide, claHeaderCircleBtn } from "./cla-panel-mode";
 
 /** Question-surface free-input modes — the two that mean anything here. */
 type QuestionMode = "EXPLAIN" | "HINT";
@@ -182,27 +195,32 @@ export function QuestionClaOverlay({
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const popupRef = useRef<HTMLDivElement | null>(null);
 
-  // SME chat-widget parity (HUB-CLA-POPUP): popup (floating, bottom-right) or
-  // sidebar (the right Sheet — SME's "expanded" docked column). One shared
-  // preference across the CLA panels; the popup form is desktop-only (below
-  // lg the Sheet's fullscreen overlay matches SME's mobile wash). The
-  // transcript is lifted to the player, so a mid-conversation toggle switches
-  // shells without losing a turn.
+  // SME chat-widget parity (HUB-CLA-POPUP + HUB-CLA-SIDEBAR): popup
+  // (floating, bottom-right), sidebar (the physically docked right column),
+  // or the Sheet's fullscreen wash on mobile. One shared preference across
+  // the CLA panels; the dock only exists ≥1400px (SME's expanded gate — a
+  // stored "sidebar" below it degrades to the popup). The transcript is
+  // lifted to the player, so a mid-conversation toggle switches shells
+  // without losing a turn.
   const [form, setForm] = useClaPanelForm();
   const isDesktop = useIsDesktop();
-  const usePopup = open && form === "popup" && isDesktop;
+  const isWide = useIsWide();
+  const docked = open && form === "sidebar" && isWide;
+  const usePopup = open && !docked && isDesktop;
+  // the physical reflow: marks <html> for globals.css's 400px right inset
+  useClaDock(docked);
 
-  // the popup shell is non-modal (SME's popup floats over a live page) — it
-  // owns its own Escape handling; the Sheet keeps Radix's
+  // the popup + dock shells are non-modal (SME's popup floats over a live
+  // page) — they own their own Escape handling; the Sheet keeps Radix's
   useEffect(() => {
-    if (!usePopup) return;
+    if (!usePopup && !docked) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onOpenChange(false);
     };
     window.addEventListener("keydown", onKey);
     popupRef.current?.focus();
     return () => window.removeEventListener("keydown", onKey);
-  }, [usePopup, onOpenChange]);
+  }, [usePopup, docked, onOpenChange]);
 
   const targets = useMemo(
     () => (question ? claTargetsOf(question, join) : []),
@@ -289,8 +307,10 @@ export function QuestionClaOverlay({
   const hideTargetRow = targets.length <= 1 && targets[0]?.label === "question";
 
   // SME's expand/collapse toggle (labels verbatim: "Expand chat" when the
-  // popup can grow into the sidebar, "Collapse chat" when it can come back)
-  const formToggleButton = (
+  // popup can grow into the docked sidebar, "Collapse chat" when it can come
+  // back). Rendered ≥1400px only — SME's expand button is display:none
+  // below, and the dock can't exist there.
+  const formToggleButton = isWide ? (
     <button
       type="button"
       onClick={() => setForm(form === "popup" ? "sidebar" : "popup")}
@@ -304,178 +324,112 @@ export function QuestionClaOverlay({
         <Minimize2 className="size-4" aria-hidden />
       )}
     </button>
-  );
+  ) : null;
 
   // SME's gradient header title (background-clip:text, their verbatim
-  // flourish) — rides both shells
+  // flourish) — short like their "Explain"; the full product name rides
+  // the dialog's aria-label. Rides all three shells.
   const panelTitle = (
     <span className="bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
-      Contextual Learning Assistant
+      CLA
     </span>
   );
 
   // one panel body, rendered by whichever shell is active
   const panelBody = (
     <>
-        {/* amber honesty banner — the Save My Exams reference panel's
-            signature (HUB-TUTOR-CLA-LOOK), on the hub's theme-aware warn
-            tokens */}
-        <div className="flex items-start gap-2 border-b bg-warn/10 px-4 py-2.5 text-xs leading-relaxed text-warn-ink">
-          <Info className="mt-0.5 size-3.5 shrink-0 text-warn" aria-hidden />
-          <p>
-            The assistant can make mistakes. It answers only from this
-            question&apos;s own text plus validated material — check the
-            citations on every answer.
-          </p>
+        {/* SME's one-line banner — their verbatim copy, on the hub's
+            theme-aware warn tokens */}
+        <div className="flex items-center gap-2 border-b bg-warn/10 px-4 py-2 text-[11px] leading-snug text-warn-ink">
+          <Info className="size-3.5 shrink-0 text-warn" aria-hidden />
+          <p>Chat can make mistakes. Please check all responses carefully.</p>
         </div>
 
-        {/* server-anchored context card: the question IS the anchor — the
-            server resolves the whole family's first row and serves the stem
-            plus every part prompt as id-anchored lead evidence */}
-        <div className="space-y-1.5 border-b bg-muted/40 px-4 py-3">
-          <div className="flex items-start gap-2">
-            <Compass className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
-            <p className="min-w-0 text-[13px] font-medium leading-snug">
-              {questionNumber != null ? `Question ${questionNumber}` : "Question"}
-              <span className="ml-1.5 font-normal text-muted-foreground">
-                {question?.totalMarks} mark{question?.totalMarks === 1 ? "" : "s"}
-                {question && question.parts.length > 1
-                  ? ` · ${question.parts.length} parts`
-                  : ""}
-              </span>
-            </p>
-          </div>
-          <p className="pl-6 text-[11px] leading-snug text-muted-foreground">
-            Answers are grounded in this question&apos;s own text plus validated
-            material for its topic. The mark scheme is deterministically
-            excluded until you attempt.
-          </p>
-        </div>
-
-        {/* Approach target — which part the coaching is about. Understand is
-            always the whole question; this row aims Approach (and free asks
-            that reference "this part") */}
-        {!hideTargetRow && targets.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5 border-b px-4 py-2">
-            <span className="mr-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              Part
+        {/* the anchor, ONE line — the question IS the anchor (the server
+            resolves the whole family's first row and serves the stem plus
+            every part prompt as id-anchored lead evidence). The Approach
+            part pills ride the same line: which part the coaching targets */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b px-4 py-2">
+          <Compass className="size-3.5 shrink-0 text-primary" aria-hidden />
+          <p id="cla-question-anchor" className="text-xs font-medium leading-snug">
+            {questionNumber != null ? `Question ${questionNumber}` : "Question"}
+            <span className="font-normal text-muted-foreground">
+              {" · "}
+              {question?.totalMarks} mark{question?.totalMarks === 1 ? "" : "s"}
+              {question && question.parts.length > 1
+                ? ` · ${question.parts.length} parts`
+                : ""}
             </span>
-            {targets.map((t) => (
-              <button
-                key={t.hubPartId}
-                type="button"
-                onClick={() => setTargetId(t.hubPartId)}
-                aria-pressed={target?.hubPartId === t.hubPartId}
-                className={cn(
-                  "rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors",
-                  target?.hubPartId === t.hubPartId
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border text-muted-foreground hover:border-primary/40",
-                )}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* mode vocabulary — EXPLAIN/HINT select the free-input mode; SUMMARIZE
-            is a topic/notes mode, CHECK is post-attempt review that lives with
-            Smart Mark (operator decision, web s129) */}
-        <div className="flex flex-wrap items-center gap-1.5 border-b px-4 py-2">
-          <span className="mr-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            Mode
-          </span>
-          {(["EXPLAIN", "HINT"] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => setFreeMode(m)}
-              aria-pressed={freeMode === m}
-              className={cn(
-                "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors",
-                freeMode === m
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border text-muted-foreground hover:border-primary/40",
-              )}
+          </p>
+          {!hideTargetRow && targets.length > 0 && (
+            <span
+              className="flex flex-wrap items-center gap-1"
+              role="group"
+              aria-label="Approach part"
             >
-              {m === "EXPLAIN" ? (
-                <Compass className="size-3" aria-hidden />
-              ) : (
-                <Lightbulb className="size-3" aria-hidden />
-              )}
-              {m === "EXPLAIN" ? "Explain" : "Hint"}
-            </button>
-          ))}
-          <span
-            title="Summarise is a topic/notes mode — use the notes overlay or the assistant tab"
-            className="cursor-not-allowed rounded-full border border-dashed px-2.5 py-0.5 text-[11px] text-muted-foreground/60"
-          >
-            Summarize
-          </span>
-          <span
-            title="Post-attempt review lives with Smart Mark (Explain my feedback) — attempt-gated in production"
-            className="cursor-not-allowed rounded-full border border-dashed px-2.5 py-0.5 text-[11px] text-muted-foreground/60"
-          >
-            Check
-          </span>
+              {targets.map((t) => (
+                <button
+                  key={t.hubPartId}
+                  type="button"
+                  onClick={() => setTargetId(t.hubPartId)}
+                  aria-pressed={target?.hubPartId === t.hubPartId}
+                  className={cn(
+                    "rounded-full border px-2 py-0.5 text-[11px] font-medium leading-none transition-colors",
+                    target?.hubPartId === t.hubPartId
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border text-muted-foreground hover:border-primary/40",
+                  )}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </span>
+          )}
         </div>
 
-        {/* the 2 quick options (operator spec) */}
-        <div className="grid grid-cols-1 gap-2 border-b px-4 py-3">
-          <button
-            type="button"
-            disabled={busy || !question}
-            onClick={() => void ask({ kind: "WHOLE" }, "EXPLAIN", understandPrompt)}
-            className="group flex flex-col gap-1 rounded-lg border px-3 py-2.5 text-left transition-colors hover:border-primary/40 hover:bg-primary/5 disabled:pointer-events-none disabled:opacity-50"
-          >
-            <span className="flex items-center gap-1.5">
-              <Compass className="size-3.5 text-primary" aria-hidden />
-              <span className="text-[13px] font-semibold">Understand</span>
-              <span className="ml-auto rounded-full bg-muted px-1.5 py-px font-mono text-[9px] font-medium text-muted-foreground">
-                EXPLAIN
-              </span>
-            </span>
-            <span className="text-[11px] leading-snug text-muted-foreground">
-              Explain what this question is asking — command words, marks and
-              examiner intent, part by part. Never the answers.
-            </span>
-          </button>
-          <button
-            type="button"
-            disabled={busy || !target}
-            onClick={() => target && void ask({ kind: "TARGET", target }, "HINT", approachPrompt)}
-            className="group flex flex-col gap-1 rounded-lg border px-3 py-2.5 text-left transition-colors hover:border-primary/40 hover:bg-primary/5 disabled:pointer-events-none disabled:opacity-50"
-          >
-            <span className="flex items-center gap-1.5">
-              <Lightbulb className="size-3.5 text-primary" aria-hidden />
-              <span className="text-[13px] font-semibold">Approach</span>
-              {target && (
-                <span className="rounded-full bg-muted px-1.5 py-px text-[9px] font-medium text-muted-foreground">
-                  part {target.label}
-                </span>
-              )}
-              <span className="ml-auto rounded-full bg-muted px-1.5 py-px font-mono text-[9px] font-medium text-muted-foreground">
-                HINT
-              </span>
-            </span>
-            <span className="text-[11px] leading-snug text-muted-foreground">
-              {target?.anchor === "QUESTION_PART"
-                ? `Help me work through part (${target?.label}) — scaffolded steps toward the answer, never the answer itself.`
-                : "Help me work through this question — scaffolded steps toward the answer, never the answer itself."}
-            </span>
-          </button>
-        </div>
-
-        {/* transcript — the hub's math-capable Markdown (KaTeX + mhchem), the
-            citation chips and the traceability footer of every CLA surface */}
+        {/* transcript — the hub's math-capable Markdown (KaTeX + mhchem) and
+            the citation chips; the 2 quick options (operator spec) ride the
+            EMPTY state as SME-style prefilled chips and disappear once the
+            conversation starts, like SME's suggestions */}
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
           {messages.length === 0 && !busy && (
-            <p className="pt-2 text-center text-xs leading-relaxed text-muted-foreground">
-              Ask about this question — Understand decodes what each part is
-              asking (never the answers); Approach coaches you through the
-              part you pick without giving it away.
-            </p>
+            <div className="grid grid-cols-1 gap-2 pt-1">
+              <button
+                type="button"
+                disabled={!question}
+                onClick={() => void ask({ kind: "WHOLE" }, "EXPLAIN", understandPrompt)}
+                className="flex flex-col gap-1 rounded-xl bg-primary/10 px-3 py-2.5 text-left transition-colors hover:bg-primary/15 disabled:pointer-events-none disabled:opacity-50"
+              >
+                <span className="flex items-center gap-1.5 text-[13px] font-semibold">
+                  <Compass className="size-3.5 shrink-0 text-primary" aria-hidden />
+                  Understand
+                </span>
+                <span className="text-[11px] leading-snug text-muted-foreground">
+                  Explain what this question is asking
+                </span>
+              </button>
+              <button
+                type="button"
+                disabled={!target}
+                onClick={() => target && void ask({ kind: "TARGET", target }, "HINT", approachPrompt)}
+                className="flex flex-col gap-1 rounded-xl bg-primary/10 px-3 py-2.5 text-left transition-colors hover:bg-primary/15 disabled:pointer-events-none disabled:opacity-50"
+              >
+                <span className="flex items-center gap-1.5 text-[13px] font-semibold">
+                  <Lightbulb className="size-3.5 shrink-0 text-primary" aria-hidden />
+                  Approach
+                  {target && (
+                    <span className="rounded-full bg-muted px-1.5 py-px text-[9px] font-medium text-muted-foreground">
+                      part {target.label}
+                    </span>
+                  )}
+                </span>
+                <span className="text-[11px] leading-snug text-muted-foreground">
+                  {target?.anchor === "QUESTION_PART"
+                    ? `Coach me through part (${target?.label}) without the answer`
+                    : "Coach me through this question without the answer"}
+                </span>
+              </button>
+            </div>
           )}
           {messages.map((m, i) =>
             m.kind === "user" ? (
@@ -493,8 +447,7 @@ export function QuestionClaOverlay({
                 {m.result.refused && (
                   <p className="flex items-center gap-1.5 text-[11px] font-semibold text-warn">
                     <TriangleAlert className="size-3.5" aria-hidden />
-                    Honest refusal — the anchored material doesn&apos;t support
-                    an answer to this
+                    Not supported by this question
                   </p>
                 )}
                 <Markdown className="text-sm [&_p]:text-sm">{m.result.answer}</Markdown>
@@ -515,31 +468,33 @@ export function QuestionClaOverlay({
                     ))}
                   </div>
                 )}
-                <Separator />
-                <p className="text-[10px] text-muted-foreground">
-                  {m.result.provider === "unavailable"
-                    ? "no AI provider answered — structured fallback shown"
-                    : `Answered by ${m.result.provider}`}
-                  {m.result.model ? ` · ${m.result.model}` : ""} · mode{" "}
-                  {m.result.context.mode}
-                  {` · ${m.result.evidenceCount} evidence chunk${m.result.evidenceCount === 1 ? "" : "s"}`}
-                  {` · ${m.result.latencyMs}ms`}
-                </p>
-                {m.result.tools.length > 0 && (
-                  <details className="text-[11px] text-muted-foreground">
-                    <summary className="flex cursor-pointer items-center gap-1 hover:text-foreground">
-                      <Wrench className="h-3 w-3" /> read-only tools used (
-                      {m.result.tools.length})
-                    </summary>
-                    <ul className="mt-1 space-y-0.5 pl-4">
+                {/* the §19-style traceability footer — collapsed behind a
+                    tiny disclosure (SME shows nothing; provider, model, mode,
+                    evidence, latency and the read-only tools stay one click
+                    away) */}
+                <details className="text-[10px] text-muted-foreground">
+                  <summary className="w-fit cursor-pointer select-none hover:text-foreground">
+                    trace
+                  </summary>
+                  <p className="pt-0.5">
+                    {m.result.provider === "unavailable"
+                      ? "no AI provider answered — structured fallback shown"
+                      : `Answered by ${m.result.provider}`}
+                    {m.result.model ? ` · ${m.result.model}` : ""} · mode{" "}
+                    {m.result.context.mode}
+                    {` · ${m.result.evidenceCount} evidence chunk${m.result.evidenceCount === 1 ? "" : "s"}`}
+                    {` · ${m.result.latencyMs}ms`}
+                  </p>
+                  {m.result.tools.length > 0 && (
+                    <ul className="mt-0.5 space-y-0.5 pl-4">
                       {m.result.tools.map((t, ti) => (
                         <li key={ti}>
                           {t.tool} · {t.resultSize} result(s) · {t.latencyMs}ms
                         </li>
                       ))}
                     </ul>
-                  </details>
-                )}
+                  )}
+                </details>
               </div>
             ) : m.kind === "gate" ? (
               <div
@@ -571,15 +526,35 @@ export function QuestionClaOverlay({
           {busy && (
             <p className="flex items-center gap-2 text-xs text-muted-foreground">
               <Loader2 className="size-3.5 animate-spin" aria-hidden />
-              Resolving this question → gathering its parts + validated
-              evidence → grounding the answer…
+              Grounding in this question…
             </p>
           )}
           <div ref={bottomRef} />
         </div>
 
-        {/* free input */}
-        <div className="border-t px-4 py-3">
+        {/* free input — the two live mode pills (EXPLAIN decodes what the
+            question asks, HINT coaches; SUMMARIZE/CHECK live on other
+            surfaces — this file's header notes the operator decision) + the
+            ask box */}
+        <div className="space-y-2 border-t px-4 py-3">
+          <div className="flex items-center gap-1.5" role="group" aria-label="Answer mode">
+            {(["EXPLAIN", "HINT"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setFreeMode(m)}
+                aria-pressed={freeMode === m}
+                className={cn(
+                  "rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors",
+                  freeMode === m
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border text-muted-foreground hover:border-primary/40",
+                )}
+              >
+                {m === "EXPLAIN" ? "Explain" : "Hint"}
+              </button>
+            ))}
+          </div>
           <form
             className="flex items-center gap-2"
             onSubmit={(e) => {
@@ -624,6 +599,26 @@ export function QuestionClaOverlay({
     </>
   );
 
+  // SME keeps ONE header across their forms: icon + gradient title + the
+  // circle buttons (theirs also has New chat — honest-absent here, the hub's
+  // transcript-reset semantics differ; recorded as a follow-up candidate)
+  const panelHeader = (
+    <>
+      <Sparkles className="size-4 shrink-0 text-primary" aria-hidden />
+      <p className="min-w-0 flex-1 truncate pl-1 text-sm font-semibold">{panelTitle}</p>
+      {formToggleButton}
+      <button
+        type="button"
+        onClick={() => onOpenChange(false)}
+        aria-label="Close chat"
+        title="Close chat"
+        className={claHeaderCircleBtn}
+      >
+        <X className="size-4" aria-hidden />
+      </button>
+    </>
+  );
+
   return (
     <>
       {/* ── the popup shell (SME's default form, HUB-CLA-POPUP) ──
@@ -639,50 +634,55 @@ export function QuestionClaOverlay({
             role="dialog"
             aria-modal="false"
             aria-label="Contextual Learning Assistant"
-            aria-describedby="question-cla-popup-context"
+            aria-describedby="cla-question-anchor"
             tabIndex={-1}
             className="fixed bottom-4 right-4 z-50 flex h-[640px] min-h-[400px] max-h-[calc(100dvh-5.5rem)] w-[410px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-3xl border bg-background shadow-lg outline-none"
           >
-            <div className="flex items-center gap-2 border-b px-4 py-3">
-              <Sparkles className="size-4 shrink-0 text-primary" aria-hidden />
-              <div className="min-w-0 flex-1 leading-tight">
-                <p className="text-sm font-semibold">{panelTitle}</p>
-                <p id="question-cla-popup-context" className="text-[11px] text-muted-foreground">
-                  Grounded in this question — nothing else, and never its mark scheme before you
-                  attempt.
-                </p>
-              </div>
-              {formToggleButton}
-              <button
-                type="button"
-                onClick={() => onOpenChange(false)}
-                aria-label="Close chat"
-                title="Close chat"
-                className={claHeaderCircleBtn}
-              >
-                <X className="size-4" aria-hidden />
-              </button>
-            </div>
+            <div className="flex items-center gap-1 border-b px-3 py-2.5">{panelHeader}</div>
             {panelBody}
           </div>,
           document.body,
         )}
 
-      {/* ── the sidebar shell (SME's "expanded" form) — the right Sheet,
-          fullscreen overlay below lg (SME's mobile wash) ── */}
-      <Sheet open={open && !usePopup} onOpenChange={onOpenChange}>
+      {/* ── the docked sidebar shell (HUB-CLA-SIDEBAR) — SME's "expanded"
+          form as a PHYSICAL layout member, not an overlay: their wrapper
+          goes flex 0 0 400px static in the page row; the hub's
+          .course-shell-row has ceded exactly this 400px (globals.css via
+          <html data-cla-sidebar="open">), so this fixed column under the
+          56px navbar occupies freed space — radius 0, border-l, their
+          ChatPanel_expanded geometry. The page behind keeps scrolling. */}
+      {docked &&
+        createPortal(
+          <div
+            ref={popupRef}
+            role="dialog"
+            aria-modal="false"
+            aria-label="Contextual Learning Assistant"
+            aria-describedby="cla-question-anchor"
+            tabIndex={-1}
+            className="fixed bottom-0 right-0 top-14 z-30 flex w-[400px] flex-col border-l bg-background outline-none"
+          >
+            <div className="flex items-center gap-1 border-b px-3 py-2.5">{panelHeader}</div>
+            {panelBody}
+          </div>,
+          document.body,
+        )}
+
+      {/* ── the mobile shell — the Sheet's fullscreen wash below lg (SME's
+          mobile behaviour); the expand toggle is absent (SME hides it below
+          1400px) ── */}
+      <Sheet open={open && !usePopup && !docked} onOpenChange={onOpenChange}>
         <SheetContent
           side="right"
           className="flex w-full flex-col gap-0 p-0 sm:max-w-md"
-          aria-describedby="question-cla-context"
+          aria-describedby="cla-question-anchor"
         >
           <SheetHeader className="flex-row items-center gap-0 border-b px-4 py-3 text-left">
             <Sparkles className="size-4 shrink-0 text-primary" aria-hidden />
             <div className="min-w-0 flex-1 pl-2 leading-tight">
               <SheetTitle className="block text-sm font-semibold">{panelTitle}</SheetTitle>
-              <SheetDescription id="question-cla-context" className="text-[11px] leading-tight">
-                Grounded in this question — nothing else, and never its mark scheme before you
-                attempt.
+              <SheetDescription className="sr-only">
+                Answers are grounded in this question only, never its mark scheme before you attempt.
               </SheetDescription>
             </div>
             {/* pr-9 clears the Sheet's built-in close affordance */}

@@ -1296,3 +1296,29 @@
 .prose-sm li {
   overflow-wrap: anywhere;
 }
+
+/* ── CLA docked sidebar (HUB-CLA-SIDEBAR, 2026-09-29) ────────────────────
+   SME's expanded chat is a real layout member, not an overlay: their
+   wrapper goes `flex: 0 0 400px; position: static` inside the page's flex
+   row, so the page content physically cedes 400px and keeps scrolling.
+   The hub's course-shell row gets the same 400px right inset while the
+   CLA dock is open (<html data-cla-sidebar="open">, set by cla-panel-mode
+   .ts) — the docked panel is a fixed right column under the 56px navbar
+   occupying exactly that freed space, so panel and page never overlap.
+   Gated ≥1400px like SME's expanded form (below it the panels render the
+   floating popup / mobile fullscreen wash instead). The transition
+   mirrors SME's nav-width timing (.2s ease-in-out), silenced under
+   reduced motion. */
+.course-shell-row {
+  transition: padding-right 0.2s ease-in-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .course-shell-row {
+    transition: none;
+  }
+}
+@media (min-width: 1400px) {
+  html[data-cla-sidebar="open"] .course-shell-row {
+    padding-right: 400px;
+  }
+}

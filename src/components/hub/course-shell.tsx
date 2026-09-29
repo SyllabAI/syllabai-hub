@@ -215,7 +215,10 @@ export function CourseShell({
 
   return (
     <CourseDataProvider data={data}>
-      <div className="flex min-h-[calc(100dvh-3.5rem-1px)]">
+      {/* course-shell-row: the CLA dock's physical-reflow hook (globals.css,
+          HUB-CLA-SIDEBAR) — while a CLA panel is docked open on ≥1400px this
+          row cedes 400px on the right, SME's expanded-chat behaviour */}
+      <div className="course-shell-row flex min-h-[calc(100dvh-3.5rem-1px)]">
         {/* mobile drawer: nav groups + the resource topic tree */}
         {open && (
           <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true">
