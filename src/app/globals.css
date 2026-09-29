@@ -1356,7 +1356,14 @@
 math-field.answer-mathfield {
   display: inline-block;
   vertical-align: middle;
-  min-width: 4ch;
+  /* wave 6 (operator trace 1a0ebc1b93638915): the stock toggles are two
+     34×34 buttons inside the field's flex row (MathLive .ML__toggles,
+     flex-shrink:0). At the wave-5 min-width of 4ch the chip measured
+     94×44 px — the toggles left ~10 px for the formula, so SME's own
+     Menu / Toggle Virtual Keyboard buttons were effectively unusable.
+     12rem hosts the formula AND both toggles with room to type; the chip
+     still flows inline, grows with its content, and caps at 100%. */
+  min-width: 12rem;
   max-width: 100%;
   min-height: 0;
   padding: 0 2px;

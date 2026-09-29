@@ -54,7 +54,12 @@ import { Node, mergeAttributes } from "@tiptap/core";
 import { NodeSelection } from "@tiptap/pm/state";
 import katex from "katex";
 import "katex/dist/katex.min.css";
-import { parseAnswerText, serializeAnswerDoc, type AnswerDoc } from "@/lib/answer-format";
+import {
+  normalizeMathPlaceholders,
+  parseAnswerText,
+  serializeAnswerDoc,
+  type AnswerDoc,
+} from "@/lib/answer-format";
 import { cn } from "@/lib/utils";
 
 // (ambient typings for <math-field> live in src/types/answer-editor.d.ts —
@@ -120,6 +125,8 @@ function EquationView({
   /** commit latch — a session closes exactly once (the unmount of the
    *  mathfield fires a stray blur that must never re-enter commit) */
   const closing = useRef(false);
+  /** the sheet-settle re-scroll timer (cleared on unmount / session end) */
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // MathLive loads lazily, client-only (the module registers the
   // <math-field> custom element on import; it must never run during SSR).
@@ -164,7 +171,10 @@ function EquationView({
       if (closing.current) return;
       closing.current = true;
       const mf = mfRef.current as unknown as { value: string } | null;
-      const next = (mf?.value ?? "").trim();
+      // empty placeholder scaffolding never enters the doc (wave 6: an
+      // unfilled Insert-Matrix cell stores as an empty cell, never as the
+      // \placeholder{} string KaTeX paints red)
+      const next = normalizeMathPlaceholders(mf?.value ?? "").trim();
       try {
         (window as unknown as { mathVirtualKeyboard?: { hide: () => void } }).mathVirtualKeyboard?.hide();
       } catch {
@@ -188,6 +198,42 @@ function EquationView({
     [deleteNode, updateAttributes, getPos, editor],
   );
 
+  /** MathLive's keyboard sheet is a body-fixed overlay: it covers the
+   *  bottom of the viewport and MathLive only self-scrolls on its OWN
+   *  toggle path — a programmatic show() (our session open) can leave the
+   *  editing chip BEHIND the sheet, out of reach (wave 6 probe: the Menu
+   *  toggle landed at y=749 under the sheet at y≤480). Walk the scrollable
+   *  ancestors, then the window, until the chip clears the sheet's top
+   *  edge. */
+  const scrollAboveKeyboard = useCallback(() => {
+    try {
+      const mf = mfRef.current;
+      if (!mf) return;
+      // the sheet's visible edge is .MLK__backdrop; the outer .ML__keyboard
+      // element is a full-viewport hit area whose top is always 0
+      const sheet = document.querySelector(".MLK__backdrop") ?? document.querySelector(".ML__keyboard");
+      if (!sheet) return;
+      const sheetTop = sheet.getBoundingClientRect().top;
+      const rect = mf.getBoundingClientRect();
+      if (rect.bottom <= sheetTop) return;
+      let remaining = rect.bottom - sheetTop + 16;
+      let el: HTMLElement | null = mf as HTMLElement;
+      while (el && remaining > 0) {
+        el = el.parentElement;
+        if (!el) break;
+        const st = window.getComputedStyle(el);
+        if (/(auto|scroll)/.test(st.overflowY) && el.scrollHeight > el.clientHeight) {
+          const before = el.scrollTop;
+          el.scrollTop = before + remaining;
+          remaining -= el.scrollTop - before;
+        }
+      }
+      if (remaining > 0) window.scrollBy({ top: remaining, behavior: "smooth" });
+    } catch {
+      // scrolling is progressive — editing still works without it
+    }
+  }, []);
+
   // the editing session: fill the field, focus it, sheet the keyboard up.
   // MathLive's default keyboard policy auto-shows only on coarse pointers;
   // the reference product shows it on desktop too, so show it explicitly —
@@ -205,6 +251,10 @@ function EquationView({
       try {
         (window as unknown as { mathVirtualKeyboard?: { show: () => void } }).mathVirtualKeyboard?.show();
         applyKeyboardTheme();
+        scrollAboveKeyboard();
+        // the sheet's mount animation settles — re-check once it does
+        const t = setTimeout(scrollAboveKeyboard, 380);
+        settleTimer.current = t;
       } catch {
         // keyboard display is progressive — editing still works without it
       }
@@ -217,8 +267,10 @@ function EquationView({
     return () => {
       cancelAnimationFrame(raf);
       clearTimeout(t);
+      if (settleTimer.current) clearTimeout(settleTimer.current);
+      settleTimer.current = null;
     };
-  }, [editing, ready, applyKeyboardTheme]);
+  }, [editing, ready, applyKeyboardTheme, scrollAboveKeyboard]);
 
   // live write-back + commit-on-blur, as native listeners on the custom
   // element. While the session is open the mathfield OWNS its value —
@@ -229,7 +281,10 @@ function EquationView({
     const mf = mfRef.current;
     if (!mf) return;
     const onInput = () => {
-      const next = (mf as unknown as { value: string }).value;
+      const raw = (mf as unknown as { value: string }).value;
+      // wave 6: MathLive serializes unfilled Insert-Matrix cells as
+      // \placeholder{} — scaffolding, stripped before it touches the doc
+      const next = normalizeMathPlaceholders(raw);
       if (next.trim() && next !== latexRef.current) {
         updateAttributes({ latex: next });
         // setNodeMarkup demotes the session's NodeSelection (TipTap maps it
@@ -260,6 +315,13 @@ function EquationView({
       // capture ON THE HOST — fires before anything inside the shadow
       // tree can see it; Escape commits and returns to the text
       if ((ev as KeyboardEvent).key === "Escape") {
+        // wave 6: while the STOCK menu is open (Menu button ▸ Insert
+        // Matrix ▸ …), Escape must dismiss ONLY the menu — MathLive's
+        // own keydown handler on the scrim closes it; committing here
+        // would unmount the mathfield and take the menu down with it.
+        // A second Escape (menu closed) still commits, unchanged.
+        const shadow = (mf as unknown as { shadowRoot?: ShadowRoot | null }).shadowRoot;
+        if (shadow?.querySelector(".ui-menu-container")) return;
         ev.stopPropagation();
         commit(true);
       }

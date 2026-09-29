@@ -105,6 +105,27 @@ export function isAnswerDocEmpty(doc: AnswerDoc): boolean {
   return serializeAnswerDoc(doc).trim().length === 0;
 }
 
+/**
+ * Strip MathLive's EMPTY placeholder scaffolding from an equation's LaTeX
+ * (HUB-ANSWER-BOX wave 6, operator trace 1a0ebc1b93638915).
+ *
+ * The stock Menu ▸ Insert Matrix inserts `\begin{pmatrix}#?&#?…\end{pmatrix}`;
+ * MathLive turns each `#?` into a placeholder atom and serializes it back as
+ * `\placeholder{}`. That string is EDITING SCAFFOLDING, not content — KaTeX
+ * (the rest renderer) paints `\placeholder{}` as red error text, so the v2
+ * dialect must never store it. The editor calls this on every write-back and
+ * commit, so an unfilled matrix cell stores as an empty cell
+ * (`\begin{pmatrix} & \\ & \end{pmatrix}`) — which KaTeX renders fine and a
+ * re-edit shows as an empty, navigable cell. Only EXACTLY empty groups are
+ * stripped: a placeholder the learner filled was REPLACED by their content
+ * (MathLive semantics), so `\placeholder{x}` cannot occur from the UI and is
+ * left verbatim. Serializer and parser are untouched — the dialect contract
+ * is unchanged; this is the editor honoring its producer obligation.
+ */
+export function normalizeMathPlaceholders(latex: string): string {
+  return latex.replace(/\\placeholder\{\}/g, "");
+}
+
 // ── parser ──────────────────────────────────────────────────────────────────
 
 type Token =
