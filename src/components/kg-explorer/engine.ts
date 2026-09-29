@@ -945,6 +945,12 @@ export class KGExplorerEngine {
       rc.setAttribute("stroke", ring);
       if (this.currentLens().metric === "validation" && n.validationStatus !== "VALIDATED") {
         rc.setAttribute("stroke-dasharray", "2 3");
+      } else if (
+        this.currentLens().metric === "class-coverage" &&
+        n.coverageState === "not-taught"
+      ) {
+        // the not-taught grey is DASHED — a teaching plan state, not evidence
+        rc.setAttribute("stroke-dasharray", "2 3");
       }
       g.appendChild(rc);
     }
@@ -1043,6 +1049,16 @@ export class KGExplorerEngine {
         return bandColor(n.effectiveMastery ?? n.mastery ?? null);
       case "class":
         return bandColor(n.mastery ?? null);
+      case "class-coverage":
+        // F-072 (§13.4): the ring states TEACHING COVERAGE first — a solid
+        // band ring only where the overlay says taught; an explicitly
+        // not-taught node is dashed grey (absent coverage, NOT low
+        // understanding); unrecorded stays ringless (honest absence).
+        if (n.coverageState === "not-taught") return "#a09a8c";
+        if (n.coverageState === "taught") {
+          return bandColor(n.effectiveMastery ?? n.mastery ?? null);
+        }
+        return null;
       case "review":
         return n.reviewDue ? "#c85b78" : null;
       case "misconception":

@@ -51,6 +51,22 @@ export interface KGXNode {
   validationStatus?: string | null;
   /** class lens: how many learners are represented by this aggregate */
   learnersMeasured?: number | null;
+  /**
+   * class-coverage lens (F-072): "taught" | "not-taught" | "unrecorded" —
+   * the TFA-03 teaching-coverage overlay. Grey/dashed means ABSENT teaching
+   * coverage, never low understanding.
+   */
+  coverageState?: string | null;
+  /**
+   * class-coverage lens (F-072): the §13.3 distribution of the measured
+   * students by the shared band vocabulary — a polarized class must not
+   * hide behind its mean.
+   */
+  distribution?: {
+    struggling: number;
+    developing: number;
+    proficient: number;
+  } | null;
 
   /** extra panel rows (label/value) — facts only, host-authored */
   meta?: { label: string; value: string }[];
@@ -82,6 +98,7 @@ export type KGXMetric =
   | "misconception" // active-misconception marks emphasized
   | "activity" // attempts badge + correctness tint
   | "class" // class mean mastery band + signal counts
+  | "class-coverage" // F-072: taught bands / dashed grey not-taught / ringless unrecorded
   | "validation"; // VALIDATED solid / SUGGESTED dashed emphasis
 
 export interface KGXLens {

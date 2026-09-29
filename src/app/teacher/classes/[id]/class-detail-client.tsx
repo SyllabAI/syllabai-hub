@@ -18,6 +18,7 @@ import {
   ArchiveRestore,
   Loader2,
   Megaphone,
+  Network,
   Send,
   Trash2,
   UserPlus,
@@ -186,17 +187,24 @@ export function ClassDetailClient({ classId }: { classId: string }) {
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">{detail.courseLabel}</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => void toggleStatus()}>
-          {active ? (
-            <>
-              <Archive className="size-3.5" aria-hidden /> Archive
-            </>
-          ) : (
-            <>
-              <ArchiveRestore className="size-3.5" aria-hidden /> Reopen
-            </>
-          )}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/teacher/classes/${detail.id}/knowledge-graph`}>
+              <Network className="size-3.5" aria-hidden /> Class KG heatmap
+            </Link>
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => void toggleStatus()}>
+            {active ? (
+              <>
+                <Archive className="size-3.5" aria-hidden /> Archive
+              </>
+            ) : (
+              <>
+                <ArchiveRestore className="size-3.5" aria-hidden /> Reopen
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       {!active && (

@@ -1574,6 +1574,67 @@ export interface LearnerClassView {
   enrolledAt: string;
 }
 
+// ── F-072 class knowledge-graph heatmap (T-C35) ────────────────────────────
+// GET /api/v1/teacher/classes/{classId}/knowledge-graph?rootId= — the
+// taught/not-taught × understanding matrix (TEACHER_ARCHITECTURE §13.4) in
+// one payload: curriculum subtree + class learner aggregation (§13.3) + the
+// TFA-03 teaching-coverage overlay. The aggregation covers the class's
+// ENABLED members only — an independent (non-enrolled) student never moves a
+// single number here (the operator's classroom rule).
+
+/** One heatmap cell: a curriculum node × class evidence + coverage. */
+export interface ClassGraphNodeView {
+  id: string;
+  code: string | null;
+  /** SUBJECT | UNIT | TOPIC | SUBTOPIC | CONCEPT | PRACTICAL … */
+  type: string;
+  title: string;
+  description: string | null;
+  childIds: string[];
+  /**
+   * "taught" | "not-taught" | "unrecorded" — spec points report their
+   * recorded row verbatim; every other node derives from its descendant
+   * spec-point rows. Grey on the graph means ABSENT teaching coverage,
+   * never low understanding.
+   */
+  coverageState: string;
+  specPoints: number;
+  recordedSpecPoints: number;
+  taughtSpecPoints: number;
+  learnersMeasured: number;
+  /** mean over measured members' EFFECTIVE (decayed) mastery; null = unmeasured */
+  meanMastery: number | null;
+  /** "LOW" | "DEVELOPING" | "SECURE" | "UNMEASURED" — the shared band vocabulary */
+  meanBand: string;
+  strugglingCount: number;
+  developingCount: number;
+  proficientCount: number;
+  attempts: number;
+  correctCount: number;
+  learnersWithActiveMisconception: number;
+}
+
+/** prerequisite edge over the subtree (dependent ← prerequisite) */
+export interface ClassGraphEdgeView {
+  prerequisiteId: string;
+  prerequisiteCode: string | null;
+  nodeId: string;
+  nodeCode: string | null;
+}
+
+export interface ClassKnowledgeGraphView {
+  classId: string;
+  className: string;
+  rootId: string;
+  rootCode: string | null;
+  rootTitle: string | null;
+  /** the enabled members this aggregation consumed */
+  learnersEnrolled: number;
+  asOf: string;
+  nodes: ClassGraphNodeView[];
+  prerequisiteEdges: ClassGraphEdgeView[];
+}
+
 /** learner announcement row: content + whether THIS student has read it */
 export interface LearnerAnnouncementView {
   id: string;
