@@ -48,11 +48,17 @@
  */
 
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Markdown } from "@/components/markdown";
+import { ApiError, aiAskErrorMessage, api } from "@/lib/api";
+import type { ClaAnswerView, ClaCitation } from "@/lib/types";
+import type { ExamQuestion } from "@/lib/contracts";
+import type { BridgeQuestion } from "@/lib/attempt-bridge";
+import { cn } from "@/lib/utils";
 import {
   AlertTriangle,
   Compass,
@@ -61,16 +67,16 @@ import {
   Lightbulb,
   Loader2,
   Lock,
+  Minimize2,
+  PanelRightOpen,
   Send,
   Sparkles,
   TriangleAlert,
   Wrench,
+  X,
 } from "lucide-react";
-import { ApiError, aiAskErrorMessage, api } from "@/lib/api";
-import type { ClaAnswerView, ClaCitation } from "@/lib/types";
-import type { ExamQuestion } from "@/lib/contracts";
-import type { BridgeQuestion } from "@/lib/attempt-bridge";
-import { cn } from "@/lib/utils";
+
+import { useClaPanelForm, useIsDesktop, claHeaderCircleBtn } from "./cla-panel-mode";
 
 /** Question-surface free-input modes — the two that mean anything here. */
 type QuestionMode = "EXPLAIN" | "HINT";
@@ -174,6 +180,29 @@ export function QuestionClaOverlay({
   const [busy, setBusy] = useState(false);
   const [targetId, setTargetId] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const popupRef = useRef<HTMLDivElement | null>(null);
+
+  // SME chat-widget parity (HUB-CLA-POPUP): popup (floating, bottom-right) or
+  // sidebar (the right Sheet — SME's "expanded" docked column). One shared
+  // preference across the CLA panels; the popup form is desktop-only (below
+  // lg the Sheet's fullscreen overlay matches SME's mobile wash). The
+  // transcript is lifted to the player, so a mid-conversation toggle switches
+  // shells without losing a turn.
+  const [form, setForm] = useClaPanelForm();
+  const isDesktop = useIsDesktop();
+  const usePopup = open && form === "popup" && isDesktop;
+
+  // the popup shell is non-modal (SME's popup floats over a live page) — it
+  // owns its own Escape handling; the Sheet keeps Radix's
+  useEffect(() => {
+    if (!usePopup) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onOpenChange(false);
+    };
+    window.addEventListener("keydown", onKey);
+    popupRef.current?.focus();
+    return () => window.removeEventListener("keydown", onKey);
+  }, [usePopup, onOpenChange]);
 
   const targets = useMemo(
     () => (question ? claTargetsOf(question, join) : []),
@@ -259,24 +288,35 @@ export function QuestionClaOverlay({
 
   const hideTargetRow = targets.length <= 1 && targets[0]?.label === "question";
 
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="right"
-        className="flex w-full flex-col gap-0 p-0 sm:max-w-md"
-        aria-describedby="question-cla-context"
-      >
-        <SheetHeader className="border-b px-4 py-3 text-left">
-          <SheetTitle className="flex items-center gap-2 text-base">
-            <Sparkles className="size-4 text-primary" aria-hidden />
-            Contextual Learning Assistant
-          </SheetTitle>
-          <SheetDescription id="question-cla-context" className="text-xs">
-            Grounded in this question — nothing else, and never its mark scheme
-            before you attempt.
-          </SheetDescription>
-        </SheetHeader>
+  // SME's expand/collapse toggle (labels verbatim: "Expand chat" when the
+  // popup can grow into the sidebar, "Collapse chat" when it can come back)
+  const formToggleButton = (
+    <button
+      type="button"
+      onClick={() => setForm(form === "popup" ? "sidebar" : "popup")}
+      aria-label={form === "popup" ? "Expand chat" : "Collapse chat"}
+      title={form === "popup" ? "Expand chat" : "Collapse chat"}
+      className={claHeaderCircleBtn}
+    >
+      {form === "popup" ? (
+        <PanelRightOpen className="size-4" aria-hidden />
+      ) : (
+        <Minimize2 className="size-4" aria-hidden />
+      )}
+    </button>
+  );
 
+  // SME's gradient header title (background-clip:text, their verbatim
+  // flourish) — rides both shells
+  const panelTitle = (
+    <span className="bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+      Contextual Learning Assistant
+    </span>
+  );
+
+  // one panel body, rendered by whichever shell is active
+  const panelBody = (
+    <>
         {/* amber honesty banner — the Save My Exams reference panel's
             signature (HUB-TUTOR-CLA-LOOK), on the hub's theme-aware warn
             tokens */}
@@ -581,8 +621,77 @@ export function QuestionClaOverlay({
             </Button>
           </form>
         </div>
-      </SheetContent>
-    </Sheet>
+    </>
+  );
+
+  return (
+    <>
+      {/* ── the popup shell (SME's default form, HUB-CLA-POPUP) ──
+          fixed bottom-right, 410×640 (min 400, max 100dvh−navbar−2rem),
+          rounded-3xl, shadow, NO backdrop — the page stays interactive.
+          Portaled to body so no ancestor transform becomes the containing
+          block for position:fixed (the note-surface probe caught exactly
+          that). */}
+      {usePopup &&
+        createPortal(
+          <div
+            ref={popupRef}
+            role="dialog"
+            aria-modal="false"
+            aria-label="Contextual Learning Assistant"
+            aria-describedby="question-cla-popup-context"
+            tabIndex={-1}
+            className="fixed bottom-4 right-4 z-50 flex h-[640px] min-h-[400px] max-h-[calc(100dvh-5.5rem)] w-[410px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-3xl border bg-background shadow-lg outline-none"
+          >
+            <div className="flex items-center gap-2 border-b px-4 py-3">
+              <Sparkles className="size-4 shrink-0 text-primary" aria-hidden />
+              <div className="min-w-0 flex-1 leading-tight">
+                <p className="text-sm font-semibold">{panelTitle}</p>
+                <p id="question-cla-popup-context" className="text-[11px] text-muted-foreground">
+                  Grounded in this question — nothing else, and never its mark scheme before you
+                  attempt.
+                </p>
+              </div>
+              {formToggleButton}
+              <button
+                type="button"
+                onClick={() => onOpenChange(false)}
+                aria-label="Close chat"
+                title="Close chat"
+                className={claHeaderCircleBtn}
+              >
+                <X className="size-4" aria-hidden />
+              </button>
+            </div>
+            {panelBody}
+          </div>,
+          document.body,
+        )}
+
+      {/* ── the sidebar shell (SME's "expanded" form) — the right Sheet,
+          fullscreen overlay below lg (SME's mobile wash) ── */}
+      <Sheet open={open && !usePopup} onOpenChange={onOpenChange}>
+        <SheetContent
+          side="right"
+          className="flex w-full flex-col gap-0 p-0 sm:max-w-md"
+          aria-describedby="question-cla-context"
+        >
+          <SheetHeader className="flex-row items-center gap-0 border-b px-4 py-3 text-left">
+            <Sparkles className="size-4 shrink-0 text-primary" aria-hidden />
+            <div className="min-w-0 flex-1 pl-2 leading-tight">
+              <SheetTitle className="block text-sm font-semibold">{panelTitle}</SheetTitle>
+              <SheetDescription id="question-cla-context" className="text-[11px] leading-tight">
+                Grounded in this question — nothing else, and never its mark scheme before you
+                attempt.
+              </SheetDescription>
+            </div>
+            {/* pr-9 clears the Sheet's built-in close affordance */}
+            <div className="flex shrink-0 items-center pr-9">{formToggleButton}</div>
+          </SheetHeader>
+          {panelBody}
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }
 
