@@ -122,13 +122,37 @@ test("viewer: rotate 90° swaps the page aspect and keeps painting", async ({ pa
 test("viewer: zoom ladder shows honest round steps and resets", async ({ page }) => {
   await readyViewer(page);
   const zoomIn = page.getByRole("button", { name: "Zoom in" });
+  const zoomOut = page.getByRole("button", { name: "Zoom out" });
+  const reset = page.getByRole("button", { name: "Reset to fit width" });
   await expect(zoomIn).toHaveAttribute("title", "Zoom: 100% of fit width");
+  // s141: the ladder descends below fit-width — zoom-out is live at 100%
+  await expect(zoomOut).toBeEnabled();
   await zoomIn.click();
   await expect(zoomIn).toHaveAttribute("title", "Zoom: 125% of fit width");
   await zoomIn.click();
   await expect(zoomIn).toHaveAttribute("title", "Zoom: 150% of fit width");
-  await page.getByRole("button", { name: "Reset to fit width" }).click();
+  await reset.click();
   await expect(zoomIn).toHaveAttribute("title", "Zoom: 100% of fit width");
+  // the below-fit overview steps (operator: "Ability to zoom out the pdf a
+  // bit more" — 75%, then the 50% floor where the button disables)
+  const holder = page.getByRole("img", { name: "Page 1 of 3" });
+  const fitW = (await holder.boundingBox())!.width;
+  await zoomOut.click();
+  await expect(zoomIn).toHaveAttribute("title", "Zoom: 75% of fit width");
+  await zoomOut.click();
+  await expect(zoomIn).toHaveAttribute("title", "Zoom: 50% of fit width");
+  await expect(zoomOut).toBeDisabled();
+  // the page physically shrinks to ~half width (centered via mx-auto) and
+  // the canvas survives the refit (double-buffered — never blanks)
+  await expect
+    .poll(async () => (await holder.boundingBox())?.width, { timeout: 5_000 })
+    .toBeLessThan(fitW * 0.8);
+  await expect(page.locator(".pp-pane canvas").first()).toBeVisible();
+  // reset is enabled while BELOW fit (the old <= floor kept it disabled)
+  await expect(reset).toBeEnabled();
+  await reset.click();
+  await expect(zoomIn).toHaveAttribute("title", "Zoom: 100% of fit width");
+  await expect(zoomOut).toBeEnabled();
 });
 
 test("viewer: split view shows QP and MS panes side by side", async ({ page }) => {

@@ -12,7 +12,8 @@
  * with no hysteresis, offsetTop loops per scroll frame, layout driven through
  * React state, and the whole doc being re-fetched when a pane was toggled):
  *
- *   - fit-width by default (recomputed on container resize), zoom on top of fit;
+ *   - fit-width by default (recomputed on container resize), zoom on top of
+ *     fit — including two BELOW-fit overview steps, s141;
  *   - IntersectionObserver page tracking — zero work per scroll frame; the
  *     "center page" is recomputed only when the near-zone (rootMargin 300%)
  *     intersection set changes, with a passive-scroll fallback for ancient
@@ -64,9 +65,12 @@
  *     2.5 viewports are instant, not an animated 30k-px scroll);
  *   - the loading state shows real download progress (pdf.js onProgress) and
  *     a stalled load fails honestly after LOAD_TIMEOUT_MS (Retry / open raw);
- *   - zoom is a round ladder (100→300%) clamped to MAX_RENDER_SCALE / fit so
+ *   - zoom is a round ladder (50→300%) clamped to MAX_RENDER_SCALE / fit so
  *     the shown % is always the rendered % (the old 1.25^n steps drifted to
- *     156/195/244% and silently capped at scale 4 on wide panes);
+ *     156/195/244% and silently capped at scale 4 on wide panes); s141 added
+ *     the two below-fit overview steps (75/50%) — pages center in the wider
+ *     scroller (mx-auto) and every scale computation composes with a
+ *     multiplier < 1;
  *   - ROTATION (90° steps): canvases/text layers re-render through rotated
  *     pdf.js viewports while the line model stays in unrotated space —
  *     highlight/scroll-to-match rects map through rotRect() (pure 90°-step
@@ -162,8 +166,16 @@ const LOAD_TIMEOUT_MS = 45_000;
  * Zoom ladder — multipliers on fit-width, honest round steps (the old
  * 1.25^n ladder showed 156% / 195% / 244%). Clamped per-pane by
  * MAX_RENDER_SCALE / fit so the shown % is always the rendered %.
+ * s141 (operator: "Ability to zoom out the pdf a bit more"): the ladder
+ * now descends BELOW fit-width — 75% and 50% overview steps. Holders
+ * center via mx-auto in the wider scroller; scaleFor, placeholder widths
+ * and the scroll-anchor ratio all compose with multipliers < 1.
  */
-const ZOOM_LADDER = [1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+const ZOOM_LADDER = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+/** Ladder index of fit-width — the default zoom and the `0` key's reset target. */
+const FIT_LADDER_IDX = ZOOM_LADDER.indexOf(1);
+/** Lowest ladder step, as a toolbar percentage (the zoom-out button's floor). */
+const MIN_ZOOM_PCT = Math.round(ZOOM_LADDER[0] * 100);
 /** pdf.js render-scale ceiling (canvas memory guard; also honesty cap). */
 const MAX_RENDER_SCALE = 4;
 type Rot = 0 | 90 | 180 | 270;
@@ -276,7 +288,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
   /** user rotation offset (0/90/180/270, composes with each page's own rotate) */
   const rotRef = useRef<Rot>(0);
   /** zoom ladder index (ZOOM_LADDER) — ref for math, state mirrors in zoomPct */
-  const zoomIdxRef = useRef(0);
+  const zoomIdxRef = useRef(FIT_LADDER_IDX);
   /** page-1 unrotated box (honest zoom ceiling + placeholder aspect) */
   const base1Ref = useRef<{ w: number; h: number } | null>(null);
 
@@ -1116,7 +1128,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
 
   const resetFit = useCallback(() => {
     if (zoomRef.current === 1) return;
-    zoomIdxRef.current = 0;
+    zoomIdxRef.current = FIT_LADDER_IDX;
     zoomRef.current = 1;
     setZoomPct(100);
     refreeze();
@@ -1274,7 +1286,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
               className="h-9 w-9 px-0"
               onClick={() => zoomBy(-1)}
               aria-label="Zoom out"
-              disabled={zoomPct <= 100}
+              disabled={zoomPct <= MIN_ZOOM_PCT}
               title={`Zoom: ${zoomPct}% of fit width`}
             >
               <Minus className="size-3.5" aria-hidden />
@@ -1295,7 +1307,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
               className="h-9 w-9 px-0"
               onClick={resetFit}
               aria-label="Reset to fit width"
-              disabled={zoomPct <= 100}
+              disabled={zoomPct === 100}
             >
               <RotateCcw className="size-3.5" aria-hidden />
             </Button>
