@@ -1321,6 +1321,7 @@
   html[data-cla-sidebar="open"] .course-shell-row {
     padding-right: 400px;
   }
+}
 /* ── HUB-ANSWER-BOX wave 4 — the rich answer editor (TipTap + MathLive) ──
    Placeholder = SME's exact mechanism (TipTap p[data-placeholder] ::before,
    classes is-empty is-editor-empty — verified against their editor DOM).
