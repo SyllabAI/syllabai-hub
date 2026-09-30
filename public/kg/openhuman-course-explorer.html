@@ -329,9 +329,13 @@ const demo={
  "4.27":{mastery:61,confidence:57,fluency:66,evidence:5,reviewDue:false,misconception:null}
 };
 const root=document.createElementNS(NS,'g'),edgeG=document.createElementNS(NS,'g'),nodeG=document.createElementNS(NS,'g'),animG=document.createElementNS(NS,'g');root.append(edgeG,nodeG,animG);svg.appendChild(root);const lassoG=document.createElementNS(NS,'g');lassoG.setAttribute('aria-hidden','true');svg.appendChild(lassoG);
-const state={projectionEvidence:false,projectionAuthority:false,projectionState:false,learningFocus:false,keyboardNodeId:'subject',selectedEdge:null,contextLearningPath:[],panelNodeId:null,view:'graph',tx:0,ty:0,scale:1,lens:'student',mode:'overview',selected:null,focused:null,focusMode:false,hovered:null,drag:null,expanded:new Set(),expandedSpecs:new Set(),specMorph:new Map(),nodes:[],edges:[],homes:new Map(),appearing:new Map(),relationFilters:new Set(['hier','assess']),lastActivation:{t:0,x:0,y:0,id:null},holdTimer:null,holdTriggered:false,recommendation:null,pathMode:false,simRunning:false,explorationHistory:[],explorationFuture:[],connectedOnly:false,connectedSet:null,connectedRoot:null,trace:{active:false,pending:false,from:null,to:null,nodes:[]},revealedOverride:new Set(),explorationRevealed:new Set(),typeVisibility:new Set(['Subject','Section','SubTopic','SpecificationPoint','ExamPaper']),peekNodeId:null,peekTimer:null,explorationJumping:false,explorationStatusUntil:null,multiSelect:new Set(),pinned:new Set(),savedViews:[],compare:{open:false,a:null,b:null},lasso:null,lassoArmed:false,minimapOpen:true,nodeEls:new Map(),edgeEls:[],activationCenterTimer:null,cameraAnim:null};
+const state={projectionEvidence:false,projectionAuthority:false,projectionState:false,learningFocus:false,keyboardNodeId:'subject',selectedEdge:null,contextLearningPath:[],panelNodeId:null,view:'graph',tx:0,ty:0,scale:1,lens:'student',mode:'overview',selected:null,focused:null,focusMode:false,hovered:null,drag:null,expanded:new Set(),expandedSpecs:new Set(),specMorph:new Map(),nodes:[],edges:[],homes:new Map(),appearing:new Map(),relationFilters:new Set(['hier','assess','pre']),lastActivation:{t:0,x:0,y:0,id:null},holdTimer:null,holdTriggered:false,recommendation:null,pathMode:false,simRunning:false,explorationHistory:[],explorationFuture:[],connectedOnly:false,connectedSet:null,connectedRoot:null,trace:{active:false,pending:false,from:null,to:null,nodes:[]},revealedOverride:new Set(),explorationRevealed:new Set(),typeVisibility:new Set(['Subject','Section','SubTopic','SpecificationPoint','ExamPaper']),peekNodeId:null,peekTimer:null,explorationJumping:false,explorationStatusUntil:null,multiSelect:new Set(),pinned:new Set(),savedViews:[],compare:{open:false,a:null,b:null},lasso:null,lassoArmed:false,minimapOpen:true,nodeEls:new Map(),edgeEls:[],activationCenterTimer:null,cameraAnim:null};
 // Architecture boundary: canonical curriculum graph is immutable semantic data; renderer state stays separate.
 let canonicalKG={nodes:[],edges:[]};
+// payload-backed prerequisite tier (loader mode): pair keys 'p:X|p:Y' of the
+// operator-validated T-C11 projection — empty in standalone mode (embedded
+// edges are the inferred-prototype curation only).
+let KG_PREREQ_VALIDATED=new Set();
 const palette={Subject:'#6656a9',Section:'#6656a9',SubTopic:'#2a8b8a',SpecificationPoint:'#3d79a6',ExamPaper:'#c38422',Assessment:'#c38422'};
 const initialSections=[
  {id:'subject',type:'Subject',label:'Chemistry',x:780,y:420,rx:42},
@@ -1230,9 +1234,12 @@ function activateNode(n,now,x,y,opts={}){
  },280);
 }
 function toggleSpecInline(id){animateSpecInline(id,!state.expandedSpecs.has(id))}
-function edgeDescription(type){
+function edgeDescription(type,a,b){
  if(type==='hier')return {label:'Curriculum structure',tag:'AUTHORITATIVE',detail:'Official hierarchy relationship within the curriculum.'};
- if(type==='pre')return {label:'Prerequisite',tag:'INFERRED PROTOTYPE',detail:'Illustrative prerequisite relationship; not yet validated as authoritative educational truth.'};
+ if(type==='pre'){
+  if(a&&b&&KG_PREREQ_VALIDATED.has(a+'|'+b))return {label:'Prerequisite',tag:'T-C11 VALIDATED',detail:'Operator-validated prerequisite from the T-C11 settled store, projected onto spec points through concept anchors.'};
+  return {label:'Prerequisite',tag:'INFERRED PROTOTYPE',detail:'Illustrative prerequisite relationship; not yet validated as authoritative educational truth.'};
+ }
  if(type==='rel')return {label:'Related knowledge',tag:'INFERRED PROTOTYPE',detail:'Illustrative semantic relationship; not yet validated as authoritative educational truth.'};
  if(type==='assess')return {label:'Assessment mapping',tag:'PROTOTYPE MAPPING',detail:'Prototype mapping to assessment content; requires validation before learner-serving use.'};
  return {label:'Learner state',tag:'DERIVED OVERLAY',detail:'Derived learner signal over curriculum truth.'};
@@ -1551,7 +1558,7 @@ function openPanel(id){state.panelNodeId=id;
  document.getElementById('context').innerHTML=ctx;
  document.getElementById('statement').textContent=n.statement||n.meta||'Curriculum structure node.';
  const apEl=document.getElementById('apChips');if(apEl)apEl.innerHTML=(n.type==='SpecificationPoint'&&n.applicability)?kgApplicabilityChips(n.applicability):'';
- const links=relFor(n).map(e=>{const other=nodeBy().get(e[0]===id?e[1]:e[0]);if(!other)return '';const relation=e[2]==='hier'?'curriculum hierarchy':e[2]==='pre'?'Prerequisite · inferred prototype link':e[2]==='assess'?'assessment coverage':'Related knowledge · inferred prototype link';return `<div>${other.label||other.pointId} <span style="color:#8b9193">· ${relation}</span></div>`}).join('');
+ const links=relFor(n).map(e=>{const other=nodeBy().get(e[0]===id?e[1]:e[0]);if(!other)return '';const relation=e[2]==='hier'?'curriculum hierarchy':e[2]==='pre'?(KG_PREREQ_VALIDATED.has(e[0]+'|'+e[1])?'Prerequisite · T-C11 validated':'Prerequisite · inferred prototype link'):e[2]==='assess'?'assessment coverage':'Related knowledge · inferred prototype link';return `<div>${other.label||other.pointId} <span style="color:#8b9193">· ${relation}</span></div>`}).join('');
  document.getElementById('links').innerHTML=links||'<div>No direct relationships currently visible.</div>'; renderWhy(n);
  if(state.lens==='student'){
    if(l){document.getElementById('evidence').innerHTML=`<div><b>Mastery:</b> ${l.mastery==null?'Not measured':l.mastery+'%'}</div><div><b>Confidence:</b> ${l.confidence==null?'Not measured':l.confidence+'%'}</div><div><b>Fluency:</b> ${l.fluency==null?'Not measured':l.fluency+'%'}</div><div><b>Evidence:</b> ${l.evidence}</div><div><b>Review:</b> ${l.reviewDue?'Due':'Not due'}</div><div><b>Misconception:</b> ${l.misconception||'None indicated'}</div><div style="margin-top:5px;color:#8b9193">${peekNote()}</div>`}
@@ -1843,7 +1850,7 @@ function openProvenanceDrawer(){
  }
 }
 function relationshipExplanation(type,a,b){
- const d=edgeDescription(type);
+ const d=edgeDescription(type,a,b);
  const ex={label:d.label,tag:d.tag,provenance:d.detail,meaning:'',direction:'',why:[]};
  if(type==='pre'){
   ex.meaning='The left-hand node is treated as a prerequisite for the right-hand node: its ideas are drawn on by the dependent point, so meeting them first protects later learning.';
@@ -1876,10 +1883,11 @@ function relationshipExplanation(type,a,b){
 function updateProvenance(){
  const wrap=document.getElementById('provRows');if(!wrap)return;
  const counts={hier:0,pre:0,rel:0,assess:0};canonicalKG.edges.forEach(e=>{if(counts[e[2]]!=null)counts[e[2]]++});
+ const preValidated=canonicalKG.edges.filter(e=>e[2]==='pre'&&KG_PREREQ_VALIDATED.has(e[0]+'|'+e[1])).length;
  const measured=state.nodes.filter(n=>n.type==='SpecificationPoint'&&learner(n)).length;
  wrap.innerHTML=[
   ['Curriculum structure',counts.hier,'AUTHORITATIVE'],
-  ['Prerequisite links',counts.pre,'INFERRED PROTOTYPE'],
+  ['Prerequisite links',counts.pre,preValidated?(preValidated+' T-C11 validated · '+(counts.pre-preValidated)+' inferred prototype'):'INFERRED PROTOTYPE'],
   ['Related knowledge links',counts.rel,'INFERRED PROTOTYPE'],
   ['Assessment mappings',counts.assess,'PROTOTYPE MAPPING'],
   ['Demo overlay entries',measured,'DERIVED OVERLAY']
@@ -1897,7 +1905,7 @@ function updateProvenance(){
  if(n.type==='SpecificationPoint'&&n.assessment)tags.push('<span class="provSourceTag">assessment mapping</span>');
  const reason=l?.reviewDue?'Review due':l?.misconception?'Misconception signal':l?.mastery!=null?`Learner mastery ${l.mastery}%`:'No learner evidence recorded';
  const rec=state.recommendation&&state.recommendation.target?.id===n.id?state.recommendation.label:'No active recommendation for this node';
- const ri=document.getElementById('relationInspector'); if(ri){const parts=state.selectedEdge?state.selectedEdge.split('|'):null;if(parts&&parts.length===3){const a=nodeBy().get(parts[0]),b=nodeBy().get(parts[1]),d=edgeDescription(parts[2]),ex=relationshipExplanation(parts[2],a,b);const acts=relationshipActions(a,b,parts[2]);const relEnd=(n,fallback)=>{const head=n?'<b>'+escapeHtml(shortNodeLabel(n.id))+'</b> <span class="provTag">'+escapeHtml(n.type)+'</span>':'<b>'+escapeHtml(fallback)+'</b>';const stmt=n&&n.statement?'<div class="relExStatement">'+escapeHtml(n.statement.length>150?n.statement.slice(0,147)+'…':n.statement)+'</div>':'';return '<div class="relExEnd">'+head+stmt+'</div>'};ri.innerHTML=`<div class="relationInspectorTitle">Relationship explanation</div><div><b>${escapeHtml(a?.pointId||a?.label||parts[0])}</b> → <b>${escapeHtml(b?.pointId||b?.label||parts[1])}</b><span class="relationTag">${d.tag}</span></div><div class="relExEnds">${relEnd(a,parts[0])}${relEnd(b,parts[1])}</div><div class="relExRow"><div class="relExLabel">What this edge means</div>${escapeHtml(ex.meaning)}</div><div class="relExRow"><div class="relExLabel">How to read the arrow</div>${escapeHtml(ex.direction)}</div>${ex.why.length?`<div class="relExRow"><div class="relExLabel">Why it matters here</div>${ex.why.map(w=>`<div style="margin-top:3px">${escapeHtml(w)}</div>`).join('')}</div>`:''}<div class="relExNote">${escapeHtml(ex.label)} · ${escapeHtml(ex.provenance)}</div><div class="relationActions">${acts.map(x=>`<button class="relationAction ${x.kind!=='inspect'?'primary':''}" type="button" data-rel-action="${escapeHtml(x.kind)}" data-rel-node="${escapeHtml(b?.id||parts[1])}">${escapeHtml(x.label)}</button>`).join('')}</div><button class="relationClear" type="button" id="relationClearBtn">Clear relationship</button>`; ri.querySelectorAll('[data-rel-action]').forEach(btn=>btn.addEventListener('click',()=>runRelationshipAction(btn.dataset.relAction,btn.dataset.relNode))); ri.querySelector('#relationClearBtn')?.addEventListener('click',()=>{state.selectedEdge=null;updateProvenance();refresh()});}else ri.innerHTML='';}
+ const ri=document.getElementById('relationInspector'); if(ri){const parts=state.selectedEdge?state.selectedEdge.split('|'):null;if(parts&&parts.length===3){const a=nodeBy().get(parts[0]),b=nodeBy().get(parts[1]),d=edgeDescription(parts[2],parts[0],parts[1]),ex=relationshipExplanation(parts[2],a,b);const acts=relationshipActions(a,b,parts[2]);const relEnd=(n,fallback)=>{const head=n?'<b>'+escapeHtml(shortNodeLabel(n.id))+'</b> <span class="provTag">'+escapeHtml(n.type)+'</span>':'<b>'+escapeHtml(fallback)+'</b>';const stmt=n&&n.statement?'<div class="relExStatement">'+escapeHtml(n.statement.length>150?n.statement.slice(0,147)+'…':n.statement)+'</div>':'';return '<div class="relExEnd">'+head+stmt+'</div>'};ri.innerHTML=`<div class="relationInspectorTitle">Relationship explanation</div><div><b>${escapeHtml(a?.pointId||a?.label||parts[0])}</b> → <b>${escapeHtml(b?.pointId||b?.label||parts[1])}</b><span class="relationTag">${d.tag}</span></div><div class="relExEnds">${relEnd(a,parts[0])}${relEnd(b,parts[1])}</div><div class="relExRow"><div class="relExLabel">What this edge means</div>${escapeHtml(ex.meaning)}</div><div class="relExRow"><div class="relExLabel">How to read the arrow</div>${escapeHtml(ex.direction)}</div>${ex.why.length?`<div class="relExRow"><div class="relExLabel">Why it matters here</div>${ex.why.map(w=>`<div style="margin-top:3px">${escapeHtml(w)}</div>`).join('')}</div>`:''}<div class="relExNote">${escapeHtml(ex.label)} · ${escapeHtml(ex.provenance)}</div><div class="relationActions">${acts.map(x=>`<button class="relationAction ${x.kind!=='inspect'?'primary':''}" type="button" data-rel-action="${escapeHtml(x.kind)}" data-rel-node="${escapeHtml(b?.id||parts[1])}">${escapeHtml(x.label)}</button>`).join('')}</div><button class="relationClear" type="button" id="relationClearBtn">Clear relationship</button>`; ri.querySelectorAll('[data-rel-action]').forEach(btn=>btn.addEventListener('click',()=>runRelationshipAction(btn.dataset.relAction,btn.dataset.relNode))); ri.querySelector('#relationClearBtn')?.addEventListener('click',()=>{state.selectedEdge=null;updateProvenance();refresh()});}else ri.innerHTML='';}
  ctx.innerHTML=`<div class="provContextTitle">Selected node · ${n.pointId||n.label}</div><div class="provTrail"><div class="provTrailRow"><b>Authority</b><span>Official curriculum structure ${tags[0]||''}</span></div><div class="provTrailRow"><b>Relations</b><span>${rels.length?`${rels.length} graph relationship${rels.length===1?'':'s'}`:'No explicit relationships'} ${tags.slice(2).join(' ')}</span></div><div class="provTrailRow"><b>Learner</b><span>${reason} ${l?'<span class="provSourceTag">derived evidence</span>':''}</span></div><div class="provTrailRow"><b>Action</b><span>${rec} ${state.recommendation&&state.recommendation.target?.id===n.id?'<span class="provSourceTag">derived recommendation</span>':''}</span></div></div>`+learnerEvidenceTrail(n,l);
 }
 function updateStatus(){
@@ -2002,7 +2010,7 @@ function simulationTick(){
 }
 function bootSimulation(){state.alpha=.9;state.simRunning=true;requestAnimationFrame(simulationTick)}
 
-document.getElementById('zin').onclick=()=>zoomBy(1.24);document.getElementById('zout').onclick=()=>zoomBy(.8);document.getElementById('reset').onclick=()=>{makeBase();state.relationFilters=new Set(['hier','assess']);document.querySelectorAll('#relationBar [data-rel]').forEach(x=>x.checked=(x.dataset.rel==='hier'||x.dataset.rel==='assess'));state.tx=0;state.ty=0;state.scale=.88;state.selected=null;state.focused=null;state.focusMode=false;state.recommendation=null;state.pathMode=false;state.learningFocus=false;state.keyboardNodeId='subject';state.panelNodeId=null;state.view='graph';document.getElementById('panel').classList.remove('show');document.getElementById('app').classList.remove('provOpen');document.getElementById('provBtn').classList.remove('active');document.getElementById('provBtn').setAttribute('aria-pressed','false');setView('graph');fitInitial();bootSimulation();draw();requestAnimationFrame(()=>svg.focus({preventScroll:true}))};document.getElementById('close').onclick=()=>{state.selected=null;state.focused=null;state.focusMode=false;state.recommendation=null;state.pathMode=false;state.learningFocus=false;state.panelNodeId=null;document.getElementById('panel').classList.remove('show');refresh();requestAnimationFrame(()=>svg.focus({preventScroll:true}))};
+document.getElementById('zin').onclick=()=>zoomBy(1.24);document.getElementById('zout').onclick=()=>zoomBy(.8);document.getElementById('reset').onclick=()=>{makeBase();state.relationFilters=new Set(['hier','assess','pre']);document.querySelectorAll('#relationBar [data-rel]').forEach(x=>x.checked=(x.dataset.rel==='hier'||x.dataset.rel==='assess'||x.dataset.rel==='pre'));state.tx=0;state.ty=0;state.scale=.88;state.selected=null;state.focused=null;state.focusMode=false;state.recommendation=null;state.pathMode=false;state.learningFocus=false;state.keyboardNodeId='subject';state.panelNodeId=null;state.view='graph';document.getElementById('panel').classList.remove('show');document.getElementById('app').classList.remove('provOpen');document.getElementById('provBtn').classList.remove('active');document.getElementById('provBtn').setAttribute('aria-pressed','false');setView('graph');fitInitial();bootSimulation();draw();requestAnimationFrame(()=>svg.focus({preventScroll:true}))};document.getElementById('close').onclick=()=>{state.selected=null;state.focused=null;state.focusMode=false;state.recommendation=null;state.pathMode=false;state.learningFocus=false;state.panelNodeId=null;document.getElementById('panel').classList.remove('show');refresh();requestAnimationFrame(()=>svg.focus({preventScroll:true}))};
 function isEditableTarget(el){return !!el&&(el.tagName==='INPUT'||el.tagName==='TEXTAREA'||el.tagName==='SELECT'||el.isContentEditable)}
 function announceKeyboardNode(){
  const n=keyboardCurrentNode();
@@ -2842,7 +2850,7 @@ function restoreSnapshot(s,name){
  state.connectedSet=s.connectedSet?new Set(s.connectedSet):null;
  state.connectedRoot=s.connectedRoot||null;
  state.typeVisibility=new Set(s.typeVisibility&&s.typeVisibility.length?s.typeVisibility:V74_DEFAULT_TYPES);
- state.relationFilters=new Set(s.relationFilters&&s.relationFilters.length?s.relationFilters:['hier','assess']);
+ state.relationFilters=new Set(s.relationFilters&&s.relationFilters.length?s.relationFilters:['hier','assess','pre']);
  state.expanded=new Set(s.expanded||[]);state.expandedSpecs=new Set(s.expandedSpecs||[]);
  state.pinned=new Set(s.pinned||[]);
  state.projectionEvidence=!!s.projectionEvidence;state.projectionAuthority=!!s.projectionAuthority;
@@ -3206,7 +3214,12 @@ function kgApplicabilityChips(a){
       const k=Math.max(1,Math.sqrt(arr.length/9));
       arr.forEach((st,i)=>{const a=(i/arr.length)*Math.PI*2-Math.PI/2;subAnchors[st[0]]=[cx+Math.cos(a)*175*k,cy+Math.sin(a)*118*k]});
     });
-    semanticEdges=[];
+    // v1.3 loader contract: the payload's semantic edges (pre/rel — the
+    // operator-validated T-C11 projection + inferred-prototype curation) are
+    // THE source of truth; hier/assess are rebuilt by makeBase/__KG_APPLY.
+    // The embedded array only ever serves standalone opens (no ?course=).
+    semanticEdges=(kg.edges||[]).filter(e=>e[2]==='pre'||e[2]==='rel');
+    KG_PREREQ_VALIDATED=new Set(kg.prereqValidated||[]);
     // 2. rebuild hook: strips the inline 4CH1 papers/assess edges, fixes the
     //    subject node and the hardcoded subject->sec1..4 hier edges
     window.__KG_APPLY=()=>{

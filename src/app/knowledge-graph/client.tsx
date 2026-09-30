@@ -304,8 +304,10 @@ export function KnowledgeGraphClient({ courses }: { courses: CourseLite[] }) {
           {current?.label ?? "This course"}&apos;s specification graph — canonicalKG JSON
           exported from its curriculum bundle (<span className="font-mono">scripts/kg_export.py</span>),
           loaded by the OpenHuman renderer fork. One graph per course: open it from that
-          course&apos;s page. v1 ships hierarchy edges only; prerequisite/paper edges land
-          when the data does. Prototype builds:{" "}
+          course&apos;s page. Prerequisite links come from the operator-validated T-C11
+          concept-dependency store (projected through concept anchors) plus an
+          inferred prototype tier — the provenance panel labels each tier; edge
+          types toggle in the relation menu. Prototype builds:{" "}
           <span className="font-mono">/graph-explorer</span>.
         </span>
       </div>

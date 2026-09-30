@@ -6,6 +6,14 @@
 Contract: GRAPH_CONTRACT v1.0 — node types Subject / Section / SubTopic /
 SpecificationPoint / ExamPaper; edge types hier / pre / rel / assess.
 
+v1.3: prerequisite/related edge projection. A committed per-course snapshot
+(content/<slug>/prerequisites.json — the operator-validated T-C11 settled
+store + concept anchors + the inferred-prototype curation) projects onto the
+spec-point graph as `pre`/`rel` edges with provenance tiers in
+meta.prerequisites and the validated pair keys in `prereqValidated`.
+Courses without a snapshot keep the exact v1.2 payload shape (hier edges
+only; only the exporter meta label differs).
+
 v1.2: curricula that carry a UNIT family layer (IAL sciences) export the
 printed units as Sections, their TOPICs as SubTopics, and consume the
 curriculum SUBTOPIC layer as the point-mapping level (points attach to
@@ -93,6 +101,122 @@ def section_anchor(i: int, n: int) -> tuple[float, float]:
 
 class ExportError(Exception):
     pass
+
+
+def load_prerequisites(slug: str, qual_code: str, seen_pid: dict) -> tuple[list, dict, list[str]]:
+    """v1.3: project the committed prerequisite snapshot (content/<slug>/
+    prerequisites.json) onto the visualizer's spec-point graph.
+
+    Two provenance tiers, both data-backed, neither invented here:
+      - operator-validated: the T-C11 settled store's REQUIRES_PREREQUISITE
+        edges (VALIDATED in core) are DETERMINISTICALLY projected through the
+        concept anchor map — concept endpoints resolve to the spec points the
+        concept anchors under; structure endpoints map verbatim. Validated
+        edges win over inferred pairs on the same (prerequisite, dependent).
+      - inferred-prototype: the hand-curated SME tuples transcribed verbatim
+        from the canonicalKG prototype artifact.
+
+    Endpoints that resolve outside the exported point set (e.g. required
+    practicals, which the curriculum bundle does not carry as points) are
+    skipped and counted — never silently dropped: the counts land in
+    meta.prerequisites. Courses without a snapshot keep the exact v1.2
+    payload shape.
+
+    Returns (extra pre/rel edges, meta.prerequisites block, validated pair keys).
+    Edge direction follows the visualizer convention: [prerequisite, dependent].
+    The core store convention is the reverse (source = dependent), so the
+    projection flips it.
+    """
+    snap_path = CONTENT / slug / "prerequisites.json"
+    if not snap_path.exists():
+        return [], {}, []
+    snap = json.loads(snap_path.read_text(encoding="utf-8"))
+
+    anchors_raw = snap.get("conceptAnchors", {})
+    # concept code -> exported point-id set (anchors outside the point set
+    # are counted, not mapped — practicals are the known case)
+    anchors: dict[str, set[str]] = {}
+    unmapped_anchors = 0
+    for ccode, specs in anchors_raw.items():
+        pids = set()
+        for sp in specs:
+            pid = point_id_for(qual_code, sp)
+            if pid in seen_pid:
+                pids.add(pid)
+            else:
+                unmapped_anchors += 1
+        if pids:
+            anchors[ccode] = pids
+
+    def resolve(code: str) -> tuple[set[str], bool]:
+        """(point-id set, resolved?) for a snapshot endpoint code."""
+        if code in anchors_raw:               # concept endpoint
+            return anchors.get(code, set()), code in anchors
+        pid = point_id_for(qual_code, code)   # structure endpoint
+        return ({pid} if pid in seen_pid else set()), pid in seen_pid
+
+    validated: dict[tuple[str, str], dict] = {}
+    skipped = {"unmappedEndpoint": 0, "unanchoredConcept": 0, "selfLoop": 0}
+    for e in snap.get("validatedPrerequisiteEdges", []):
+        dep_pids, dep_ok = resolve(e["dependent"])
+        pre_pids, pre_ok = resolve(e["prerequisite"])
+        if not dep_ok or not pre_ok:
+            skipped["unmappedEndpoint"] += 1
+            continue
+        if not dep_pids or not pre_pids:
+            skipped["unanchoredConcept"] += 1
+            continue
+        for d in dep_pids:
+            for p in pre_pids:
+                if d == p:
+                    skipped["selfLoop"] += 1
+                    continue
+                validated[(p, d)] = {
+                    "via": [e["prerequisite"], e["dependent"]],
+                    "provenance": e.get("provenance"),
+                }
+
+    def mapped_pairs(tuples: list) -> list[tuple[str, str]]:
+        out = []
+        for a, b in tuples:
+            pa, pb = a[2:], b[2:]   # snapshot tuples are 'p:<pointId>' verbatim
+            if pa in seen_pid and pb in seen_pid and pa != pb:
+                out.append((pa, pb))
+            else:
+                skipped["unmappedEndpoint"] += 1
+        return out
+
+    inferred = [pair for pair in mapped_pairs(snap.get("inferredPrototypePre", []))
+                if pair not in validated]
+    related = mapped_pairs(snap.get("inferredPrototypeRel", []))
+
+    extra: list[list] = []
+    for p, d in sorted(validated):
+        extra.append(["p:" + p, "p:" + d, "pre"])
+    for p, d in sorted(inferred):
+        extra.append(["p:" + p, "p:" + d, "pre"])
+    for a, b in sorted(related):
+        extra.append(["p:" + a, "p:" + b, "rel"])
+
+    meta_block = {
+        "source": snap.get("source"),
+        "snapshotGeneratedUtc": snap.get("generatedUtc"),
+        "curriculumCode": snap.get("curriculumCode"),
+        "tiers": {
+            "operatorValidated": len(validated),
+            "inferredPrototype": len(inferred),
+            "relatedInferredPrototype": len(related),
+        },
+        "skipped": skipped,
+        "skippedUnmappedAnchors": unmapped_anchors,
+        "projection": ("concept endpoints resolve through the concept->spec-point "
+                       "anchor map; validated pairs override inferred pairs; "
+                       "[prerequisite, dependent] direction"),
+    }
+    # keys match the bundle's edge tuples verbatim ('p:X|p:Y') so the renderer
+    # fork can tier-check any edge with a direct set lookup
+    validated_keys = sorted("p:" + p + "|" + "p:" + d for p, d in validated)
+    return extra, meta_block, validated_keys
 
 
 def export_course(slug: str, registry: dict[str, dict]) -> dict:
@@ -301,6 +425,13 @@ def export_course(slug: str, registry: dict[str, dict]) -> dict:
             for pid in point_subs.get(sid, []):
                 edges.append([sid, "p:" + pid, "hier"])
 
+    # --- v1.3: prerequisite / related edges from the committed snapshot ---
+    # Projects the operator-validated T-C11 store + the inferred-prototype
+    # curation onto the point graph. Courses without a snapshot: no-op.
+    prereq_edges, prereq_meta, prereq_validated = load_prerequisites(
+        slug, qual_code, seen_pid)
+    edges.extend(prereq_edges)
+
     # --- final validation (contract + referential integrity) --------------
     ids = {n["id"] for n in kg_nodes}
     if len(ids) != len(kg_nodes):
@@ -333,12 +464,16 @@ def export_course(slug: str, registry: dict[str, dict]) -> dict:
             "curriculumCode": qual_code,
             "syllabusVersion": cur.get("syllabusVersion"),
             "source": f"content/{slug}/curriculum.json (curriculum truth, RULE_DERIVED)",
-            "exporter": ("scripts/kg_export.py v1.2 (unit layer + applicability passthrough)"
+            "exporter": ("scripts/kg_export.py v1.3 (prerequisite projection + "
+                         "applicability passthrough)"
                          if unit_layer else
-                         "scripts/kg_export.py v1.1 (applicability passthrough)"),
+                         "scripts/kg_export.py v1.3 (prerequisite projection)"),
             "generatedUtc": dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "notes": ("v1.1: hier edges only — no prerequisite, relation or "
-                      "assessment edges are invented. SpecificationPoint nodes "
+            "notes": ("v1.3: hier edges from curriculum truth; prerequisite/related "
+                      "edges from the committed T-C11 prerequisite snapshot where "
+                      "one exists (operator-validated projection + inferred-prototype "
+                      "tier, provenance in meta.prerequisites) — nothing is invented. "
+                      "SpecificationPoint nodes "
                       "and points carry the canonical applicability object "
                       "(printed paper/unit/tier/coursework homes, T-KG-16) "
                       "verbatim from the pinned parse; absent where not derived."
@@ -352,6 +487,7 @@ def export_course(slug: str, registry: dict[str, dict]) -> dict:
                 "byEdgeType": dict(sorted(by_edge.items())),
                 "specPoints": by_type["SpecificationPoint"],
             },
+            **({"prerequisites": prereq_meta} if prereq_meta else {}),
         },
         # build table shapes (consumed by the loader fork)
         "subjectLabel": display_subject,
@@ -365,6 +501,11 @@ def export_course(slug: str, registry: dict[str, dict]) -> dict:
                            for key in sections_tbl},
         "nodes": kg_nodes,
         "edges": edges,
+        # per-pair keys of the operator-validated prerequisite tier — the
+        # renderer fork's provenance panel reads this to label tiers honestly
+        # (only present when a prerequisite snapshot exists — no-snapshot
+        # courses keep the exact v1.2 payload shape)
+        **({"prereqValidated": prereq_validated} if prereq_validated else {}),
     }
     return payload
 
