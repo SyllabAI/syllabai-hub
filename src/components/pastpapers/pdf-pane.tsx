@@ -75,6 +75,16 @@
  *     or fit-page — the toolbar's segmented control swaps the base, zoom
  *     resets to 100% of the new base, and every geometry path (scaleFor,
  *     placeholders, the honest ceiling, the resize observer) reads the mode;
+ *   - TWO-PAGE SPREAD (s143): wide panes pair facing pages [1|2][3|4]… into
+ *     one scroll flow — each page fits half the width (fit-page frames the
+ *     pair); the toggle appears only when the pane is wide enough, a pane
+ *     shrinking below the threshold auto-offs the layout (without erasing
+ *     the choice — widening again restores it), and prev/next step by pair;
+ *   - VIEWING PREFERENCES (s143): the whole setup — fit base, zoom step,
+ *     rotation, spread — persists in localStorage and is restored on the
+ *     next paper, validated against TODAY's constants so a stale record
+ *     falls back field-by-field (no resume-at-page-N across papers: that
+ *     gets surprising on papers of different lengths);
  *   - ROTATION (90° steps): canvases/text layers re-render through rotated
  *     pdf.js viewports while the line model stays in unrotated space —
  *     highlight/scroll-to-match rects map through rotRect() (pure 90°-step
@@ -97,6 +107,7 @@ import {
 } from "react";
 import {
   AlertTriangle,
+  BookOpen,
   ChevronDown,
   ChevronUp,
   Download,
@@ -191,6 +202,12 @@ type Rot = 0 | 90 | 180 | 270;
 /** The fit base the zoom ladder multiplies: fill the pane's width, or frame
  *  the whole page (width AND height) inside the scroller (s142). */
 type FitMode = "width" | "page";
+/** The flex row's gap-3 gutter between facing pages, in px (s143). */
+const SPREAD_GAP = 12;
+/** Scroller content width needed to OFFER the two-page spread (s143): below
+ *  this a pair of pages is two unreadable slivers — a portrait phone pane or
+ *  one half of the desktop QP|MS split never shows the toggle. */
+const SPREAD_MIN_W = 800;
 
 type Phase = "loading" | "ready" | "error";
 
@@ -280,6 +297,46 @@ function rotRect(
   }
 }
 
+// ── viewing preferences (s143): ONE localStorage record per browser, shared
+// by every pane and every paper — "the viewer's setup", not per-document
+// state. Fields are validated against TODAY's constants on read, so a record
+// written by an older build (shorter ladder, no spread) degrades safely.
+const PREFS_KEY = "pp-viewer-prefs-v1";
+interface PpPrefs {
+  fit: FitMode;
+  /** ladder MULTIPLIER — portable across papers, it is relative to the fit base */
+  zoom: number;
+  rot: Rot;
+  spread: boolean;
+}
+const DEFAULT_PREFS: PpPrefs = { fit: "width", zoom: 1, rot: 0, spread: false };
+
+function readPrefs(): PpPrefs {
+  const d = DEFAULT_PREFS;
+  try {
+    const raw = window.localStorage.getItem(PREFS_KEY);
+    if (!raw) return d;
+    const p = JSON.parse(raw) as Partial<PpPrefs>;
+    return {
+      fit: p.fit === "page" || p.fit === "width" ? p.fit : d.fit,
+      zoom:
+        typeof p.zoom === "number" && ZOOM_LADDER.includes(p.zoom) ? p.zoom : d.zoom,
+      rot: p.rot === 90 || p.rot === 180 || p.rot === 270 ? p.rot : d.rot,
+      spread: typeof p.spread === "boolean" ? p.spread : d.spread,
+    };
+  } catch {
+    return d; // storage disabled or a corrupt record — defaults
+  }
+}
+
+function writePrefs(p: PpPrefs) {
+  try {
+    window.localStorage.setItem(PREFS_KEY, JSON.stringify(p));
+  } catch {
+    /* private mode et al. — viewing works, it just isn't remembered */
+  }
+}
+
 export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
   { url, downloadUrl, label, active, className },
   ref,
@@ -303,6 +360,18 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
   const zoomIdxRef = useRef(FIT_LADDER_IDX);
   /** active fit base (s142) — ref for render math, state mirrors in fitMode */
   const fitModeRef = useRef<FitMode>("width");
+  /** two-page spread (s143) — ref for render math (availBox halves per page),
+   *  state mirrors in `spread` */
+  const spreadRef = useRef(false);
+  /** the user's spread INTENT — only an explicit toolbar toggle changes it;
+   *  a too-narrow pane auto-offs the LAYOUT but keeps the intent, so widening
+   *  back restores the pairing (and the stored preference never erases) */
+  const spreadWantedRef = useRef(false);
+  /** scroll anchor across a spread toggle (same height-ratio trick as zoom) */
+  const spreadAnchorRef = useRef<{ top: number; pageH: number; at: number } | null>(null);
+  /** previous spread value — the ready-kick effect resets the canvas ledger
+   *  only when a toggle actually rebuilt the holder rows (s143) */
+  const prevSpreadRef = useRef(false);
   /** page-1 unrotated box (honest zoom ceiling + placeholder aspect) */
   const base1Ref = useRef<{ w: number; h: number } | null>(null);
 
@@ -342,6 +411,12 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
   /** the fit base itself (width | page) — toolbar state, mirror in fitModeRef */
   const [fitMode, setFitMode] = useState<FitMode>("width");
   const [rot, setRot] = useState<Rot>(0);
+  /** two-page spread layout (s143) — toolbar/JSX state, mirror in spreadRef */
+  const [spread, setSpread] = useState(false);
+  /** the pane is wide enough to offer spread (tracked by the resize observer) */
+  const [spreadAvail, setSpreadAvail] = useState(false);
+  /** the prefs restore ran — gates the writer so the mount pass can't clobber */
+  const [prefsHydrated, setPrefsHydrated] = useState(false);
   /** download progress for the loading state (pdf.js onProgress) */
   const [loadProg, setLoadProg] = useState<{ loaded: number; total: number } | null>(null);
   /** the page-number input's draft (committed on Enter/blur, synced on scroll) */
@@ -374,6 +449,40 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
     }
   }, []);
 
+  // ── viewing preferences (s143): restore on mount, write on every change ──
+  // The restore runs BEFORE the doc can finish loading (effects fire before
+  // any network promise resolves), so the first placeholder sizing and the
+  // first renders already use the user's fit base, zoom step and rotation.
+  // Spread is validated later against the pane's measured width (the resize
+  // observer auto-offs it when too narrow — intent preserved, see spreadWantedRef).
+  useEffect(() => {
+    const p = readPrefs();
+    fitModeRef.current = p.fit;
+    setFitMode(p.fit);
+    const zi = ZOOM_LADDER.indexOf(p.zoom);
+    zoomIdxRef.current = zi >= 0 ? zi : FIT_LADDER_IDX;
+    zoomRef.current = ZOOM_LADDER[zoomIdxRef.current];
+    setZoomPct(Math.round(ZOOM_LADDER[zoomIdxRef.current] * 100));
+    rotRef.current = p.rot;
+    setRot(p.rot);
+    spreadWantedRef.current = p.spread;
+    spreadRef.current = p.spread;
+    setSpread(p.spread);
+    setPrefsHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!prefsHydrated) return;
+    writePrefs({
+      fit: fitMode,
+      zoom: zoomPct / 100, // the ladder value (zoomPct = round(ladder×100))
+      rot,
+      // the INTENT, not the layout: a narrow-pane auto-off must never erase
+      // the user's wide-screen choice (spreadWantedRef, s143)
+      spread: spreadWantedRef.current,
+    });
+  }, [prefsHydrated, fitMode, zoomPct, rot, spread]);
+
   // ── geometry ─────────────────────────────────────────────────────────────
   /** On-screen page width at the current user rotation (what fit-width fits). */
   const rotW = useCallback(
@@ -389,13 +498,15 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
     [],
   );
 
-  /** The scroller's content box: width minus the px-3 gutters; height minus
-   *  the py-3 gutters AND one mb-3 page gap, so a fit-page page plus its
-   *  margin stays whole in view (s142). */
+  /** The PER-PAGE fit box (s143): the scroller's content width minus the px-3
+   *  gutters — halved (minus the 12px mate gutter) in two-page spread — and
+   *  its height minus the py-3 gutters AND one mb-3 page gap, so a fit-page
+   *  page plus its margin stays whole in view (s142). */
   const availBox = useCallback(() => {
     const el = scrollRef.current;
+    const raw = Math.max(240, (el?.clientWidth ?? 800) - 24);
     return {
-      w: Math.max(240, (el?.clientWidth ?? 800) - 24),
+      w: spreadRef.current ? Math.max(120, (raw - SPREAD_GAP) / 2) : raw,
       h: Math.max(160, (el?.clientHeight ?? 600) - 36),
     };
   }, []);
@@ -424,6 +535,21 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
     },
     [scaleFor],
   );
+
+  /** Honest ceiling: the ladder step must never exceed MAX_RENDER_SCALE × the
+   *  fit scale, or the shown % would lie about what actually rendered. Lives
+   *  in the geometry section (not by the toolbar) — the ready-kick effect
+   *  needs it to clamp a RESTORED zoom step before the first paint (s143). */
+  const maxZoomMult = useCallback(() => {
+    const b = base1Ref.current;
+    if (!b) return ZOOM_LADDER[ZOOM_LADDER.length - 1];
+    const avail = availBox();
+    const w = rotRef.current % 180 === 90 ? b.h : b.w;
+    const h = rotRef.current % 180 === 90 ? b.w : b.h;
+    const fit1 =
+      fitModeRef.current === "page" ? Math.min(avail.w / w, avail.h / h) : avail.w / w;
+    return Math.max(1, Math.min(ZOOM_LADDER[ZOOM_LADDER.length - 1], MAX_RENDER_SCALE / fit1));
+  }, [availBox]);
 
   /** Size every canvas-less holder from the container width + page aspect.
    * (s140: uses the page's OWN indexed meta when available — mixed-size
@@ -966,12 +1092,47 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
 
   /** When the doc becomes ready the placeholder divs must exist in the DOM
    * before any canvas can mount into them — re-kick the window post-commit
-   * (also covers a pane re-activating in split view). */
+   * (also covers a pane re-activating in split view). s143 adds two jobs:
+   * a RESTORED zoom step re-clamps to this pane's honest ceiling (a stored
+   * 300% may exceed what a narrow pane can honestly render), and a spread
+   * TOGGLE rebuilt every holder (rows replace the flat list) — in-flight
+   * renders captured dead holders and the canvas ledger lies, so both are
+   * reset before the re-kick, and the toggle's scroll anchor re-derives
+   * scrollTop through the page-height ratio (the zoom anchor's trick). */
   useEffect(() => {
     if (phase !== "ready" || !active) return;
-    applyPlaceholderStyles();
+    const max = maxZoomMult();
+    let zi = zoomIdxRef.current;
+    while (zi > 0 && ZOOM_LADDER[zi] > max) zi--;
+    const zoomClamped = ZOOM_LADDER[zi] !== zoomRef.current;
+    if (zoomClamped) {
+      zoomIdxRef.current = zi;
+      zoomRef.current = ZOOM_LADDER[zi];
+      setZoomPct(Math.round(ZOOM_LADDER[zi] * 100));
+    }
+    const spreadToggled = prevSpreadRef.current !== spread;
+    prevSpreadRef.current = spread;
+    if (spreadToggled) {
+      for (const t of tasksRef.current.values()) t.cancel();
+      tasksRef.current.clear();
+      canvasesRef.current.clear(); // the old canvases died with the old rows
+    }
+    if (zoomClamped) {
+      refreeze(); // re-render in-radius canvases at the honest scale
+    } else {
+      applyPlaceholderStyles();
+    }
+    if (spreadToggled) {
+      const a = spreadAnchorRef.current;
+      spreadAnchorRef.current = null;
+      const sc = scrollRef.current;
+      if (a && sc && a.pageH > 0 && Date.now() - a.at < 3000) {
+        const ph = holderRefs.current.get(centerRef.current)?.offsetHeight ?? a.pageH;
+        sc.scrollTop = Math.max(0, Math.round((a.top * ph) / a.pageH));
+      }
+    }
     syncWindow();
-  }, [phase, active, applyPlaceholderStyles, syncWindow]);
+  }, [phase, active, spread, applyPlaceholderStyles, syncWindow, maxZoomMult, refreeze]);
 
   // ── near-zone tracking: IntersectionObserver (passive-scroll fallback) ───
   useEffect(() => {
@@ -995,7 +1156,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
       io.disconnect();
       cancelAnimationFrame(rafRef.current);
     };
-  }, [phase, active, numPages, onNearChange]);
+  }, [phase, active, numPages, spread, onNearChange]);
 
   // ── resize → re-fit placeholders now, re-render debounced ────────────────
   useEffect(() => {
@@ -1004,10 +1165,30 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
     if (!scroller || typeof ResizeObserver === "undefined") return;
     let lastW = scroller.clientWidth;
     let lastH = scroller.clientHeight;
+    // s143: spread availability tracks the pane's real width (NOT the viewport
+    // — a split half or a fullscreen phone differs from the window size).
+    // Below the threshold the layout auto-offs but the INTENT survives
+    // (spreadWantedRef), so widening back re-pairs the pages.
+    let lastAvail = scroller.clientWidth - 24 >= SPREAD_MIN_W;
+    const applyAvail = () => {
+      const avail = scroller.clientWidth - 24 >= SPREAD_MIN_W;
+      if (avail === lastAvail) return;
+      lastAvail = avail;
+      setSpreadAvail(avail);
+      if (!avail && spreadRef.current) {
+        spreadRef.current = false; // too narrow — layout off, intent kept
+        setSpread(false);
+      } else if (avail && spreadWantedRef.current && !spreadRef.current) {
+        spreadRef.current = true; // wide again and the user wanted pairs
+        setSpread(true);
+      }
+    };
+    setSpreadAvail(lastAvail);
     let t: number | null = null;
     const ro = new ResizeObserver(() => {
       const w = scroller.clientWidth;
       const h = scroller.clientHeight;
+      applyAvail();
       // 8px guards against scrollbar jitter; the height threshold is 24px —
       // ABOVE any single h-scrollbar toggle (~15px) so fit-page can never
       // oscillate (scrollbar flips height → refit → scrollbar flips…), yet
@@ -1149,18 +1330,8 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
   );
 
   // ── toolbar actions ──────────────────────────────────────────────────────
-  /** Honest ceiling: the ladder step must never exceed MAX_RENDER_SCALE × the
-   * fit scale, or the shown % would lie about what actually rendered. */
-  const maxZoomMult = useCallback(() => {
-    const b = base1Ref.current;
-    if (!b) return ZOOM_LADDER[ZOOM_LADDER.length - 1];
-    const avail = availBox();
-    const w = rotRef.current % 180 === 90 ? b.h : b.w;
-    const h = rotRef.current % 180 === 90 ? b.w : b.h;
-    const fit1 =
-      fitModeRef.current === "page" ? Math.min(avail.w / w, avail.h / h) : avail.w / w;
-    return Math.max(1, Math.min(ZOOM_LADDER[ZOOM_LADDER.length - 1], MAX_RENDER_SCALE / fit1));
-  }, [availBox]);
+  /** (maxZoomMult lives up in the geometry section — the ready-kick effect
+   *   clamps a restored zoom step with it before the first paint, s143.) */
 
   /** Step the ladder (dir ±1), clamped by the honest ceiling. */
   const zoomBy = useCallback(
@@ -1200,6 +1371,22 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
     },
     [refreeze],
   );
+
+  /** Pair facing pages side by side (s143). Only the state flips here — the
+   *  ready-kick effect does the layout when the rebuilt rows commit (ledger
+   *  reset + scroll anchor), and every geometry path reads spreadRef, so
+   *  placeholders/canvases re-fit to the halved per-page box. */
+  const toggleSpread = useCallback(() => {
+    const next = !spreadRef.current;
+    const sc = scrollRef.current;
+    const ph = holderRefs.current.get(centerRef.current)?.offsetHeight ?? 0;
+    if (sc && ph > 0) {
+      spreadAnchorRef.current = { top: sc.scrollTop, pageH: ph, at: Date.now() };
+    }
+    spreadWantedRef.current = next; // the stored INTENT (survives auto-off)
+    spreadRef.current = next;
+    setSpread(next);
+  }, []);
 
   /** Rotate the whole document 90° — canvases re-render double-buffered, the
    * line model stays in unrotated space and highlight rects map through
@@ -1266,10 +1453,15 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
         : swapped
           ? 1 / aspectRef.current
           : aspectRef.current;
-      // (the parent IS the scroller; scrollRef may not be attached at first
-      // mount — fit-page needs its height too, s142)
-      const availW = Math.max(240, (el.parentElement?.clientWidth ?? 800) - 24);
-      const availH = Math.max(160, (el.parentElement?.clientHeight ?? 600) - 36);
+      // the host is the scroller (single) or — in spread — the page's ROW,
+      // whose parent is the scroller (s143: the row's own clientHeight is one
+      // page tall, NOT the scroller's fit budget)
+      const parent = el.parentElement;
+      const host = parent?.dataset.spreadRow ? (parent.parentElement ?? parent) : parent;
+      const rawW = Math.max(240, (host?.clientWidth ?? 800) - 24);
+      const availH = Math.max(160, (host?.clientHeight ?? 600) - 36);
+      // spread halves the per-page width budget (s143)
+      const availW = spreadRef.current ? Math.max(120, (rawW - SPREAD_GAP) / 2) : rawW;
       const w = Math.round(
         (fitModeRef.current === "page" ? Math.min(availW, availH / ar) : availW) *
           zoomRef.current,
@@ -1293,6 +1485,12 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
     return indexProgress ? `${base} · indexing…` : base;
   })();
 
+  /** The zoom buttons' honest read-out — the base is named: fit width, fit
+   *  page, or the halved spread width when pairs are on (s143). */
+  const zoomTitle = `Zoom: ${zoomPct}% of ${
+    fitMode === "page" ? "fit page" : spread ? "spread width" : "fit width"
+  }`;
+
   return (
     <div
       ref={rootRef}
@@ -1315,7 +1513,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
               variant="ghost"
               size="sm"
               className="h-9 w-9 px-0"
-              onClick={() => scrollToPage(Math.max(1, currentPage - 1))}
+              onClick={() => scrollToPage(Math.max(1, currentPage - (spread ? 2 : 1)))}
               disabled={currentPage <= 1}
               aria-label="Previous page"
             >
@@ -1346,7 +1544,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
               variant="ghost"
               size="sm"
               className="h-9 w-9 px-0"
-              onClick={() => scrollToPage(Math.min(numPages, currentPage + 1))}
+              onClick={() => scrollToPage(Math.min(numPages, currentPage + (spread ? 2 : 1)))}
               disabled={currentPage >= numPages}
               aria-label="Next page"
             >
@@ -1360,7 +1558,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
               onClick={() => zoomBy(-1)}
               aria-label="Zoom out"
               disabled={zoomPct <= MIN_ZOOM_PCT}
-              title={`Zoom: ${zoomPct}% of fit ${fitMode === "page" ? "page" : "width"}`}
+              title={zoomTitle}
             >
               <Minus className="size-3.5" aria-hidden />
             </Button>
@@ -1370,7 +1568,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
               className="h-9 w-9 px-0"
               onClick={() => zoomBy(1)}
               aria-label="Zoom in"
-              title={`Zoom: ${zoomPct}% of fit ${fitMode === "page" ? "page" : "width"}`}
+              title={zoomTitle}
             >
               <Plus className="size-3.5" aria-hidden />
             </Button>
@@ -1410,6 +1608,20 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
                 <Frame className="size-3.5" aria-hidden />
               </Button>
             </div>
+            {/* s143: two-page spread — offered only on panes wide enough */}
+            {spreadAvail && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn("h-9 w-9 px-0", spread && "bg-muted")}
+                onClick={toggleSpread}
+                aria-label="Two-page spread"
+                aria-pressed={spread}
+                title="Two-page spread — facing pages side by side"
+              >
+                <BookOpen className="size-3.5" aria-hidden />
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="sm"
@@ -1579,19 +1791,33 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
           onKeyDown={onScrollerKeyDown}
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:ring-inset"
         >
-          {Array.from({ length: numPages }, (_, i) => {
-            const n = i + 1;
-            return (
+          {(() => {
+            const holder = (n: number) => (
               <div
                 key={n}
                 data-page={n}
                 ref={holderRefCb}
                 role="img"
                 aria-label={`Page ${n} of ${numPages}`}
-                className="pp-holder relative mx-auto mb-3 rounded bg-background shadow-sm"
+                /* shrink-0 (s143): a zoomed spread row can outgrow the
+                 * scroller — holders must keep their true size and overflow
+                 * into the h-scrollbar, not flex-shrink under their canvas */
+                className="pp-holder relative mx-auto mb-3 shrink-0 rounded bg-background shadow-sm"
               />
             );
-          })}
+            if (!spread) return Array.from({ length: numPages }, (_, i) => holder(i + 1));
+            // s143: facing pages pair into rows [1|2][3|4]… The row is a flex
+            // lane; each holder keeps mx-auto, which in a flex lane CENTERS
+            // the pair when it fits and collapses to zero margin when a zoomed
+            // row overflows (left-anchored, so the overflow stays reachable —
+            // justify-center would clip it past the left edge forever).
+            return Array.from({ length: Math.ceil(numPages / 2) }, (_, r) => (
+              <div key={`row-${r + 1}`} data-spread-row={r + 1} className="flex gap-3">
+                {holder(r * 2 + 1)}
+                {r * 2 + 2 <= numPages && holder(r * 2 + 2)}
+              </div>
+            ));
+          })()}
           <p className="pb-2 pt-1 text-center text-[10px] text-muted-foreground">
             End of document · {numPages} page{numPages === 1 ? "" : "s"}
           </p>

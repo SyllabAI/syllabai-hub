@@ -221,6 +221,82 @@ test("viewer: split view shows QP and MS panes side by side", async ({ page }) =
   }
 });
 
+test("viewer: two-page spread pairs facing pages side by side", async ({ page }) => {
+  await readyViewer(page);
+  const spreadBtn = page.getByRole("button", { name: "Two-page spread" });
+  // the default Desktop Chrome viewport (1280x720) leaves the pane wide
+  // enough to offer the layout (spread gates on PANE width, not viewport)
+  await expect(spreadBtn).toBeVisible();
+  await expect(spreadBtn).toHaveAttribute("aria-pressed", "false");
+  const singleBox = (await page.getByRole("img", { name: "Page 1 of 3" }).boundingBox())!;
+  expect(singleBox.width).toBeGreaterThan(400); // fit-width sanity anchor
+  await spreadBtn.click();
+  await expect(spreadBtn).toHaveAttribute("aria-pressed", "true");
+  // 3 pages pair into two rows: [1|2] and [3]
+  await expect(page.locator("[data-spread-row]")).toHaveCount(2);
+  // both mates of the first row paint (the render window covers them)
+  await expect
+    .poll(async () => page.locator(".pp-pane canvas").count(), { timeout: 10_000 })
+    .toBeGreaterThanOrEqual(2);
+  const p1 = (await page.getByRole("img", { name: "Page 1 of 3" }).boundingBox())!;
+  const p2 = (await page.getByRole("img", { name: "Page 2 of 3" }).boundingBox())!;
+  expect(p1.width, "each mate fits half the pane").toBeLessThan(singleBox.width * 0.6);
+  expect(p2.x, "page 2 sits to the right of its mate").toBeGreaterThan(p1.x + p1.width - 2);
+  // the toolbar names the halved base honestly
+  await expect(page.getByRole("button", { name: "Zoom in" })).toHaveAttribute(
+    "title",
+    "Zoom: 100% of spread width",
+  );
+  // back to single: the rows dissolve and a canvas stays alive
+  await spreadBtn.click();
+  await expect(page.locator("[data-spread-row]")).toHaveCount(0);
+  await expect(spreadBtn).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator(".pp-pane canvas").first()).toBeVisible();
+});
+
+test("viewer: the viewing setup persists across papers", async ({ page }) => {
+  await readyViewer(page);
+  // assemble a distinctive setup: fit-page + 125% + 90° + spread. Order
+  // matters — switching the fit base resets the zoom, so zoom AFTER.
+  await page.getByRole("button", { name: "Fit page" }).click();
+  await page.getByRole("button", { name: "Zoom in" }).click();
+  await page.getByRole("button", { name: /Rotate 90 degrees/ }).click();
+  await page.getByRole("button", { name: "Two-page spread" }).click();
+  const pane = page.locator(".pp-pane").first();
+  const spreadBtn = page.getByRole("button", { name: "Two-page spread" });
+  await expect(pane).toHaveAttribute("data-rot", "90");
+  await expect(spreadBtn).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("[data-spread-row]")).toHaveCount(2);
+  await expect(page.getByRole("button", { name: "Zoom in" })).toHaveAttribute(
+    "title",
+    "Zoom: 125% of fit page",
+  );
+  // a DIFFERENT paper of the same course restores the whole setup (the
+  // fixture intercept serves the same 3-page PDF for any raw corpus URL)
+  await page.goto(`${PAPER_URL.replace("2019-06", "2026-06")}?doc=qp`, { waitUntil: "load" });
+  await expect(page.locator(".pp-pane canvas").first()).toBeVisible({ timeout: 20_000 });
+  await expect(pane).toHaveAttribute("data-rot", "90");
+  await expect(page.getByRole("button", { name: "Fit page" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page.getByRole("button", { name: "Zoom in" })).toHaveAttribute(
+    "title",
+    "Zoom: 125% of fit page",
+  );
+  await expect(spreadBtn).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("[data-spread-row]")).toHaveCount(2);
+  // narrowing the viewport below the pane threshold auto-offs the LAYOUT…
+  await page.setViewportSize({ width: 500, height: 800 });
+  await expect(spreadBtn).toBeHidden({ timeout: 5_000 });
+  await expect(page.locator("[data-spread-row]")).toHaveCount(0);
+  // …without erasing the choice — widening re-pairs the pages
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await expect(spreadBtn).toBeVisible({ timeout: 5_000 });
+  await expect(spreadBtn).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("[data-spread-row]")).toHaveCount(2);
+});
+
 test("mock: 'Just view the paper' lands on the viewer (s140 B1 404 pin)", async ({ page }) => {
   await page.goto(`${PAPER_URL}?mode=mock`, { waitUntil: "load" });
   await page.getByRole("link", { name: "Just view the paper" }).click();
