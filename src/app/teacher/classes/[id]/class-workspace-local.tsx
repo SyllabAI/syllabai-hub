@@ -12,6 +12,18 @@
  * switcher); the cohort-level class KG heatmap stays the core-class surface
  * (F-072, /teacher/classes/[id]/knowledge-graph — untouched here).
  *
+ * Wave 3 (operator trace 1a0f0e078fde5fb1 "Add a class-level 'My Class
+ * Geography Progress' view next to the core class KG heatmap, or add badges
+ * to the KG cards if a subject doesn't have a corpus package"): BOTH. (1)
+ * A "My Class Geography Progress" class-level section links the new
+ * /teacher/classes/[id]/geography page — the LOCAL container's corpus
+ * coverage map (canonical spec tree + per-subtopic notes/questions/
+ * flashcards from /api/teacher/class-geography). It is explicitly NOT
+ * mastery: cohort mastery stays core's heatmap + the T-C37 drill chain,
+ * so core ids landing on that page get a pointer, never a second graph.
+ * (2) Resource cards render an honest "no corpus package" badge instead of
+ * an eternal Skeleton when the course-stats payload says hasBundle=false.
+ *
  * One section per subject the class covers, in selection order:
  *   - course resource rows into the SAME hub surfaces students use
  *     (revision notes, exam questions, flashcards, and the per-subject
@@ -43,6 +55,7 @@ import {
   FileQuestion,
   LibraryBig,
   ListChecks,
+  Map as MapIcon,
   Network,
   Pencil,
   Trash2,
@@ -272,6 +285,46 @@ export function LocalClassWorkspace({
         </div>
       </section>
 
+      {/* class geography — the LOCAL container's corpus-coverage map (wave 3,
+          operator trace 1a0f0e078fde5fb1). Browser-local, like the class
+          itself; cohort mastery stays on the core heatmap surfaces. */}
+      <section aria-labelledby="class-geography">
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 id="class-geography" className="text-sm font-semibold">
+            My Class Geography Progress
+          </h2>
+          <span className="text-[11px] text-muted-foreground">
+            corpus coverage per subtopic — not learner mastery
+          </span>
+        </div>
+        <div className="mt-3">
+          <Card className="py-0 transition-shadow hover:shadow-md">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex size-9 items-center justify-center rounded-md bg-primary/10">
+                  <MapIcon className="size-4 text-primary" aria-hidden />
+                </span>
+                <Badge variant="outline" className="text-[10px] font-normal">
+                  browser-local
+                </Badge>
+              </div>
+              <h3 className="mt-3 text-sm font-semibold">Geography progress</h3>
+              <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+                Every subject&apos;s spec tree — topic by subtopic — with the notes, exam
+                questions and flashcards behind each one, and the honest gaps. Cohort mastery is
+                the core heatmap&apos;s surface.
+              </p>
+              <Button asChild size="sm" variant="outline" className="mt-3 gap-1.5">
+                <Link href={`/teacher/classes/${cls.id}/geography`}>
+                  Open geography progress
+                  <ArrowRight className="size-3.5" aria-hidden />
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </section>
+
       {/* per-subject sections — the directive's core */}
       {subjects.length === 0 && unknownSlugs.length === 0 ? (
         <Card className="border-dashed">
@@ -331,7 +384,11 @@ export function LocalClassWorkspace({
                         />
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground tabular-nums">
-                        {count === undefined ? (
+                        {stat && !stat.hasBundle ? (
+                          <Badge variant="outline" className="text-[10px] font-normal">
+                            no corpus package
+                          </Badge>
+                        ) : count === undefined ? (
                           <Skeleton className="inline-block h-3 w-16" />
                         ) : "countLabel" in r ? (
                           `${count} ${r.countLabel}`
