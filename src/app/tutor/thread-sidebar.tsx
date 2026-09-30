@@ -54,6 +54,8 @@ export function ThreadSidebar({
   conversations,
   conversationsError,
   activeSessionId,
+  activeCourseLabel = null,
+  activeCourseRef = null,
   openingId,
   onOpenConversation,
   onDeleteConversation,
@@ -66,6 +68,11 @@ export function ThreadSidebar({
   conversationsError?: string | null;
   /** the §22 session the OPEN thread is bound to (drives the active row) */
   activeSessionId?: string | null;
+  /** V53 (ADR-030): the course this tutor instance is scoped to — the local
+   *  rail hides OTHER courses' threads and shows the scope line; the synced
+   *  pane renders the SERVER's courseRef chip (what was actually served). */
+  activeCourseLabel?: string | null;
+  activeCourseRef?: string | null;
   openingId?: string | null;
   onOpenConversation?: (summary: TutorSessionSummary) => void;
   onDeleteConversation?: (summary: TutorSessionSummary) => void;
@@ -78,15 +85,23 @@ export function ThreadSidebar({
 
   const q = query.trim().toLowerCase();
   const filtered = useMemo(
-    () =>
-      q
+    () => {
+      const base = q
         ? threads.filter(
             (t) =>
               t.title.toLowerCase().includes(q) ||
               t.messages.some((m) => m.content.toLowerCase().includes(q)),
           )
-        : threads,
-    [threads, q],
+        : threads;
+      // V53: inside a course-scoped tutor, threads of OTHER courses are
+      // hidden from the local rail — course-less chats stay visible (they
+      // are the legacy pilot history), and the scope is labeled by the
+      // scope line below, never silent.
+      return activeCourseLabel
+        ? base.filter((t) => !t.courseSlug || t.courseSlug === activeCourseLabel)
+        : base;
+    },
+    [threads, q, activeCourseLabel],
   );
   const groups = useMemo(() => groupThreads(filtered), [filtered]);
   const synced = useMemo(
@@ -195,6 +210,14 @@ export function ThreadSidebar({
                           <span className="shrink-0 tabular-nums">
                             {c.turnCount === 1 ? "1 turn" : `${c.turnCount} turns`}
                           </span>
+                          {c.courseRef && (
+                            <span
+                              className="shrink-0 rounded bg-muted px-1 py-px font-mono text-[9.5px]"
+                              title="the course this conversation actually served (server-recorded)"
+                            >
+                              {c.courseRef}
+                            </span>
+                          )}
                           <span className="ml-auto shrink-0 tabular-nums">
                             {relativeTime(Date.parse(c.lastActiveAt) || 0)}
                           </span>
@@ -224,6 +247,16 @@ export function ThreadSidebar({
         {serverPane && (groups.length > 0 || filtered.length > 0) && (
           <p className="flex items-center gap-1.5 px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/80">
             On this device
+          </p>
+        )}
+
+        {activeCourseLabel && (
+          <p className="mx-2 mb-1 rounded-md bg-muted/60 px-2 py-1 text-[10px] leading-relaxed text-muted-foreground">
+            Scoped to <span className="font-medium text-foreground">{activeCourseLabel}</span>
+            {activeCourseRef ? (
+              <span className="ml-1 font-mono">({activeCourseRef})</span>
+            ) : null}
+            — other courses’ chats are hidden
           </p>
         )}
 
@@ -305,6 +338,14 @@ export function ThreadSidebar({
                                   ? `${last.role === "user" ? "You: " : ""}${last.content.slice(0, 60) || "…"}`
                                   : "Empty conversation"}
                               </span>
+                              {t.courseLabel && (
+                                <span
+                                  className="shrink-0 rounded bg-muted px-1 py-px text-[9.5px] font-medium"
+                                  title={`Course chat: ${t.courseLabel}`}
+                                >
+                                  {t.courseLabel}
+                                </span>
+                              )}
                               <span className="ml-auto shrink-0 tabular-nums">
                                 {relativeTime(t.updatedAt)}
                               </span>

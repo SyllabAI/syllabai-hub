@@ -37,6 +37,12 @@ export interface Thread {
    *  bound on the first ask of a signed-in chat; null = local-only thread
    *  (signed-out history, or a create that failed and degraded honestly). */
   sessionId?: string | null;
+  /** V53 (ADR-030): the course this chat belongs to, from the hub registry
+   *  (the /tutor?course=<slug> the thread was started under). null/absent =
+   *  a course-less chat (the legacy entry, or a restored conversation whose
+   *  served course is shown from the SERVER's courseRef chip instead). */
+  courseSlug?: string | null;
+  courseLabel?: string | null;
 }
 
 const KEY = "syllabai.tutor.threads.v1";
@@ -162,16 +168,31 @@ export function titleFrom(text: string): string {
   return t.length > 52 ? `${t.slice(0, 52).trimEnd()}…` : t;
 }
 
-export function createThread(title = "New chat"): Thread {
+/** V53 course context for new threads: the /tutor?course=<slug> the chat
+ *  was started under (label = the registry's display label). */
+export interface ThreadCourseContext {
+  slug: string;
+  label: string;
+}
+
+export function createThread(title = "New chat", course?: ThreadCourseContext | null): Thread {
   const now = Date.now();
-  const thread: Thread = { id: newThreadId(), title, createdAt: now, updatedAt: now, messages: [] };
+  const thread: Thread = {
+    id: newThreadId(),
+    title,
+    createdAt: now,
+    updatedAt: now,
+    messages: [],
+    ...(course ? { courseSlug: course.slug, courseLabel: course.label } : {}),
+  };
   commit({ threads: [thread, ...state.threads].slice(0, MAX_THREADS), activeId: thread.id });
   return thread;
 }
 
-/** Ensure there is an active thread (created on first ask, not on page load). */
-export function ensureActiveThread(): Thread {
-  return getActiveThread() ?? createThread();
+/** Ensure there is an active thread (created on first ask, not on page load).
+ *  V53: a thread created inside a course-scoped tutor carries that course. */
+export function ensureActiveThread(course?: ThreadCourseContext | null): Thread {
+  return getActiveThread() ?? createThread("New chat", course);
 }
 
 /** Immutably patch one thread; bumps updatedAt and re-orders to the top. */

@@ -160,7 +160,8 @@
       "subject": "Chemistry",
       "label": "Chemistry",
       "code": "4CH1",
-      "status": "pilot"
+      "status": "pilot",
+      "curriculumCode": "4CH1-2017"
     },
     {
       "slug": "igcse-chemistry-modular-24-unit-1",

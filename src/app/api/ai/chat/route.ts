@@ -22,6 +22,11 @@ const Body = z.object({
    *  LLM spend. The per-turn 2000-char bound mirrors core's HistoryTurn
    *  validation (the old 4000 cap would 400 any long answer's next ask). */
   sessionId: z.string().uuid().optional(),
+  /** V53 (ADR-030): the opaque hub-supplied course reference the ask is
+   *  scoped by (the registry's curriculumCode) — optional; core resolves it
+   *  fail-closed against its own registry and refuses cross-course asks.
+   *  Absent = the legacy course-less ask (pilot behavior unchanged). */
+  courseRef: z.string().max(64).optional(),
 });
 
 /** Core TutorAnswerView (lib/types.ts mirror — kept local so this route
@@ -112,6 +117,10 @@ export async function POST(req: NextRequest) {
     question: parsed.question,
     history: parsed.history.map((h) => ({ role: h.role, text: h.content })),
     ...(parsed.sessionId ? { sessionId: parsed.sessionId } : {}),
+    // V53: the ref rides BOTH delivery paths — the stream proxy above and
+    // the legacy blocking fallback below — so deploy skew between hub and
+    // core can never strand the field
+    ...(parsed.courseRef ? { courseRef: parsed.courseRef } : {}),
   };
 
   let result: Awaited<ReturnType<typeof coreStreamAuthorized>>;
@@ -247,7 +256,12 @@ function pipeSse(upstream: Response): Response {
  *  hub deploys never outpace core deploys. */
 async function legacyBlockingFallback(
   token: string,
-  coreBody: { question: string; history: { role: string; text: string }[]; sessionId?: string },
+  coreBody: {
+    question: string;
+    history: { role: string; text: string }[];
+    sessionId?: string;
+    courseRef?: string;
+  },
 ): Promise<Response> {
   try {
     const result = await coreFetchAuthorized<CoreTutorAnswer>("/api/v1/tutor/ask", {
