@@ -101,6 +101,7 @@ import type {
   TeacherClassDetailView,
   TeacherClassView,
   ClassKnowledgeGraphView,
+  ClassNodeStudentsView,
 } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "";
@@ -656,6 +657,27 @@ export const api = {
   teacherClassKnowledgeGraph: (classId: string, rootId: string) =>
     request<ClassKnowledgeGraphView>(
       `/api/v1/teacher/classes/${classId}/knowledge-graph?rootId=${encodeURIComponent(rootId)}`,
+    ),
+
+  // Teacher, TFA-07 §13.5: one heatmap node's affected students — the
+  // enabled-member roster at student grain (raw + effective mastery, band
+  // vocabulary, misconceptions, bounded recent attempts). Member-only by
+  // construction; unmeasured rows stay honestly null.
+  teacherClassNodeStudents: (classId: string, rootId: string, nodeId: string) =>
+    request<ClassNodeStudentsView>(
+      `/api/v1/teacher/classes/${classId}/knowledge-graph/nodes/${nodeId}/students?rootId=${encodeURIComponent(rootId)}`,
+    ),
+
+  // Teacher, TFA-07 §14: ONE student's subject graph through the SAME F-034
+  // read model the student sees — the backend gates it to enabled members of
+  // this class (404 otherwise); the teacher lens adds no second graph.
+  teacherClassLearnerKnowledgeGraph: (
+    classId: string,
+    learnerId: string,
+    rootId: string,
+  ) =>
+    request<LearnerKnowledgeGraphView>(
+      `/api/v1/teacher/classes/${classId}/learners/${learnerId}/knowledge-graph?rootId=${encodeURIComponent(rootId)}`,
     ),
 
   // Learner: my classroom overview — classes + flattened unread badge.

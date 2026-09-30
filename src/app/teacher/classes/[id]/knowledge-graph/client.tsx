@@ -14,7 +14,7 @@
  * readable (a past class's heatmap is still a fact), marked read-only here.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +24,7 @@ import { api, ApiError } from "@/lib/api";
 import { TeacherNav } from "@/components/teacher/teacher-nav";
 import { KGExplorer } from "@/components/kg-explorer/KGExplorer";
 import { classKnowledgeGraphHost } from "@/components/kg-explorer/adapters";
+import { NodeDrillDown } from "./drill-down-panel";
 import type {
   ClassKnowledgeGraphView,
   SubjectView,
@@ -53,6 +54,15 @@ export function ClassKGClient({ classId }: { classId: string }) {
   const [kg, setKg] = useState<ClassKnowledgeGraphView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // TFA-07: the drill chain — a node's "Affected students" action opens the
+  // §13.5 panel (which itself chains into the §14 individual graph)
+  const [inspectNodeId, setInspectNodeId] = useState<string | null>(null);
+  // the host is memoized on the graph payload, so the action closure goes
+  // through a ref to always reach the latest setter without rebuilding the host
+  const inspectRef = useRef<(nodeId: string) => void>(() => {});
+  useEffect(() => {
+    inspectRef.current = setInspectNodeId;
+  }, []);
 
   // one bootstrap fetch: the class (name, course, status) + the subject list
   // (state lands in async callbacks only — the house data-fetching pattern)
@@ -97,7 +107,15 @@ export function ClassKGClient({ classId }: { classId: string }) {
     if (rootId) void loadKG(rootId);
   }, [rootId, loadKG]);
 
-  const host = useMemo(() => (kg ? classKnowledgeGraphHost(kg) : null), [kg]);
+  const host = useMemo(
+    () =>
+      kg
+        ? classKnowledgeGraphHost(kg, {
+            onInspectNode: (nodeId) => inspectRef.current(nodeId),
+          })
+        : null,
+    [kg],
+  );
   const subject =
     subjects?.find((s) => s.knowledgeNodeId && s.knowledgeNodeId === rootId) ?? null;
   const archived = detail?.status === "archived";
@@ -185,13 +203,23 @@ export function ClassKGClient({ classId }: { classId: string }) {
           </AlertDescription>
         </Alert>
       ) : host ? (
-        <KGExplorer
-          key={`${rootId}:${kg?.learnersEnrolled ?? 0}`}
-          host={host}
-          height={640}
-          title={`${kg?.rootCode ?? ""} — ${detail?.name ?? "class"} heatmap`}
-          subtitle="teaching coverage × class understanding · enrolled members only"
-        />
+        <>
+          <KGExplorer
+            key={`${rootId}:${kg?.learnersEnrolled ?? 0}`}
+            host={host}
+            height={640}
+            title={`${kg?.rootCode ?? ""} — ${detail?.name ?? "class"} heatmap`}
+            subtitle="teaching coverage × class understanding · enrolled members only · select a node for its affected students"
+          />
+          {rootId ? (
+            <NodeDrillDown
+              classId={classId}
+              rootId={rootId}
+              nodeId={inspectNodeId}
+              onClose={() => setInspectNodeId(null)}
+            />
+          ) : null}
+        </>
       ) : null}
     </div>
   );

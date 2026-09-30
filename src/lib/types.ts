@@ -1649,6 +1649,67 @@ export interface LearnerAnnouncementView {
   createdAt: string;
 }
 
+// ── TFA-07 class-KG drill-down (mirrors core ClassKnowledgeGraphViews) ──
+
+/** §13.5 node detail: one class-KG node with its affected (enabled-member) students */
+export interface ClassNodeStudentsView {
+  classId: string;
+  className: string;
+  rootId: string;
+  nodeId: string;
+  nodeCode: string | null;
+  nodeTitle: string;
+  nodeType: string;
+  /** "taught" | "not-taught" | "unrecorded" — restated from the heatmap cell */
+  coverageState: string;
+  learnersEnrolled: number;
+  strugglingCount: number;
+  developingCount: number;
+  proficientCount: number;
+  asOf: string;
+  students: ClassNodeStudentView[];
+}
+
+/**
+ * One affected student on one node: the same per-node semantics the
+ * student's own KG shows them (raw + effective mastery, shared band
+ * vocabulary), their misconception estimates under this node, and a
+ * bounded slice of their recent attempts mapped to this node.
+ * Unmeasured = null mastery/band + empty evidence — honest, never zero.
+ */
+export interface ClassNodeStudentView {
+  learnerId: string;
+  displayName: string;
+  mastery: number | null;
+  effectiveMastery: number | null;
+  /** "LOW" | "DEVELOPING" | "SECURE" | null */
+  band: string | null;
+  attempts: number | null;
+  correctCount: number | null;
+  lastPracticedAt: string | null;
+  misconceptions: StudentMisconceptionView[];
+  recentAttempts: StudentEvidenceItemView[];
+}
+
+export interface StudentMisconceptionView {
+  misconceptionNodeId: string;
+  code: string | null;
+  title: string;
+  probability: number;
+  active: boolean;
+}
+
+export interface StudentEvidenceItemView {
+  attemptId: string;
+  questionId: string;
+  questionRef: string | null;
+  correct: boolean;
+  marksAwarded: number | null;
+  questionMarks: number;
+  markingState: string;
+  createdAt: string;
+}
+
 /** learner classroom overview: my classes + the flattened unread badge */
 export interface LearnerClassroomView {
   classes: LearnerClassView[];
