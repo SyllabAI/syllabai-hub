@@ -13,7 +13,7 @@
  * React state, and the whole doc being re-fetched when a pane was toggled):
  *
  *   - fit-width by default (recomputed on container resize), zoom on top of
- *     fit — including two BELOW-fit overview steps, s141;
+ *     fit — including the BELOW-fit overview steps (75/50/25%), s141+s142;
  *   - IntersectionObserver page tracking — zero work per scroll frame; the
  *     "center page" is recomputed only when the near-zone (rootMargin 300%)
  *     intersection set changes, with a passive-scroll fallback for ancient
@@ -65,12 +65,16 @@
  *     2.5 viewports are instant, not an animated 30k-px scroll);
  *   - the loading state shows real download progress (pdf.js onProgress) and
  *     a stalled load fails honestly after LOAD_TIMEOUT_MS (Retry / open raw);
- *   - zoom is a round ladder (50→300%) clamped to MAX_RENDER_SCALE / fit so
+ *   - zoom is a round ladder (25→300%) clamped to MAX_RENDER_SCALE / fit so
  *     the shown % is always the rendered % (the old 1.25^n steps drifted to
  *     156/195/244% and silently capped at scale 4 on wide panes); s141 added
- *     the two below-fit overview steps (75/50%) — pages center in the wider
- *     scroller (mx-auto) and every scale computation composes with a
- *     multiplier < 1;
+ *     the below-fit overview steps (75/50/25% — 25% is the thumbnail view)
+ *     — pages center in the wider scroller (mx-auto) and every scale
+ *     computation composes with a multiplier < 1;
+ *   - FIT PRESETS (s142): the ladder multiplies either fit-width (default)
+ *     or fit-page — the toolbar's segmented control swaps the base, zoom
+ *     resets to 100% of the new base, and every geometry path (scaleFor,
+ *     placeholders, the honest ceiling, the resize observer) reads the mode;
  *   - ROTATION (90° steps): canvases/text layers re-render through rotated
  *     pdf.js viewports while the line model stays in unrotated space —
  *     highlight/scroll-to-match rects map through rotRect() (pure 90°-step
@@ -96,9 +100,11 @@ import {
   ChevronDown,
   ChevronUp,
   Download,
+  Frame,
   Loader2,
   Maximize2,
   Minus,
+  MoveHorizontal,
   Plus,
   RotateCcw,
   RotateCw,
@@ -163,22 +169,28 @@ const DOC_WAIT_TIMEOUT_MS = 30_000;
  */
 const LOAD_TIMEOUT_MS = 45_000;
 /**
- * Zoom ladder — multipliers on fit-width, honest round steps (the old
- * 1.25^n ladder showed 156% / 195% / 244%). Clamped per-pane by
+ * Zoom ladder — multipliers on the active fit base, honest round steps (the
+ * old 1.25^n ladder showed 156% / 195% / 244%). Clamped per-pane by
  * MAX_RENDER_SCALE / fit so the shown % is always the rendered %.
  * s141 (operator: "Ability to zoom out the pdf a bit more"): the ladder
- * now descends BELOW fit-width — 75% and 50% overview steps. Holders
- * center via mx-auto in the wider scroller; scaleFor, placeholder widths
- * and the scroll-anchor ratio all compose with multipliers < 1.
+ * descends BELOW fit-width — 75% and 50% overview steps. Holders center via
+ * mx-auto in the wider scroller; scaleFor, placeholder widths and the
+ * scroll-anchor ratio all compose with multipliers < 1.
+ * s142 (operator: "push the floor lower (25% thumbnail view), add a fit-page
+ * preset alongside fit-width"): 25% joins as the thumbnail floor, and the
+ * base the ladder multiplies is either fit-width or fit-page (FitMode).
  */
-const ZOOM_LADDER = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3];
-/** Ladder index of fit-width — the default zoom and the `0` key's reset target. */
+const ZOOM_LADDER = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+/** Ladder index of 100% — the default zoom and the `0` key's reset target. */
 const FIT_LADDER_IDX = ZOOM_LADDER.indexOf(1);
 /** Lowest ladder step, as a toolbar percentage (the zoom-out button's floor). */
 const MIN_ZOOM_PCT = Math.round(ZOOM_LADDER[0] * 100);
 /** pdf.js render-scale ceiling (canvas memory guard; also honesty cap). */
 const MAX_RENDER_SCALE = 4;
 type Rot = 0 | 90 | 180 | 270;
+/** The fit base the zoom ladder multiplies: fill the pane's width, or frame
+ *  the whole page (width AND height) inside the scroller (s142). */
+type FitMode = "width" | "page";
 
 type Phase = "loading" | "ready" | "error";
 
@@ -289,6 +301,8 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
   const rotRef = useRef<Rot>(0);
   /** zoom ladder index (ZOOM_LADDER) — ref for math, state mirrors in zoomPct */
   const zoomIdxRef = useRef(FIT_LADDER_IDX);
+  /** active fit base (s142) — ref for render math, state mirrors in fitMode */
+  const fitModeRef = useRef<FitMode>("width");
   /** page-1 unrotated box (honest zoom ceiling + placeholder aspect) */
   const base1Ref = useRef<{ w: number; h: number } | null>(null);
 
@@ -323,8 +337,10 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [numPages, setNumPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
-  /** zoom multiplier on fit-width — ref for render math, state for the toolbar */
+  /** zoom multiplier on the active fit base — ref for render math, state for the toolbar */
   const [zoomPct, setZoomPct] = useState(100);
+  /** the fit base itself (width | page) — toolbar state, mirror in fitModeRef */
+  const [fitMode, setFitMode] = useState<FitMode>("width");
   const [rot, setRot] = useState<Rot>(0);
   /** download progress for the loading state (pdf.js onProgress) */
   const [loadProg, setLoadProg] = useState<{ loaded: number; total: number } | null>(null);
@@ -366,12 +382,36 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
     [],
   );
 
-  /** Fit scale for a page of (rotated) width baseW at the current zoom. */
-  const scaleFor = useCallback((baseW: number) => {
-    const w = scrollRef.current?.clientWidth ?? 800;
-    const avail = Math.max(240, w - 24);
-    return Math.min(MAX_RENDER_SCALE, (avail / baseW) * zoomRef.current);
+  /** On-screen page height at the current user rotation (what fit-page needs). */
+  const rotH = useCallback(
+    (meta: { baseW: number; baseH: number }) =>
+      rotRef.current % 180 === 90 ? meta.baseW : meta.baseH,
+    [],
+  );
+
+  /** The scroller's content box: width minus the px-3 gutters; height minus
+   *  the py-3 gutters AND one mb-3 page gap, so a fit-page page plus its
+   *  margin stays whole in view (s142). */
+  const availBox = useCallback(() => {
+    const el = scrollRef.current;
+    return {
+      w: Math.max(240, (el?.clientWidth ?? 800) - 24),
+      h: Math.max(160, (el?.clientHeight ?? 600) - 36),
+    };
   }, []);
+
+  /** Fit scale for a page of on-screen (rotated) box w×h at the current zoom:
+   *  fit-width fills the pane's width; fit-page takes the smaller of the
+   *  width/height ratios so the WHOLE page is framed (s142). */
+  const scaleFor = useCallback(
+    (w: number, h: number) => {
+      const avail = availBox();
+      const base =
+        fitModeRef.current === "page" ? Math.min(avail.w / w, avail.h / h) : avail.w / w;
+      return Math.min(MAX_RENDER_SCALE, base * zoomRef.current);
+    },
+    [availBox],
+  );
 
   const fitFor = useCallback(
     (page: PdfPage) => {
@@ -379,7 +419,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
         scale: 1,
         rotation: (page.rotate + rotRef.current) % 360,
       });
-      const scale = scaleFor(base.width);
+      const scale = scaleFor(base.width, base.height);
       return { scale, cssW: Math.round(base.width * scale), cssH: Math.round(base.height * scale) };
     },
     [scaleFor],
@@ -391,9 +431,9 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
   const applyPlaceholderStyles = useCallback(() => {
     const scroller = scrollRef.current;
     if (!scroller) return;
-    const avail = Math.max(240, scroller.clientWidth - 24);
-    const w = Math.round(avail * zoomRef.current);
+    const avail = availBox();
     const swapped = rotRef.current % 180 === 90;
+    const pageMode = fitModeRef.current === "page";
     for (const [n, el] of holderRefs.current) {
       if (canvasesRef.current.has(n)) continue;
       const meta = pageMetaRef.current.get(n);
@@ -404,10 +444,13 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
         : swapped
           ? 1 / aspectRef.current
           : aspectRef.current;
+      const w = Math.round(
+        (pageMode ? Math.min(avail.w, avail.h / ar) : avail.w) * zoomRef.current,
+      );
       el.style.width = `${w}px`;
       el.style.height = `${Math.round(w * ar)}px`;
     }
-  }, []);
+  }, [availBox]);
 
   // ── line model (pure math over the cached text index) ────────────────────
   const linesFor = useCallback((n: number, scale: number): PdfLine[] => {
@@ -448,7 +491,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
       }
       const meta = pageMetaRef.current.get(n);
       if (!meta) continue;
-      const scale = scaleFor(rotW(meta));
+      const scale = scaleFor(rotW(meta), rotH(meta));
       const lines = linesFor(n, scale);
       if (!layer) {
         layer = document.createElement("div");
@@ -473,7 +516,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
         }
       });
     }
-  }, [linesFor, scaleFor, rotW]);
+  }, [linesFor, scaleFor, rotW, rotH]);
 
   const scrollToMatch = useCallback(
     (i: number) => {
@@ -483,7 +526,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
       const holder = holderRefs.current.get(m.page);
       const meta = pageMetaRef.current.get(m.page);
       if (!holder || !meta) return;
-      const scale = scaleFor(rotW(meta));
+      const scale = scaleFor(rotW(meta), rotH(meta));
       const lines = linesFor(m.page, scale);
       const line = lines[m.lineIdx];
       const rects0 = line ? matchRects(line, m.start, m.end) : [];
@@ -499,7 +542,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
         behavior: Math.abs(target - sc.scrollTop) > sc.clientHeight * 2.5 ? "auto" : "smooth",
       });
     },
-    [linesFor, scaleFor, rotW],
+    [linesFor, scaleFor, rotW, rotH],
   );
 
   const recomputeMatches = useCallback(
@@ -518,7 +561,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
         if (!itemsRef.current.has(p)) continue;
         const meta = pageMetaRef.current.get(p);
         if (!meta) continue;
-        const lines = linesFor(p, scaleFor(rotW(meta)));
+        const lines = linesFor(p, scaleFor(rotW(meta), rotH(meta)));
         for (const h of findInLines(lines, re)) {
           out.push({ page: p, lineIdx: h.lineIdx, start: h.start, end: h.end });
         }
@@ -538,7 +581,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
       setMatchInfo({ count: out.length, index: matchIdxRef.current });
       paintHighlights();
     },
-    [linesFor, scaleFor, rotW, paintHighlights, scrollToMatch],
+    [linesFor, scaleFor, rotW, rotH, paintHighlights, scrollToMatch],
   );
 
   // ── text layer overlay (selection) ───────────────────────────────────────
@@ -716,10 +759,8 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
             // a page that already painted needs its selection layer now
             const holder = holderRefs.current.get(n);
             if (holder && canvasesRef.current.has(n) && holder.isConnected) {
-              renderTextLayerInto(holder, n, page, scaleFor(rotW({
-                baseW: vp1.width,
-                baseH: vp1.height,
-              })));
+              const meta1 = { baseW: vp1.width, baseH: vp1.height };
+              renderTextLayerInto(holder, n, page, scaleFor(rotW(meta1), rotH(meta1)));
             }
             if (findOpenRef.current) {
               setIndexProgress({ done: n, total: doc.numPages });
@@ -738,7 +779,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
       });
       return p;
     },
-    [renderTextLayerInto, scaleFor, rotW, recomputeMatches],
+    [renderTextLayerInto, scaleFor, rotW, rotH, recomputeMatches],
   );
 
   /** Resolve once every page's text is indexed (false on load failure/timeout). */
@@ -962,11 +1003,18 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
     const scroller = scrollRef.current;
     if (!scroller || typeof ResizeObserver === "undefined") return;
     let lastW = scroller.clientWidth;
+    let lastH = scroller.clientHeight;
     let t: number | null = null;
     const ro = new ResizeObserver(() => {
       const w = scroller.clientWidth;
-      if (Math.abs(w - lastW) < 8) return; // scrollbar jitter
+      const h = scroller.clientHeight;
+      // 8px guards against scrollbar jitter; the height threshold is 24px —
+      // ABOVE any single h-scrollbar toggle (~15px) so fit-page can never
+      // oscillate (scrollbar flips height → refit → scrollbar flips…), yet
+      // a real vertical resize still re-fits (s142).
+      if (Math.abs(w - lastW) < 8 && Math.abs(h - lastH) < 24) return;
       lastW = w;
+      lastH = h;
       applyPlaceholderStyles();
       if (t !== null) window.clearTimeout(t);
       t = window.setTimeout(() => {
@@ -1106,10 +1154,13 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
   const maxZoomMult = useCallback(() => {
     const b = base1Ref.current;
     if (!b) return ZOOM_LADDER[ZOOM_LADDER.length - 1];
-    const avail = Math.max(240, (scrollRef.current?.clientWidth ?? 800) - 24);
-    const fit1 = avail / (rotRef.current % 180 === 90 ? b.h : b.w);
+    const avail = availBox();
+    const w = rotRef.current % 180 === 90 ? b.h : b.w;
+    const h = rotRef.current % 180 === 90 ? b.w : b.h;
+    const fit1 =
+      fitModeRef.current === "page" ? Math.min(avail.w / w, avail.h / h) : avail.w / w;
     return Math.max(1, Math.min(ZOOM_LADDER[ZOOM_LADDER.length - 1], MAX_RENDER_SCALE / fit1));
-  }, []);
+  }, [availBox]);
 
   /** Step the ladder (dir ±1), clamped by the honest ceiling. */
   const zoomBy = useCallback(
@@ -1133,6 +1184,22 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
     setZoomPct(100);
     refreeze();
   }, [refreeze]);
+
+  /** Switch the fit base the ladder multiplies (s142). The multiplier resets
+   *  to 100% — a carried-over step would mean a DIFFERENT absolute scale on
+   *  the new base; the honest ceiling re-clamps inside refreeze's renders. */
+  const setFitModeTo = useCallback(
+    (mode: FitMode) => {
+      if (fitModeRef.current === mode) return;
+      fitModeRef.current = mode;
+      setFitMode(mode);
+      zoomIdxRef.current = FIT_LADDER_IDX;
+      zoomRef.current = 1;
+      setZoomPct(100);
+      refreeze();
+    },
+    [refreeze],
+  );
 
   /** Rotate the whole document 90° — canvases re-render double-buffered, the
    * line model stays in unrotated space and highlight rects map through
@@ -1190,8 +1257,6 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
     const n = Number(el.dataset.page);
     holderRefs.current.set(n, el);
     if (!canvasesRef.current.has(n) && !el.style.width) {
-      const avail = Math.max(240, (el.parentElement?.clientWidth ?? 800) - 24);
-      const w = Math.round(avail * zoomRef.current);
       const meta = pageMetaRef.current.get(n);
       const swapped = rotRef.current % 180 === 90;
       const ar = meta
@@ -1201,6 +1266,14 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
         : swapped
           ? 1 / aspectRef.current
           : aspectRef.current;
+      // (the parent IS the scroller; scrollRef may not be attached at first
+      // mount — fit-page needs its height too, s142)
+      const availW = Math.max(240, (el.parentElement?.clientWidth ?? 800) - 24);
+      const availH = Math.max(160, (el.parentElement?.clientHeight ?? 600) - 36);
+      const w = Math.round(
+        (fitModeRef.current === "page" ? Math.min(availW, availH / ar) : availW) *
+          zoomRef.current,
+      );
       el.style.width = `${w}px`;
       el.style.height = `${Math.round(w * ar)}px`;
     }
@@ -1287,7 +1360,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
               onClick={() => zoomBy(-1)}
               aria-label="Zoom out"
               disabled={zoomPct <= MIN_ZOOM_PCT}
-              title={`Zoom: ${zoomPct}% of fit width`}
+              title={`Zoom: ${zoomPct}% of fit ${fitMode === "page" ? "page" : "width"}`}
             >
               <Minus className="size-3.5" aria-hidden />
             </Button>
@@ -1297,7 +1370,7 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
               className="h-9 w-9 px-0"
               onClick={() => zoomBy(1)}
               aria-label="Zoom in"
-              title={`Zoom: ${zoomPct}% of fit width`}
+              title={`Zoom: ${zoomPct}% of fit ${fitMode === "page" ? "page" : "width"}`}
             >
               <Plus className="size-3.5" aria-hidden />
             </Button>
@@ -1306,11 +1379,37 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
               size="sm"
               className="h-9 w-9 px-0"
               onClick={resetFit}
-              aria-label="Reset to fit width"
+              aria-label="Reset zoom"
+              title="Reset zoom to 100%"
               disabled={zoomPct === 100}
             >
               <RotateCcw className="size-3.5" aria-hidden />
             </Button>
+            {/* s142: the fit base the zoom ladder multiplies */}
+            <div className="flex items-center" role="group" aria-label="Fit mode">
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn("h-9 w-9 px-0", fitMode === "width" && "bg-muted")}
+                onClick={() => setFitModeTo("width")}
+                aria-label="Fit width"
+                aria-pressed={fitMode === "width"}
+                title="Fit width — pages fill the pane width"
+              >
+                <MoveHorizontal className="size-3.5" aria-hidden />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn("h-9 w-9 px-0", fitMode === "page" && "bg-muted")}
+                onClick={() => setFitModeTo("page")}
+                aria-label="Fit page"
+                aria-pressed={fitMode === "page"}
+                title="Fit page — the whole page stays in view"
+              >
+                <Frame className="size-3.5" aria-hidden />
+              </Button>
+            </div>
             <Button
               variant="ghost"
               size="sm"

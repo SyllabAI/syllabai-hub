@@ -123,7 +123,7 @@ test("viewer: zoom ladder shows honest round steps and resets", async ({ page })
   await readyViewer(page);
   const zoomIn = page.getByRole("button", { name: "Zoom in" });
   const zoomOut = page.getByRole("button", { name: "Zoom out" });
-  const reset = page.getByRole("button", { name: "Reset to fit width" });
+  const reset = page.getByRole("button", { name: "Reset zoom" });
   await expect(zoomIn).toHaveAttribute("title", "Zoom: 100% of fit width");
   // s141: the ladder descends below fit-width — zoom-out is live at 100%
   await expect(zoomOut).toBeEnabled();
@@ -133,26 +133,66 @@ test("viewer: zoom ladder shows honest round steps and resets", async ({ page })
   await expect(zoomIn).toHaveAttribute("title", "Zoom: 150% of fit width");
   await reset.click();
   await expect(zoomIn).toHaveAttribute("title", "Zoom: 100% of fit width");
-  // the below-fit overview steps (operator: "Ability to zoom out the pdf a
-  // bit more" — 75%, then the 50% floor where the button disables)
+  // the below-fit overview steps (s141 75/50 + s142's 25% thumbnail floor,
+  // where the button disables)
   const holder = page.getByRole("img", { name: "Page 1 of 3" });
   const fitW = (await holder.boundingBox())!.width;
   await zoomOut.click();
   await expect(zoomIn).toHaveAttribute("title", "Zoom: 75% of fit width");
   await zoomOut.click();
   await expect(zoomIn).toHaveAttribute("title", "Zoom: 50% of fit width");
+  await zoomOut.click();
+  await expect(zoomIn).toHaveAttribute("title", "Zoom: 25% of fit width");
   await expect(zoomOut).toBeDisabled();
-  // the page physically shrinks to ~half width (centered via mx-auto) and
-  // the canvas survives the refit (double-buffered — never blanks)
+  // the page physically shrinks to ~a quarter width (centered via mx-auto)
+  // and the canvas survives the refit (double-buffered — never blanks)
   await expect
     .poll(async () => (await holder.boundingBox())?.width, { timeout: 5_000 })
-    .toBeLessThan(fitW * 0.8);
+    .toBeLessThan(fitW * 0.45);
   await expect(page.locator(".pp-pane canvas").first()).toBeVisible();
   // reset is enabled while BELOW fit (the old <= floor kept it disabled)
   await expect(reset).toBeEnabled();
   await reset.click();
   await expect(zoomIn).toHaveAttribute("title", "Zoom: 100% of fit width");
   await expect(zoomOut).toBeEnabled();
+});
+
+test("viewer: fit-page preset frames the whole page inside the scroller", async ({ page }) => {
+  await readyViewer(page);
+  const holder = page.getByRole("img", { name: "Page 1 of 3" });
+  const region = page.locator(".pp-pane [role='region']");
+  const zoomIn = page.getByRole("button", { name: "Zoom in" });
+  const fitWidth = page.getByRole("button", { name: "Fit width" });
+  const fitPage = page.getByRole("button", { name: "Fit page" });
+  // default: fit-width is the pressed base, the A4 page is TALLER than the pane
+  await expect(fitWidth).toHaveAttribute("aria-pressed", "true");
+  await expect(fitPage).toHaveAttribute("aria-pressed", "false");
+  const regionBox = (await region.boundingBox())!;
+  const wideBox = await holder.boundingBox();
+  expect(wideBox!.height).toBeGreaterThan(regionBox.height);
+  // s142: switching the base frames the WHOLE page, zoom resets to 100%, and
+  // the toolbar names the new base honestly
+  await fitPage.click();
+  await expect(fitPage).toHaveAttribute("aria-pressed", "true");
+  await expect(zoomIn).toHaveAttribute("title", "Zoom: 100% of fit page");
+  await expect
+    .poll(async () => (await holder.boundingBox())?.height, { timeout: 5_000 })
+    .toBeLessThanOrEqual(regionBox.height + 1);
+  const pageBox = await holder.boundingBox();
+  expect(pageBox!.height, "fit-page shrank the page vs fit-width").toBeLessThan(wideBox!.height);
+  expect(pageBox!.x, "the framed page centers (mx-auto)").toBeGreaterThan(wideBox!.x + 40);
+  // the canvas re-rendered at the new scale (double-buffered, never blank)
+  await expect(page.locator(".pp-pane canvas").first()).toBeVisible();
+  // zoom still steps the ladder on the new base, honestly labelled
+  await zoomIn.click();
+  await expect(zoomIn).toHaveAttribute("title", "Zoom: 125% of fit page");
+  // and back: fit-width restores the wide base and its honest title
+  await fitWidth.click();
+  await expect(fitWidth).toHaveAttribute("aria-pressed", "true");
+  await expect(zoomIn).toHaveAttribute("title", "Zoom: 100% of fit width");
+  await expect
+    .poll(async () => (await holder.boundingBox())?.width, { timeout: 5_000 })
+    .toBeGreaterThan(pageBox!.width);
 });
 
 test("viewer: split view shows QP and MS panes side by side", async ({ page }) => {
