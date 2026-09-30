@@ -8,8 +8,20 @@
  * curriculum concept graph) and the web applicability-chip import stay on web.
  */
 
-import type { ClassKnowledgeGraphView, ClassOverviewView } from "@/lib/types";
-import type { KGXEdge, KGXGraph, KGXHost, KGXNode, KGXNodeType, KGXPanelSection } from "./types";
+import type {
+  ClassKnowledgeGraphView,
+  ClassOverviewView,
+  LearnerKnowledgeGraphView,
+} from "@/lib/types";
+import type {
+  KGXAction,
+  KGXEdge,
+  KGXGraph,
+  KGXHost,
+  KGXNode,
+  KGXNodeType,
+  KGXPanelSection,
+} from "./types";
 
 // ── Class Intelligence — class aggregates over the topic graph ────────────
 
@@ -185,8 +197,16 @@ const BAND_LABEL: Record<string, string> = {
  * taught, dashed grey = not yet taught, ringless = no coverage recorded);
  * the panel shows the §13.3 distribution so a polarized class cannot hide
  * behind its mean.
+ *
+ * TFA-07: `opts.onInspectNode` attaches the drill chain's first leg as a
+ * node action — "Affected students" — that the surface wires to its §13.5
+ * detail panel. The graph stays a pure projection; the action only hands
+ * the node id to the host surface.
  */
-export function classKnowledgeGraphHost(view: ClassKnowledgeGraphView): KGXHost {
+export function classKnowledgeGraphHost(
+  view: ClassKnowledgeGraphView,
+  opts?: { onInspectNode?: (nodeId: string) => void },
+): KGXHost {
   const wireById = new Map(view.nodes.map((n) => [n.id, n]));
   // the wire carries the tree as childIds — derive parent pointers once
   const parentOf = new Map<string, string>();
@@ -365,5 +385,168 @@ export function classKnowledgeGraphHost(view: ClassKnowledgeGraphView): KGXHost 
     },
     caption:
       "Member-only aggregation: only this class's enrolled students count — independent students never enter these numbers. Grey/dashed means not yet taught (a teaching-coverage state, NOT a mastery state).",
+    ...(opts?.onInspectNode
+      ? {
+          nodeActions: (node: KGXNode): KGXAction[] => [
+            {
+              id: "affected-students",
+              label: "Affected students",
+              onSelect: () => opts.onInspectNode!(node.id),
+            },
+          ],
+        }
+      : {}),
+  };
+}
+
+// ── TFA-07 §14 — the teacher lens over ONE student's subject graph ────────
+
+/**
+ * The F-034 LearnerKnowledgeGraphView verbatim into KGX — the SAME read
+ * model the student themselves sees, rendered by the SAME engine every
+ * other surface uses (the teacher view deliberately adds no second graph
+ * implementation and no second set of state semantics: raw BKT mastery,
+ * effective (decayed) mastery, the shared band vocabulary, review
+ * schedules, misconception estimates — all projections, nothing invented).
+ * The teacher context (whose graph, which class) is the host surface's
+ * business — the adapter only adapts.
+ */
+export function learnerKnowledgeGraphHost(view: LearnerKnowledgeGraphView): KGXHost {
+  const nodes: KGXNode[] = view.nodes.map((n) => ({
+    id: n.id,
+    type: KG_NODE_TYPE[n.type] ?? "CONCEPT",
+    title: n.title,
+    code: n.code,
+    badge: n.band ? BAND_LABEL[n.band] ?? n.band : null,
+    mastery: n.mastery,
+    effectiveMastery: n.effectiveMastery,
+    attempts: n.attempts,
+    correct: n.correctCount,
+    reviewDue: n.reviewDueAt != null,
+    reviewReason: n.reviewReason,
+    misconception:
+      n.misconceptionProbability != null
+        ? { probability: n.misconceptionProbability, active: n.misconceptionActive === true }
+        : null,
+    detail: n.description,
+  }));
+
+  // prerequisite edges verbatim; endpoints must exist (the engine invariant
+  // the student-KG service also enforces — skip, never guess)
+  const present = new Set(nodes.map((n) => n.id));
+  const edges: KGXEdge[] = view.prerequisiteEdges
+    .filter((e) => present.has(e.prerequisiteId) && present.has(e.nodeId))
+    .map((e) => ({
+      from: e.prerequisiteId,
+      to: e.nodeId,
+      kind: "pre" as const,
+      label: "REQUIRES_PREREQUISITE",
+    }));
+
+  return {
+    graph: { nodes, edges },
+    lenses: [
+      {
+        id: "mastery",
+        label: "Mastery",
+        metric: "mastery",
+        hint: "ring = stored BKT mastery band (the student's own state)",
+      },
+      {
+        id: "effective",
+        label: "After decay",
+        metric: "effective",
+        hint: "ring = effective mastery after Ebbinghaus decay, as of the read",
+      },
+      {
+        id: "review",
+        label: "Review due",
+        metric: "review",
+        hint: "pulsing = a review is scheduled (Ebbinghaus queue)",
+      },
+      {
+        id: "misconception",
+        label: "Misconceptions",
+        metric: "misconception",
+        hint: "red = nodes where this student carries an active misconception",
+      },
+      {
+        id: "activity",
+        label: "Activity",
+        metric: "activity",
+        hint: "badge = attempts, tint = correctness",
+      },
+      {
+        id: "structure",
+        label: "Curriculum",
+        metric: "structure",
+        hint: "the plain paper graph",
+      },
+    ],
+    defaultLensId: "mastery",
+    panelSections: (n) => {
+      const node = view.nodes.find((x) => x.id === n.id);
+      if (!node) return [];
+      const sections: KGXPanelSection[] = [];
+      if (node.mastery != null) {
+        sections.push({
+          title: "This student's state",
+          rows: [
+            {
+              label: "Mastery (BKT)",
+              value: `${Math.round((node.mastery ?? 0) * 100)}%`,
+            },
+            {
+              label: "After decay",
+              value:
+                node.effectiveMastery == null
+                  ? "—"
+                  : `${Math.round(node.effectiveMastery * 100)}%`,
+            },
+            { label: "Band", value: node.band ? BAND_LABEL[node.band] ?? node.band : "—" },
+            {
+              label: "Attempts",
+              value:
+                node.attempts == null
+                  ? "none yet"
+                  : `${node.attempts} (${node.correctCount ?? 0} correct)`,
+            },
+          ],
+          note: "The same numbers the student's own graph shows them — the teacher lens adds no new state.",
+        });
+      } else {
+        sections.push({
+          title: "This student's state",
+          note: "No evidence on this node yet — honestly unmeasured, never zero.",
+        });
+      }
+      if (node.misconceptionProbability != null) {
+        sections.push({
+          title: "Misconception estimate",
+          rows: [
+            {
+              label: "Probability",
+              value: `${Math.round(node.misconceptionProbability * 100)}%`,
+            },
+            {
+              label: "Active",
+              value: node.misconceptionActive ? "yes — address this first" : "not active",
+            },
+          ],
+        });
+      }
+      if (node.reviewDueAt != null) {
+        sections.push({
+          title: "Review schedule",
+          rows: [
+            { label: "Due at", value: node.reviewDueAt },
+            { label: "Reason", value: node.reviewReason ?? "—" },
+          ],
+        });
+      }
+      return sections;
+    },
+    caption:
+      "Teacher view — the same graph the student sees (F-034 read model, no second implementation). Unmeasured nodes are honest absences, never zeros.",
   };
 }
