@@ -3281,10 +3281,11 @@ function kgApplicabilityChips(a){
     window.__KG_STATUS='ready';
     // counts reflect the RENDERED graph (passthrough subtopics collapsed):
     // nodes = subject + sections + remaining subs + every spec point;
-    // edges = subject->sec + sec->sub + node->point (hier only, no assess)
+    // edges = hier + semantic (pre/rel from the payload) actually in state
+    // (assess edges are stripped by __KG_APPLY, counted out — hence state.edges.length)
     const nSubs=Object.values(subtopics).reduce((a,b)=>a+b.length,0);
     done={type:'syllabai-kg:ready',payload:{course:slug,counts:{nodes:1+Object.keys(sections).length+nSubs+kg.points.length,
-      edges:Object.keys(sections).length+nSubs+kg.points.length,specPoints:kg.points.length}}};
+      edges:state.edges.length,specPoints:kg.points.length}}};
     post(done.type,done.payload);
   }catch(err){
     window.__KG_STATUS='error: '+String(err&&err.message||err);
