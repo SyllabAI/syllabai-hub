@@ -3242,8 +3242,8 @@ function kgApplicabilityChips(a){
     // 3. rebuild through the renderer's own pipeline
     makeBase();
     // 4. reset view state makeBase does not clear (mirrors the reset button)
-    state.relationFilters=new Set(['hier','assess']);
-    document.querySelectorAll('#relationBar [data-rel]').forEach(x=>x.checked=(x.dataset.rel==='hier'||x.dataset.rel==='assess'));
+    state.relationFilters=new Set(['hier','assess','pre']);
+    document.querySelectorAll('#relationBar [data-rel]').forEach(x=>x.checked=(x.dataset.rel==='hier'||x.dataset.rel==='assess'||x.dataset.rel==='pre'));
     state.multiSelect.clear();state.pinned.clear();state.savedViews.length=0;
     state.connectedOnly=false;state.connectedSet=null;state.connectedRoot=null;
     state.trace={active:false,pending:false,from:null,to:null,nodes:[]};
