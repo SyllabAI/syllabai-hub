@@ -87,6 +87,8 @@ Every `PART_OF` anchor implicated by #4–#8 carries a verbatim quote matching t
 
 None of the three touches `validatedPrerequisiteEdges` or the concept-graph store.
 
+**Implemented (trace `1a0f5ade2cba729d`):** a hybrid of 1+2, as a single mechanical rule in `kg_export.py` v1.4 — a reversed pair is suppressed when its in-order sibling is also projected (covers #4, #5), else demoted to the `rel` tier (covers #6, #7, #8). Applied uniformly, the rule also caught the gate's KEEP items that project reversed: `1.3→1.2` (#1 → `rel`) and, once the practical retarget made `1.10→1.7C` resolvable (#3 → `rel`), while `1.10→1.5C` (#2) suppressed via its drawn sibling `1.5C→1.10`. All eight §5.4 anomalies thus leave the `pre` tier under one rule; final dispositions in `docs/TC11_BATCH5_MANIFEST.md` §3.
+
 ## 6. Batch-5 boundary after this pass
 
 - Authoring eligibility of #4–#8: **0 of 5** (#4, #5, #7 artifacts; #6, #8 spirals → KEEP AS DERIVED). The HOLD gate closes with dispositions, not with promotions.
