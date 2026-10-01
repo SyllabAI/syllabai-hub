@@ -55,10 +55,6 @@ const BUILDS: Record<BuildKey, BuildInfo> = {
 const BUILD_KEYS: BuildKey[] = ["v75", "v76", "v77"];
 
 const DATA_URL = "/kg/data/canonicalKG.edexcel-chemistry-4ch1.json";
-const PLAN_URL =
-  "https://github.com/SyllabAI/syllabai-hub/blob/main/docs/KNOWLEDGE_GRAPH_VISUALIZER_INTEGRATION.md";
-const SOURCE_URL =
-  "https://github.com/nawaf-al-hussain/FileUpload/tree/main/syllabai-openhuman-edexcel-chemistry-kg";
 
 interface KgCounts {
   nodes: number;
@@ -217,18 +213,13 @@ export function GraphExplorerClient() {
                 </li>
               ))}
             </ul>
-            <div className="flex flex-wrap gap-x-3 gap-y-1">
-              <Button asChild size="sm" variant="secondary" className="h-7 text-xs">
-                <Link href={PLAN_URL} target="_blank">
-                  Integration plan
-                </Link>
-              </Button>
-              <Button asChild size="sm" variant="ghost" className="h-7 text-xs">
-                <Link href={SOURCE_URL} target="_blank">
-                  Source builds
-                </Link>
-              </Button>
-            </div>
+            {/* operator 2026-10-01 (trace 1a0f58b27d0572ed) "remaining
+                outbound-link removals" — the Integration-plan and
+                Source-builds GitHub hops are gone (HUB-OUTBOUND-FINAL),
+                the same treatment as HUB-NOTES-SOURCE: the plan path stays
+                readable in the footnote below as plain text, the builds'
+                provenance is the prose above, and nothing on this surface
+                leaves the site anymore. */}
           </PopoverContent>
         </Popover>
 
