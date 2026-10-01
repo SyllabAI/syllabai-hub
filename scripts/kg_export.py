@@ -103,8 +103,29 @@ class ExportError(Exception):
     pass
 
 
+def point_ord_key(pid: str) -> tuple:
+    """Listing-order key for a point id ('1.5' < '1.5C' < '1.6'). Mirrors the
+    per-section ord gate in export_course (multi-level codes and letter
+    suffixes order naturally); used by the reversed-pair governance below."""
+    parts = pid.split(".")
+    nums = []
+    letter = ""
+    for i, comp in enumerate(parts):
+        m = re.match(r"^(\d+)([A-Za-z]*)$", comp)
+        if m:
+            nums.append(float(m.group(1)))
+            letter = m.group(2) or letter
+        else:
+            try:
+                nums.append(float(comp.rstrip("ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                                             "abcdefghijklmnopqrstuvwxyz")))
+            except ValueError:
+                nums.append(0.0)
+    return tuple(nums) + (letter,)
+
+
 def load_prerequisites(slug: str, qual_code: str, seen_pid: dict) -> tuple[list, dict, list[str]]:
-    """v1.3: project the committed prerequisite snapshot (content/<slug>/
+    """v1.4: project the committed prerequisite snapshot (content/<slug>/
     prerequisites.json) onto the visualizer's spec-point graph.
 
     Two provenance tiers, both data-backed, neither invented here:
@@ -116,11 +137,22 @@ def load_prerequisites(slug: str, qual_code: str, seen_pid: dict) -> tuple[list,
       - inferred-prototype: the hand-curated SME tuples transcribed verbatim
         from the canonicalKG prototype artifact.
 
-    Endpoints that resolve outside the exported point set (e.g. required
-    practicals, which the curriculum bundle does not carry as points) are
-    skipped and counted — never silently dropped: the counts land in
-    meta.prerequisites. Courses without a snapshot keep the exact v1.2
-    payload shape.
+    Endpoints that resolve outside the exported point set are skipped and
+    counted — never silently dropped: the counts land in meta.prerequisites
+    (the historical case was the ad-hoc 4CH1-PR-01..11 practical codes, since
+    retargeted to their real spec statements in the snapshot mirror; the
+    curriculum carries practicals as ordinary spec points). Courses without a
+    snapshot keep the exact v1.2 payload shape.
+
+    Reversed-pair governance (operator pass 1a0f589530363705): multi-anchored
+    concepts cross-project into SP pairs whose prerequisite sorts after its
+    dependent — against the spec listing order. When the opposite direction is
+    also projected (the dual-anchor cross-product's in-order sibling), the
+    reversed copy is redundant and is suppressed (counted). A reversed pair
+    with no in-order sibling is a genuine spiral relation (e.g. hydrated-salt
+    deduction reusing the later-taught empirical-formula method) — it is
+    DEMOTED to the related ('rel') tier, never drawn as a prerequisite: real
+    relation, wrong direction for an authoritative in-order record.
 
     Returns (extra pre/rel edges, meta.prerequisites block, validated pair keys).
     Edge direction follows the visualizer convention: [prerequisite, dependent].
@@ -176,6 +208,20 @@ def load_prerequisites(slug: str, qual_code: str, seen_pid: dict) -> tuple[list,
                     "provenance": e.get("provenance"),
                 }
 
+    # reversed-pair governance — see the docstring. Runs before the inferred
+    # tier is read so a demoted/suppressed pair can never re-enter as inferred.
+    suppressed_mutual = 0
+    demoted: dict[tuple[str, str], dict] = {}
+    for pair in list(validated):
+        p, d = pair
+        if point_ord_key(p) < point_ord_key(d):
+            continue                      # in-order — drawn as prerequisite
+        if (d, p) in validated:
+            del validated[pair]           # redundant with its in-order sibling
+            suppressed_mutual += 1
+        else:
+            demoted[pair] = validated.pop(pair)   # genuine spiral -> 'rel'
+
     def mapped_pairs(tuples: list) -> list[tuple[str, str]]:
         out = []
         for a, b in tuples:
@@ -187,7 +233,7 @@ def load_prerequisites(slug: str, qual_code: str, seen_pid: dict) -> tuple[list,
         return out
 
     inferred = [pair for pair in mapped_pairs(snap.get("inferredPrototypePre", []))
-                if pair not in validated]
+                if pair not in validated and pair not in demoted]
     related = mapped_pairs(snap.get("inferredPrototypeRel", []))
 
     extra: list[list] = []
@@ -195,6 +241,8 @@ def load_prerequisites(slug: str, qual_code: str, seen_pid: dict) -> tuple[list,
         extra.append(["p:" + p, "p:" + d, "pre"])
     for p, d in sorted(inferred):
         extra.append(["p:" + p, "p:" + d, "pre"])
+    for p, d in sorted(demoted):
+        extra.append(["p:" + p, "p:" + d, "rel"])
     for a, b in sorted(related):
         extra.append(["p:" + a, "p:" + b, "rel"])
 
@@ -202,19 +250,33 @@ def load_prerequisites(slug: str, qual_code: str, seen_pid: dict) -> tuple[list,
         "source": snap.get("source"),
         "snapshotGeneratedUtc": snap.get("generatedUtc"),
         "curriculumCode": snap.get("curriculumCode"),
+        **({"practicalEndpointRetarget": snap["practicalEndpointRetarget"]}
+           if "practicalEndpointRetarget" in snap else {}),
         "tiers": {
             "operatorValidated": len(validated),
+            "demotedReversed": len(demoted),
             "inferredPrototype": len(inferred),
             "relatedInferredPrototype": len(related),
+        },
+        "reversedGovernance": {
+            "rule": ("a projected pair that sorts against spec order is suppressed "
+                     "when its in-order sibling is also projected (dual-anchor "
+                     "cross-product), else demoted to the related tier — operator "
+                     "pass 1a0f589530363705, docs/TC11_ANCHOR_EVIDENCE_PASS.md"),
+            "suppressedMutual": suppressed_mutual,
+            "demotedPairs": [{"pair": "p:" + p + "|p:" + d, "via": meta["via"]}
+                             for (p, d), meta in sorted(demoted.items())],
         },
         "skipped": skipped,
         "skippedUnmappedAnchors": unmapped_anchors,
         "projection": ("concept endpoints resolve through the concept->spec-point "
                        "anchor map; validated pairs override inferred pairs; "
-                       "[prerequisite, dependent] direction"),
+                       "reversed cross-product pairs suppressed or demoted to "
+                       "rel; [prerequisite, dependent] direction"),
     }
     # keys match the bundle's edge tuples verbatim ('p:X|p:Y') so the renderer
-    # fork can tier-check any edge with a direct set lookup
+    # fork can tier-check any edge with a direct set lookup — post-governance:
+    # only pairs still drawn as 'pre' carry the validated label
     validated_keys = sorted("p:" + p + "|" + "p:" + d for p, d in validated)
     return extra, meta_block, validated_keys
 
@@ -464,15 +526,18 @@ def export_course(slug: str, registry: dict[str, dict]) -> dict:
             "curriculumCode": qual_code,
             "syllabusVersion": cur.get("syllabusVersion"),
             "source": f"content/{slug}/curriculum.json (curriculum truth, RULE_DERIVED)",
-            "exporter": ("scripts/kg_export.py v1.3 (prerequisite projection + "
-                         "applicability passthrough)"
+            "exporter": ("scripts/kg_export.py v1.4 (prerequisite projection + "
+                         "reversed-pair governance + applicability passthrough)"
                          if unit_layer else
-                         "scripts/kg_export.py v1.3 (prerequisite projection)"),
+                         "scripts/kg_export.py v1.4 (prerequisite projection + "
+                         "reversed-pair governance)"),
             "generatedUtc": dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "notes": ("v1.3: hier edges from curriculum truth; prerequisite/related "
+            "notes": ("v1.4: hier edges from curriculum truth; prerequisite/related "
                       "edges from the committed T-C11 prerequisite snapshot where "
                       "one exists (operator-validated projection + inferred-prototype "
-                      "tier, provenance in meta.prerequisites) — nothing is invented. "
+                      "tier, provenance in meta.prerequisites; reversed cross-product "
+                      "pairs suppressed or demoted to rel per the anchor-evidence "
+                      "pass) — nothing is invented. "
                       "SpecificationPoint nodes "
                       "and points carry the canonical applicability object "
                       "(printed paper/unit/tier/coursework homes, T-KG-16) "
