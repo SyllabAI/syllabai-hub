@@ -555,7 +555,9 @@ function QuestionBody({
   const [scoreDraft, setScoreDraft] = useState<string>("");
   const [helpOpen, setHelpOpen] = useState(false);
   const anchorSpec = question.parts.flatMap((p) => p.specPointCodes)[0] ?? null;
-  const helpHref = `/tutor?q=${encodeURIComponent(
+  // V53 (ADR-030): the deep link carries the course so the tutor opens
+  // SCOPED — the ask resolves through the hub registry's curriculumCode
+  const helpHref = `/tutor?course=${encodeURIComponent(course)}&q=${encodeURIComponent(
     `Help me with this exam question: ${firstLine(question)} — walk me through how to answer it`,
   )}${anchorSpec ? `&spec=${encodeURIComponent(anchorSpec)}` : ""}`;
   const recorded = progress.selfScores[question.id];
@@ -995,7 +997,7 @@ function TypedAnswerWorkspace({
             {/* new tab: the question (and the draft) stays open while the
                 tutor conversation runs alongside */}
             <a
-              href={`/tutor?q=${encodeURIComponent(
+              href={`/tutor?course=${encodeURIComponent(course)}&q=${encodeURIComponent(
                 `I answered: "${text.slice(0, 300)}" — how could my answer to this question be improved? ${firstLine(question)}`,
               )}`}
               target="_blank"

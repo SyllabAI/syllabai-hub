@@ -142,7 +142,63 @@ const getSidebarPref = () => {
   }
 };
 
-export function TutorChat() {
+/**
+ * V53 (ADR-030) course gate: the tutor is honestly unavailable here. A
+ * course whose registry row carries no `curriculumCode` has NO serving
+ * corpus on core, and an unknown slug never did — gating is the feature,
+ * never a silent cross-corpus fallback (a chemistry answer inside a
+ * physics chat is worse than an honest "not yet").
+ */
+export function TutorCourseGate({
+  label,
+  reason,
+}: {
+  label: string;
+  reason: "unknown" | "unmapped";
+}) {
+  const unknown = reason === "unknown";
+  return (
+    <div className="flex h-[calc(100dvh-3.5rem)] items-center justify-center px-4">
+      <div className="w-full max-w-md rounded-xl border bg-card p-6 text-center shadow-sm">
+        <span
+          className="mx-auto flex size-11 items-center justify-center rounded-full bg-muted text-muted-foreground"
+          aria-hidden
+        >
+          <GraduationCap className="size-5" />
+        </span>
+        <h1 className="mt-3 text-base font-semibold">
+          {unknown ? "Course not found" : `Tutor not yet available for ${label}`}
+        </h1>
+        <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
+          {unknown
+            ? `No course is registered under "${label}" — check the link or pick the course from its hub.`
+            : `The ${label} tutor is not connected to a validated serving corpus yet. SyllabAI never answers across courses, so there is nothing to chat with here — the gate is honest, not a fallback to another course's material.`}
+        </p>
+        <div className="mt-4 flex justify-center gap-2">
+          <Button asChild size="sm" variant="outline">
+            <Link href="/">Back to the hub</Link>
+          </Button>
+          <Button asChild size="sm" variant="ghost">
+            <Link href="/tutor">Open the pilot tutor</Link>
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function TutorChat({
+  courseSlug = null,
+  courseLabel = null,
+  courseRef = null,
+}: {
+  /** V53 (ADR-030): the course this tutor instance is scoped to, resolved
+   *  by the server page from the registry. null = the legacy course-less
+   *  entry (pilot behavior byte-identical). */
+  courseSlug?: string | null;
+  courseLabel?: string | null;
+  courseRef?: string | null;
+} = {}) {
   const { threads, activeId } = useThreadsSnapshot();
   const activeThread = threads.find((t) => t.id === activeId) ?? null;
   const messages = activeThread?.messages ?? [];
@@ -171,6 +227,10 @@ export function TutorChat() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortsRef = useRef<Map<string, AbortController>>(new Map());
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** V53: threads created inside this tutor instance carry the course. */
+  const courseContext =
+    courseSlug && courseLabel ? { slug: courseSlug, label: courseLabel } : null;
 
   // anchored entry points: /tutor?q=…&spec=4CH1-1.1 ("Ask about this" and
   // "Question help" across the Learning Hub). The spec code is appended to
@@ -267,6 +327,9 @@ export function TutorChat() {
             question: `${trimmed}${anchorSuffix}`.slice(0, QUESTION_CAP),
             history,
             ...(sessionId ? { sessionId } : {}),
+            // V53: the course scope rides EVERY ask — core resolves it
+            // fail-closed and refuses cross-course asks deterministically
+            ...(courseRef ? { courseRef } : {}),
           }),
           signal: controller.signal,
         });
@@ -353,14 +416,14 @@ export function TutorChat() {
         if (getToken()) void refreshConversations();
       }
     },
-    [anchorSuffix, scrollToBottom, refreshConversations],
+    [anchorSuffix, courseRef, scrollToBottom, refreshConversations],
   );
 
   // boot an anchored question from the Learning Hub deep links
   useEffect(() => {
     if (bootQuestion && !bootedRef.current) {
       bootedRef.current = true;
-      const thread = ensureActiveThread();
+      const thread = ensureActiveThread(courseContext);
       void ask(thread.id, bootQuestion);
     }
     // one-shot deep-link boot: `ask` is deliberately absent — the guard ref
@@ -463,7 +526,7 @@ export function TutorChat() {
   const send = (override?: string) => {
     const q = (override ?? input).trim();
     if (!q) return;
-    const thread = activeThread ?? createThread();
+    const thread = activeThread ?? createThread("New chat", courseContext);
     void ask(thread.id, q);
   };
 
@@ -519,7 +582,7 @@ export function TutorChat() {
   };
 
   const newChat = () => {
-    const t = createThread();
+    const t = createThread("New chat", courseContext);
     setActiveThread(t.id);
     setMobileNav(false);
   };
@@ -542,6 +605,9 @@ export function TutorChat() {
           conversations={conversations}
           conversationsError={conversationsError}
           activeSessionId={activeThread?.sessionId ?? null}
+          activeCourseSlug={courseSlug}
+          activeCourseLabel={courseLabel}
+          activeCourseRef={courseRef}
           openingId={openingId}
           onOpenConversation={openServerConversation}
           onDeleteConversation={setDeleteTarget}
@@ -562,6 +628,9 @@ export function TutorChat() {
               conversations={conversations}
               conversationsError={conversationsError}
               activeSessionId={activeThread?.sessionId ?? null}
+              activeCourseSlug={courseSlug}
+              activeCourseLabel={courseLabel}
+              activeCourseRef={courseRef}
               openingId={openingId}
               onOpenConversation={(s) => {
                 void openServerConversation(s);
@@ -617,7 +686,7 @@ export function TutorChat() {
           </Badge>
           <Badge variant="outline" className="hidden gap-1 text-[10px] font-normal sm:inline-flex">
             <Database className="size-3" aria-hidden />
-            4CH1 corpus
+            {courseLabel ? `${courseLabel} corpus` : "4CH1 corpus"}
           </Badge>
 
           {/* the reference's New chat action (itutor.study header, verbatim
@@ -768,8 +837,8 @@ export function TutorChat() {
               onStop={() => abortsRef.current.get(activeId ?? "")?.abort()}
             />
             <p className="text-center text-[10px] leading-relaxed text-muted-foreground">
-              Answers cite the 4CH1 corpus and can make mistakes — check citations before an exam.
-              By asking you agree to the{" "}
+              Answers cite the {courseLabel ? `${courseLabel} corpus` : "4CH1 corpus"} and can make
+              mistakes — check citations before an exam. By asking you agree to the{" "}
               <Link href="/" className="underline underline-offset-2 hover:text-foreground">
                 study-use terms
               </Link>

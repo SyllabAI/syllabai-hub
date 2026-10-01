@@ -508,6 +508,10 @@ export interface TutorSessionView {
   sessionId: string;
   createdAt: string;
   lastActiveAt: string;
+  /** V53 (ADR-030): the course this chat serves, as core stored it — the
+   *  server-confirmed truth the sidebar chips render (null = course-less
+   *  history). Never parsed or inferred by the hub. */
+  courseRef?: string | null;
   turns: TutorSessionTurnView[];
 }
 
@@ -527,6 +531,9 @@ export interface TutorSessionSummary {
   sessionId: string;
   createdAt: string;
   lastActiveAt: string;
+  /** V53 (ADR-030): the course this chat serves (server truth; null =
+   *  course-less history). */
+  courseRef?: string | null;
   turnCount: number;
   title: string | null;
 }

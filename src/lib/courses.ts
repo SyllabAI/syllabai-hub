@@ -49,6 +49,13 @@ const CourseRegistry = z.object({
       label: z.string().optional(),
       code: z.string(),
       status: z.enum(["pilot", "full", "registered"]),
+      /** V53 (ADR-030): the core `curriculum_versions.code` the tutor is
+       *  scoped by for this course — EXPLICIT hub-maintained data, never
+       *  derived (the Edexcel official code `4CH1` and the syllabus-era
+       *  code `4CH1-2017` have no derivable rule between them). Absent =
+       *  the tutor is not yet available for this course; the /tutor surface
+       *  gates honestly instead of falling back to another course's corpus. */
+      curriculumCode: z.string().optional(),
     }),
   ),
 });
@@ -60,6 +67,9 @@ export interface CourseMeta {
   label: string;
   code: string;
   status: "pilot" | "full" | "registered";
+  /** V53 (ADR-030): hub-maintained bridge to core's curriculum registry —
+   *  absent = tutor honestly gated for this course (no cross-corpus fallback). */
+  curriculumCode?: string;
   /** true when a validated content bundle is committed under content/<slug>/ */
   hasBundle: boolean;
 }
