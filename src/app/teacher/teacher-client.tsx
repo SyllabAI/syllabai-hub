@@ -382,14 +382,12 @@ export function TeacherClient({ courses }: { courses: TeacherCourseLite[] }) {
               </>
             )}
             Full plan in{" "}
-            <a
-              href="https://github.com/SyllabAI/syllabai-hub/blob/main/docs/TEACHER_MODE_PLAN.md"
-              target="_blank"
-              rel="noreferrer"
-              className="font-medium text-foreground underline underline-offset-2"
-            >
-              docs/TEACHER_MODE_PLAN.md
-            </a>
+            {/* operator 2026-10-01 (trace 1a0f58b27d0572ed) "remaining
+                outbound-link removals" — the GitHub hop is gone
+                (HUB-OUTBOUND-FINAL): the doc path stays as plain text,
+                label kept, hop dropped, same treatment as
+                HUB-NOTES-SOURCE. */}
+            <span className="font-medium text-foreground">docs/TEACHER_MODE_PLAN.md</span>
             .
           </span>
         </div>
