@@ -53,6 +53,9 @@ export function buildCorpusIndex(
   notes: RevisionNote[],
   topics: ExamQuestionTopic[],
   graph: ConceptGraph,
+  /** the owning course slug — threaded into graph citations so they open the
+   *  RIGHT course's graph (the KG page never silently substitutes the pilot) */
+  course?: string,
 ): CorpusIndex {
   const segments: IndexedSegment[] = [];
 
@@ -98,7 +101,7 @@ export function buildCorpusIndex(
         specPointCode: sp.specPoints[0] ?? null,
         text: [sp.summary ?? "", ...sp.aliases].filter(Boolean).join(" · "),
         tokens: new Map(),
-        url: `/knowledge-graph?node=${encodeURIComponent(sp.code)}`,
+        url: `/knowledge-graph?${course ? `course=${encodeURIComponent(course)}&` : ""}node=${encodeURIComponent(sp.code)}`,
       });
     }
   }

@@ -44,7 +44,10 @@ async function rateCurrent(page: import("@playwright/test").Page, rating: "Still
  * out visitor can actually reach it — the honest surface.
  */
 async function openLearnerDrawer(page: import("@playwright/test").Page) {
-  await page.goto("/knowledge-graph");
+  // the KG page's param-less landing is the course picker (operator report
+  // 1a0f88ea8a493bad: no entry may silently render the pilot's graph) — the
+  // drawer lives in the course view, so pin the graph this opens
+  await page.goto("/knowledge-graph?course=igcse-chemistry-19");
   await page.locator('button[aria-haspopup="dialog"]').first().click();
 }
 

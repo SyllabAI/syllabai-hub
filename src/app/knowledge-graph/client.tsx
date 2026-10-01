@@ -6,9 +6,16 @@
  * A data-decoupled loader build (public/kg/openhuman-course-explorer.html,
  * forked from the byte-faithful v77 renderer) renders ONE course's canonicalKG
  * JSON — the course this page was opened for (?course=<slug>, deep-linked from
- * that course's page; the pilot by default). There is deliberately NO course
- * switcher here: the graph is a property of the subject you selected, not a
+ * that course's page). Inside a course's graph there is deliberately NO course
+ * switcher: the graph is a property of the subject you selected, not a
  * browsing surface (operator decision, trace 1a0e8568eb6bb545).
+ *
+ * The entry points that arrive WITHOUT a course (top-nav, home card, stale
+ * citations) never silently render the pilot's graph — with 49 published
+ * graphs that read as "every course shows chemistry" (operator report,
+ * trace 1a0f88ea8a493bad). They land on an honest picker instead, and an
+ * unknown slug says so instead of falling back. The picker is the ENTRY state
+ * only; the graph view itself stays switcher-free per the operator decision.
  *
  * The iframe reports back over postMessage (syllabai-kg:ready / :error), so
  * the counts chip shows the live data path. Learner state is pushed IN over
@@ -41,6 +48,9 @@ interface CourseLite {
   subject: string;
   code: string;
   level: string;
+  /** true when public/kg/data/<slug>.json exists — the picker lists exactly
+   *  what will load, nothing aspirational (server-computed in page.tsx) */
+  hasGraph?: boolean;
 }
 
 interface KgCounts {
@@ -52,30 +62,122 @@ interface KgCounts {
 const DEFAULT_COURSE = PILOT_COURSE_SLUG; // the 4CH1 pilot — richest cross-checked data
 const PROTO_URL = "/graph-explorer";
 
+/**
+ * Entry: resolve the course from the URL. A valid ?course=<slug> renders the
+ * single-course chrome (key={course} remounts everything on change); a
+ * missing or unknown course renders the landing picker — never another
+ * course's graph.
+ */
 export function KnowledgeGraphClient({ courses }: { courses: CourseLite[] }) {
   const searchParams = useSearchParams();
-  // derived, not state: the course is a property of the URL (deep links stay
-  // reactive when a course page navigates here with a different ?course=)
-  const course = searchParams.get("course") ?? DEFAULT_COURSE;
+  const requested = searchParams.get("course");
+  const course =
+    requested && courses.some((c) => c.slug === requested) ? requested : null;
+  if (!course) {
+    return <CourseGraphLanding courses={courses} requested={requested} />;
+  }
+  return <KnowledgeGraphCourse key={course} course={course} courses={courses} />;
+}
+
+/**
+ * The honest entry state: every published graph, grouped by qualification
+ * level. The registry is the single source of course identity; hasGraph
+ * (server fs check) is the single source of what actually loads.
+ */
+function CourseGraphLanding({
+  courses,
+  requested,
+}: {
+  courses: CourseLite[];
+  requested: string | null;
+}) {
+  const graphed = courses
+    .filter((c) => c.hasGraph)
+    .sort((a, b) => a.subject.localeCompare(b.subject) || a.label.localeCompare(b.label));
+  const byLevel = new Map<string, CourseLite[]>();
+  for (const c of graphed) {
+    const arr = byLevel.get(c.level) ?? [];
+    arr.push(c);
+    byLevel.set(c.level, arr);
+  }
+  const levels = [...byLevel.keys()].sort((a, b) =>
+    a === b ? 0 : a === "IGCSE" ? -1 : b === "IGCSE" ? 1 : a.localeCompare(b),
+  );
+  return (
+    <div className="flex min-h-[calc(100dvh-7.5rem)] flex-col overflow-y-auto bg-background px-6 py-10">
+      <div className="mx-auto w-full max-w-3xl">
+        <div className="flex items-center gap-2">
+          <Network className="size-4 text-primary" aria-hidden />
+          <h1 className="text-sm font-semibold tracking-tight">Knowledge graphs</h1>
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">
+          One specification graph per course, exported from its curriculum bundle
+          (scripts/kg_export.py). Open a graph here or from that course&apos;s page.
+        </p>
+        {requested && (
+          <Alert className="mt-4">
+            <AlertTitle>No graph for &ldquo;{requested}&rdquo;</AlertTitle>
+            <AlertDescription>
+              That course is not in the registry (check for a typo) — pick one of
+              the published graphs below.
+            </AlertDescription>
+          </Alert>
+        )}
+        {levels.map((level) => (
+          <section key={level} className="mt-6">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              {level}
+            </h2>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {byLevel.get(level)!.map((c) => (
+                <Link
+                  key={c.slug}
+                  href={`/knowledge-graph?course=${encodeURIComponent(c.slug)}`}
+                  className="group flex items-center justify-between gap-2 rounded-md border px-3 py-2.5 transition-colors hover:bg-muted"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium">
+                      {c.label}
+                    </span>
+                    {/* the slug disambiguates same-subject variants (Accounting
+                        paper variants, Maths Pure 1-4, modular units) without
+                        inventing display names the registry does not carry */}
+                    <span className="block truncate font-mono text-[10px] text-muted-foreground">
+                      {c.slug}
+                    </span>
+                  </span>
+                  <Badge
+                    variant="outline"
+                    className="shrink-0 font-mono text-[10px]"
+                  >
+                    {c.code}
+                  </Badge>
+                </Link>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function KnowledgeGraphCourse({
+  course,
+  courses,
+}: {
+  course: string;
+  courses: CourseLite[];
+}) {
   const [ready, setReady] = useState(false);
   const [counts, setCounts] = useState<KgCounts | null>(null);
   const [error, setError] = useState<string | null>(null);
   const shellRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
 
-  // invalid or missing deep links fall back to the pilot course
-  const activeCourse = courses.some((c) => c.slug === course) ? course : DEFAULT_COURSE;
-
-  // reset loader-chrome state when the course changes during render (react.dev
-  // — "adjusting state when a prop changes"); key={activeCourse} remounts the
-  // iframe, whose loader re-posts its status
-  const [prevCourse, setPrevCourse] = useState(activeCourse);
-  if (prevCourse !== activeCourse) {
-    setPrevCourse(activeCourse);
-    setReady(false);
-    setCounts(null);
-    setError(null);
-  }
+  // the course arrives pre-validated by the entry (registry match) — the
+  // invalid-or-missing case never reaches this component
+  const activeCourse = course;
 
   // learner state (KG phases 1 + 2): the CORE model when the course is the
   // pilot and the learner is signed in (real attempts, real decay, real
