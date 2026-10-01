@@ -920,73 +920,73 @@
    "provenance": "t-c11:settled|pass:c11-pilot-pass-1|method:EXPLICIT_TEACH_SEQUENCE|validated_by:operator|date:2026-09-12"
   },
   {
-   "dependent": "4CH1-PR-01",
+   "dependent": "4CH1-1.7C",
    "prerequisite": "4CH1-CON-SATURATED-SOLUTION",
    "strength": null,
    "provenance": "t-c11:settled|pass:c11-s16-batch-1|method:USED_WITHOUT_RETEACHING|validated_by:operator|date:2026-09-12"
   },
   {
-   "dependent": "4CH1-PR-01",
+   "dependent": "4CH1-1.7C",
    "prerequisite": "4CH1-CON-SOLUBILITY",
    "strength": null,
    "provenance": "t-c11:settled|pass:c11-s16-batch-1|method:USED_WITHOUT_RETEACHING|validated_by:operator|date:2026-09-12"
   },
   {
-   "dependent": "4CH1-PR-02",
+   "dependent": "4CH1-1.13",
    "prerequisite": "4CH1-CON-CHROMATOGRAPHY",
    "strength": null,
    "provenance": "t-c11:settled|pass:c11-s16-batch-2|method:USED_WITHOUT_RETEACHING|validated_by:operator|date:2026-09-12"
   },
   {
-   "dependent": "4CH1-PR-02",
+   "dependent": "4CH1-1.13",
    "prerequisite": "4CH1-CON-RF-VALUE",
    "strength": null,
    "provenance": "t-c11:settled|pass:c11-s16-batch-2|method:USED_WITHOUT_RETEACHING|validated_by:operator|date:2026-09-12"
   },
   {
-   "dependent": "4CH1-PR-03",
+   "dependent": "4CH1-1.36",
    "prerequisite": "4CH1-CON-EXP-FORMULA-DEDUCTION",
    "strength": null,
    "provenance": "t-c11:settled|pass:c11-pilot-pass-1|method:USED_WITHOUT_RETEACHING|validated_by:operator|date:2026-09-12"
   },
   {
-   "dependent": "4CH1-PR-04",
+   "dependent": "4CH1-1.60C",
    "prerequisite": "4CH1-CON-AQUEOUS-DISCHARGE",
    "strength": null,
    "provenance": "t-c11:settled|pass:c11-s16-batch-3|method:USED_WITHOUT_RETEACHING|validated_by:operator|date:2026-09-13"
   },
   {
-   "dependent": "4CH1-PR-04",
+   "dependent": "4CH1-1.60C",
    "prerequisite": "4CH1-CON-ELECTROLYSIS",
    "strength": null,
    "provenance": "t-c11:settled|pass:c11-s16-batch-3|method:USED_WITHOUT_RETEACHING|validated_by:operator|date:2026-09-13"
   },
   {
-   "dependent": "4CH1-PR-09",
+   "dependent": "4CH1-3.8",
    "prerequisite": "4CH1-CON-CALORIMETRY",
    "strength": null,
    "provenance": "t-c11:settled|pass:c11-s16-batch-4|method:USED_WITHOUT_RETEACHING|validated_by:operator|date:2026-09-13"
   },
   {
-   "dependent": "4CH1-PR-10",
+   "dependent": "4CH1-3.15",
    "prerequisite": "4CH1-CON-RATE-EXPERIMENTS",
    "strength": null,
    "provenance": "t-c11:settled|pass:c11-s16-batch-4|method:USED_WITHOUT_RETEACHING|validated_by:operator|date:2026-09-13"
   },
   {
-   "dependent": "4CH1-PR-10",
+   "dependent": "4CH1-3.15",
    "prerequisite": "4CH1-CON-RATE-FACTORS",
    "strength": null,
    "provenance": "t-c11:settled|pass:c11-s16-batch-4|method:USED_WITHOUT_RETEACHING|validated_by:operator|date:2026-09-13"
   },
   {
-   "dependent": "4CH1-PR-11",
+   "dependent": "4CH1-3.16",
    "prerequisite": "4CH1-CON-CATALYST",
    "strength": null,
    "provenance": "t-c11:settled|pass:c11-s16-batch-4|method:USED_WITHOUT_RETEACHING|validated_by:operator|date:2026-09-13"
   },
   {
-   "dependent": "4CH1-PR-11",
+   "dependent": "4CH1-3.16",
    "prerequisite": "4CH1-CON-RATE-EXPERIMENTS",
    "strength": null,
    "provenance": "t-c11:settled|pass:c11-s16-batch-4|method:USED_WITHOUT_RETEACHING|validated_by:operator|date:2026-09-13"
@@ -1141,5 +1141,6 @@
   "validatedEdges": 112,
   "inferredPre": 30,
   "inferredRel": 5
- }
+ },
+ "practicalEndpointRetarget": "12 operator-validated edges carried ad-hoc 4CH1-PR-01..11 endpoints; retargeted here to the real core-practical spec codes via the mapping verified 1:1 in spec order against curriculum.json (same mapping as scripts/fix_pr_edges.py, commit fd05d75, which fixed concept-graph.json). Provenance strings untouched. The upstream syllabai-core settled store retarget is the follow-up data fix."
 }
