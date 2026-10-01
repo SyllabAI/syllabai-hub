@@ -54,6 +54,7 @@ export function ThreadSidebar({
   conversations,
   conversationsError,
   activeSessionId,
+  activeCourseSlug = null,
   activeCourseLabel = null,
   activeCourseRef = null,
   openingId,
@@ -68,9 +69,16 @@ export function ThreadSidebar({
   conversationsError?: string | null;
   /** the §22 session the OPEN thread is bound to (drives the active row) */
   activeSessionId?: string | null;
-  /** V53 (ADR-030): the course this tutor instance is scoped to — the local
-   *  rail hides OTHER courses' threads and shows the scope line; the synced
-   *  pane renders the SERVER's courseRef chip (what was actually served). */
+  /** V53 (ADR-030): the course this tutor instance is scoped to — the
+   *  local rail hides OTHER courses' threads and shows the scope line; the
+   *  synced pane renders the SERVER's courseRef chip (what was actually
+   *  served).
+   *
+   *  Discipline: the rail filter keys on the SLUG (the registry's machine
+   *  key) and NEVER on the label — ial-chemistry-17 and igcse-chemistry-19
+   * are BOTH "Chemistry", so label-matching would leak threads across
+   * courses. Labels are display-only (the scope line, the row chip). */
+  activeCourseSlug?: string | null;
   activeCourseLabel?: string | null;
   activeCourseRef?: string | null;
   openingId?: string | null;
@@ -96,12 +104,15 @@ export function ThreadSidebar({
       // V53: inside a course-scoped tutor, threads of OTHER courses are
       // hidden from the local rail — course-less chats stay visible (they
       // are the legacy pilot history), and the scope is labeled by the
-      // scope line below, never silent.
-      return activeCourseLabel
-        ? base.filter((t) => !t.courseSlug || t.courseSlug === activeCourseLabel)
+      // scope line below, never silent. Slug-to-slug only (see the prop
+      // comment): the seeded defect this corrects compared
+      // t.courseSlug against the display LABEL, which never matches — so
+      // a scoped tutor's own threads vanished from its rail.
+      return activeCourseSlug
+        ? base.filter((t) => !t.courseSlug || t.courseSlug === activeCourseSlug)
         : base;
     },
-    [threads, q, activeCourseLabel],
+    [threads, q, activeCourseSlug],
   );
   const groups = useMemo(() => groupThreads(filtered), [filtered]);
   const synced = useMemo(

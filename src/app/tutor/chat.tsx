@@ -605,6 +605,7 @@ export function TutorChat({
           conversations={conversations}
           conversationsError={conversationsError}
           activeSessionId={activeThread?.sessionId ?? null}
+          activeCourseSlug={courseSlug}
           activeCourseLabel={courseLabel}
           activeCourseRef={courseRef}
           openingId={openingId}
@@ -627,6 +628,7 @@ export function TutorChat({
               conversations={conversations}
               conversationsError={conversationsError}
               activeSessionId={activeThread?.sessionId ?? null}
+              activeCourseSlug={courseSlug}
               activeCourseLabel={courseLabel}
               activeCourseRef={courseRef}
               openingId={openingId}
