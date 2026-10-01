@@ -336,6 +336,15 @@ let canonicalKG={nodes:[],edges:[]};
 // operator-validated T-C11 projection — empty in standalone mode (embedded
 // edges are the inferred-prototype curation only).
 let KG_PREREQ_VALIDATED=new Set();
+// Order-governance provenance (Batch-5 manifest follow-up 2, docs/TC11_BATCH5_MANIFEST.md §5.2):
+// the demoted reversed pairs are T-C11-validated at concept level but render in the
+// related tier — the renderer forks their tag/peek/explanation from this set so the
+// concept-level provenance stays visible without re-drawing an ordered prerequisite
+// arrow. Pair keys 'p:X|p:Y' (edge direction as exported); the via map carries the
+// original settled-store endpoints for the relationship inspector. Both stay empty
+// in standalone mode (the embedded sample edges are inferred-prototype curation only).
+let KG_VALIDATED_RELATED=new Set();
+let KG_VALIDATED_RELATED_VIA=new Map();
 const palette={Subject:'#6656a9',Section:'#6656a9',SubTopic:'#2a8b8a',SpecificationPoint:'#3d79a6',ExamPaper:'#c38422',Assessment:'#c38422'};
 const initialSections=[
  {id:'subject',type:'Subject',label:'Chemistry',x:780,y:420,rx:42},
@@ -1235,12 +1244,21 @@ function activateNode(n,now,x,y,opts={}){
 }
 function toggleSpecInline(id){animateSpecInline(id,!state.expandedSpecs.has(id))}
 function edgeDescription(type,a,b){
+ // accept spec-point ids OR node objects (the relationship inspector passes
+ // nodeBy().get() results; string coercion would corrupt every pair-key
+ // provenance check — e.g. '[object Object]|[object Object]' — silently
+ // downgrading validated edges to inferred in the inspector note)
+ if(a&&a.id!==undefined)a=a.id;
+ if(b&&b.id!==undefined)b=b.id;
  if(type==='hier')return {label:'Curriculum structure',tag:'AUTHORITATIVE',detail:'Official hierarchy relationship within the curriculum.'};
  if(type==='pre'){
   if(a&&b&&KG_PREREQ_VALIDATED.has(a+'|'+b))return {label:'Prerequisite',tag:'T-C11 VALIDATED',detail:'Operator-validated prerequisite from the T-C11 settled store, projected onto spec points through concept anchors.'};
   return {label:'Prerequisite',tag:'INFERRED PROTOTYPE',detail:'Illustrative prerequisite relationship; not yet validated as authoritative educational truth.'};
  }
- if(type==='rel')return {label:'Related knowledge',tag:'INFERRED PROTOTYPE',detail:'Illustrative semantic relationship; not yet validated as authoritative educational truth.'};
+ if(type==='rel'){
+  if(a&&b&&KG_VALIDATED_RELATED.has(a+'|'+b))return {label:'Related knowledge',tag:'T-C11 VALIDATED · RELATED',detail:'Operator-validated dependency from the T-C11 settled store, projected through concept anchors; kept visible as related knowledge because the pair runs against spec teaching order (a spiral revisit) — no ordered prerequisite arrow is drawn.'};
+  return {label:'Related knowledge',tag:'INFERRED PROTOTYPE',detail:'Illustrative semantic relationship; not yet validated as authoritative educational truth.'};
+ }
  if(type==='assess')return {label:'Assessment mapping',tag:'PROTOTYPE MAPPING',detail:'Prototype mapping to assessment content; requires validation before learner-serving use.'};
  return {label:'Learner state',tag:'DERIVED OVERLAY',detail:'Derived learner signal over curriculum truth.'};
 }
@@ -1558,7 +1576,7 @@ function openPanel(id){state.panelNodeId=id;
  document.getElementById('context').innerHTML=ctx;
  document.getElementById('statement').textContent=n.statement||n.meta||'Curriculum structure node.';
  const apEl=document.getElementById('apChips');if(apEl)apEl.innerHTML=(n.type==='SpecificationPoint'&&n.applicability)?kgApplicabilityChips(n.applicability):'';
- const links=relFor(n).map(e=>{const other=nodeBy().get(e[0]===id?e[1]:e[0]);if(!other)return '';const relation=e[2]==='hier'?'curriculum hierarchy':e[2]==='pre'?(KG_PREREQ_VALIDATED.has(e[0]+'|'+e[1])?'Prerequisite · T-C11 validated':'Prerequisite · inferred prototype link'):e[2]==='assess'?'assessment coverage':'Related knowledge · inferred prototype link';return `<div>${other.label||other.pointId} <span style="color:#8b9193">· ${relation}</span></div>`}).join('');
+ const links=relFor(n).map(e=>{const other=nodeBy().get(e[0]===id?e[1]:e[0]);if(!other)return '';const relation=e[2]==='hier'?'curriculum hierarchy':e[2]==='pre'?(KG_PREREQ_VALIDATED.has(e[0]+'|'+e[1])?'Prerequisite · T-C11 validated':'Prerequisite · inferred prototype link'):e[2]==='assess'?'assessment coverage':(KG_VALIDATED_RELATED.has(e[0]+'|'+e[1])?'Related knowledge · T-C11 validated (order-governed)':'Related knowledge · inferred prototype link');return `<div>${other.label||other.pointId} <span style="color:#8b9193">· ${relation}</span></div>`}).join('');
  document.getElementById('links').innerHTML=links||'<div>No direct relationships currently visible.</div>'; renderWhy(n);
  if(state.lens==='student'){
    if(l){document.getElementById('evidence').innerHTML=`<div><b>Mastery:</b> ${l.mastery==null?'Not measured':l.mastery+'%'}</div><div><b>Confidence:</b> ${l.confidence==null?'Not measured':l.confidence+'%'}</div><div><b>Fluency:</b> ${l.fluency==null?'Not measured':l.fluency+'%'}</div><div><b>Evidence:</b> ${l.evidence}</div><div><b>Review:</b> ${l.reviewDue?'Due':'Not due'}</div><div><b>Misconception:</b> ${l.misconception||'None indicated'}</div><div style="margin-top:5px;color:#8b9193">${peekNote()}</div>`}
@@ -1862,8 +1880,16 @@ function relationshipExplanation(type,a,b){
    else ex.why.push('Demo overlay: prerequisite mastery '+(la.mastery==null?'not measured':la.mastery+'%')+' · dependent mastery '+(lb.mastery==null?'not measured':lb.mastery+'%')+'.');
   }else ex.why.push('No measured learner evidence on one or both endpoints, so readiness cannot be derived - treat this link as curriculum guidance only.');
  }else if(type==='rel'){
-  ex.meaning='The two nodes share conceptual ground - typically taught together, easily confused, or mutually reinforcing - without one strictly requiring the other.';
-  ex.direction='No dependency · the link is symmetric, so either node can be studied first';
+  const ka=a&&a.id!==undefined?a.id:a,kb=b&&b.id!==undefined?b.id:b;
+  if(ka&&kb&&KG_VALIDATED_RELATED.has(ka+'|'+kb)){
+   ex.meaning='Operator-validated dependency (T-C11 settled store, projected through concept anchors): the syllabus does draw on the earlier idea, but this pair runs against spec teaching order (a spiral revisit), so it renders as related knowledge instead of an ordered prerequisite arrow.';
+   ex.direction='No dependency arrow · validated relation kept visible, order-governed';
+   const via=KG_VALIDATED_RELATED_VIA.get(ka+'|'+kb);
+   if(via&&via.length)ex.why.push('Store provenance: validated for '+via.join(' → ')+' before spec-point projection.');
+  }else{
+   ex.meaning='The two nodes share conceptual ground - typically taught together, easily confused, or mutually reinforcing - without one strictly requiring the other.';
+   ex.direction='No dependency · the link is symmetric, so either node can be studied first';
+  }
   const la=a?learner(a):null,lb=b?learner(b):null;
   const weak=[la,lb].filter(x=>x&&(x.misconception||x.reviewDue||(x.mastery!=null&&x.mastery<LEARNER_THRESHOLDS.lowMastery))).length;
   if(weak===1)ex.why.push('Demo overlay flags one endpoint as at-risk - revising the pair together often resolves the confusion.');
@@ -1884,11 +1910,12 @@ function updateProvenance(){
  const wrap=document.getElementById('provRows');if(!wrap)return;
  const counts={hier:0,pre:0,rel:0,assess:0};canonicalKG.edges.forEach(e=>{if(counts[e[2]]!=null)counts[e[2]]++});
  const preValidated=canonicalKG.edges.filter(e=>e[2]==='pre'&&KG_PREREQ_VALIDATED.has(e[0]+'|'+e[1])).length;
+ const relValidated=canonicalKG.edges.filter(e=>e[2]==='rel'&&KG_VALIDATED_RELATED.has(e[0]+'|'+e[1])).length;
  const measured=state.nodes.filter(n=>n.type==='SpecificationPoint'&&learner(n)).length;
  wrap.innerHTML=[
   ['Curriculum structure',counts.hier,'AUTHORITATIVE'],
   ['Prerequisite links',counts.pre,preValidated?(preValidated+' T-C11 validated · '+(counts.pre-preValidated)+' inferred prototype'):'INFERRED PROTOTYPE'],
-  ['Related knowledge links',counts.rel,'INFERRED PROTOTYPE'],
+  ['Related knowledge links',counts.rel,relValidated?(relValidated+' T-C11 validated-related · '+(counts.rel-relValidated)+' inferred prototype'):'INFERRED PROTOTYPE'],
   ['Assessment mappings',counts.assess,'PROTOTYPE MAPPING'],
   ['Demo overlay entries',measured,'DERIVED OVERLAY']
  ].map(([label,count,tag])=>`<div class="provRow"><span>${label}</span><span><b>${count}</b> <span class="provTag">${tag}</span></span></div>`).join('');
@@ -3220,6 +3247,17 @@ function kgApplicabilityChips(a){
     // The embedded array only ever serves standalone opens (no ?course=).
     semanticEdges=(kg.edges||[]).filter(e=>e[2]==='pre'||e[2]==='rel');
     KG_PREREQ_VALIDATED=new Set(kg.prereqValidated||[]);
+    // Batch-5 manifest follow-up 2 (docs/TC11_BATCH5_MANIFEST.md §5.2): the
+    // order-governance demoted pairs are T-C11-validated at concept level but
+    // render in the rel tier — parse their pair keys (and the via chain of
+    // original settled-store endpoints) so the renderer can surface the
+    // concept-level provenance without re-drawing an ordered arrow. Bundles
+    // without governance meta (every other course) leave both structures empty
+    // and the rel tier renders exactly as before.
+    const reversedGovernance=((kg.meta||{}).prerequisites||{}).reversedGovernance||{};
+    const demotedPairs=reversedGovernance.demotedPairs||[];
+    KG_VALIDATED_RELATED=new Set(demotedPairs.map(p=>p&&p.pair).filter(Boolean));
+    KG_VALIDATED_RELATED_VIA=new Map(demotedPairs.filter(p=>p&&p.pair).map(p=>[p.pair,p.via||[]]));
     // 2. rebuild hook: strips the inline 4CH1 papers/assess edges, fixes the
     //    subject node and the hardcoded subject->sec1..4 hier edges
     window.__KG_APPLY=()=>{
