@@ -40,10 +40,10 @@ export default async function CorpusPaperPage({
   searchParams,
 }: {
   params: Promise<{ course: string; session: string; paperDir: string }>;
-  searchParams: Promise<{ doc?: string; mode?: string }>;
+  searchParams: Promise<{ doc?: string; mode?: string; page?: string }>;
 }) {
   const { course: slug, session, paperDir } = await params;
-  const { doc, mode } = await searchParams;
+  const { doc, mode, page } = await searchParams;
   const hub = await loadHubCourse(slug);
   if (!hub) notFound();
 
@@ -53,6 +53,10 @@ export default async function CorpusPaperPage({
   const { meta } = hub;
   const docParam = doc === "ms" || doc === "split" ? doc : "qp";
   const mockMode = mode === "mock";
+  // F-022 tranche 2: a citation drill-in lands on the cited page — a missing
+  // or malformed param just reads page 1 (the default), never throws
+  const parsedPage = Number.parseInt(page ?? "", 10);
+  const initialPage = Number.isInteger(parsedPage) && parsedPage > 1 ? parsedPage : undefined;
 
   return (
     // No bottom padding: the viewer fills to the fold exactly — any bottom
@@ -69,6 +73,8 @@ export default async function CorpusPaperPage({
         mode={mockMode ? "mock" : "view"}
         metaGeneratedAt={corpusIndex.meta.generatedAt}
         examCode={meta.code}
+        initialPage={initialPage}
+        initialPageDoc={docParam === "ms" ? "ms" : "qp"}
       />
     </div>
   );

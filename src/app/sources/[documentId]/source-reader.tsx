@@ -15,7 +15,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, FileText, Loader2, TriangleAlert } from "lucide-react";
+import { BookOpen, ChevronLeft, ChevronRight, FileText, Loader2, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { RequireAuth } from "@/components/auth/require-auth";
 import { ApiError, api } from "@/lib/api";
@@ -56,9 +56,11 @@ function SourceReaderInner() {
 
   // the ?page= param IS the reading position (single source of truth — back/
   // forward and refresh stay honest); a missing or malformed param reads
-  // page 1, never throws
+  // page 1, never throws. ?course= rides the citation chip when the ask's
+  // own context resolved a course — the paper-PDF matcher's scope hint.
   const paramPage = Number.parseInt(searchParams.get("page") ?? "", 10);
   const page = Number.isInteger(paramPage) && paramPage >= 1 ? paramPage : 1;
+  const courseHint = searchParams.get("course");
 
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -109,8 +111,54 @@ function SourceReaderInner() {
     };
   }, [key, documentId, page]);
 
+  // ── F-022 tranche 2: the real paper behind the citation ────────────────
+  // When core's header carries paper identity, ask THIS repo (server-side,
+  // where the corpus index lives) which of its own viewer URLs — if any —
+  // is that paper's real PDF. A no-match stays silent: the parsed text is
+  // the full truth, a fabricated link would not be. The page param is NOT
+  // part of the lookup (the matcher resolves the paper; the reader appends
+  // its own reading position), so page flips don't re-resolve or flash.
+  const paper = state.status === "ready" ? state.doc.paper : null;
+  const paperKey = `${documentId}#${reloadKey}#${paper?.paperId ?? ""}`;
+  const [paperLink, setPaperLink] = useState<{ key: string; href: string | null }>({
+    key: "",
+    href: null,
+  });
+
+  useEffect(() => {
+    if (!paper) return;
+    let alive = true;
+    const q = new URLSearchParams({
+      paperCode: paper.paperCode,
+      role: paper.role,
+    });
+    if (paper.sessionLabel) q.set("sessionLabel", paper.sessionLabel);
+    if (courseHint) q.set("course", courseHint);
+    fetch(`/api/sources/paper-link?${q.toString()}`)
+      .then((r) => (r.ok ? r.json() : { href: null }))
+      .then((d: { href?: string | null }) => {
+        if (alive) setPaperLink({ key: paperKey, href: d.href ?? null });
+      })
+      .catch(() => {
+        if (alive) setPaperLink({ key: paperKey, href: null });
+      });
+    return () => {
+      alive = false;
+    };
+  }, [paperKey, paper, courseHint]);
+
+  const paperLinkHref =
+    paper && paperLink.key === paperKey && paperLink.href
+      ? `${paperLink.href}${page > 1 ? `&page=${page}` : ""}`
+      : null;
+
   const goTo = (n: number) => {
-    router.replace(`/sources/${encodeURIComponent(documentId)}?page=${n}`, { scroll: false });
+    // the course hint rides along so a refresh of any page keeps the
+    // paper-PDF matcher's disambiguation scope
+    const course = courseHint ? `&course=${encodeURIComponent(courseHint)}` : "";
+    router.replace(`/sources/${encodeURIComponent(documentId)}?page=${n}${course}`, {
+      scroll: false,
+    });
   };
 
   return (
@@ -145,6 +193,22 @@ function SourceReaderInner() {
               {state.doc.pageCount} {state.doc.pageCount === 1 ? "page" : "pages"} · verbatim parsed text
             </p>
           </div>
+
+          {paperLinkHref && (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2.5">
+              <p className="text-xs text-muted-foreground">
+                This text was parsed from the real{" "}
+                {state.doc.paper?.role === "MS" ? "mark scheme" : "question paper"}.
+              </p>
+              <a
+                href={paperLinkHref}
+                className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border bg-background px-2.5 text-xs font-medium transition-colors hover:bg-accent"
+              >
+                <BookOpen className="size-3.5" aria-hidden />
+                Open the real paper{page > 1 ? ` — page ${page}` : ""}
+              </a>
+            </div>
+          )}
 
           {state.doc.text === null ? (
             <p className="rounded-md border bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground">

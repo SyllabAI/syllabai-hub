@@ -17,14 +17,17 @@ import { listCourses } from "@/lib/courses";
  * only emitted when the hub has an in-app surface that can actually open it:
  *
  * - document-backed (/api/v1/content/documents/{row}?page=N) → the in-app
- *   source reader (/sources/{row}?page=N, F-022), which fetches the same
- *   core route with the learner's token and renders the verbatim page text;
- *   core enforces the corpus law server-side, so the reader inherits the
- *   exact validation gates retrieval serves from
+ *   source reader (/sources/{row}?page=N&course=<slug>, F-022), which fetches
+ *   the same core route with the learner's token and renders the verbatim
+ *   page text; core enforces the corpus law server-side, so the reader
+ *   inherits the exact validation gates retrieval serves from. The course
+ *   hint (when the ask's own context resolves to a registered course) lets
+ *   the reader's paper-PDF matcher disambiguate the corpus entry — the same
+ *   paper code can exist under more than one spec folder (4CH1 vs 4SD0)
  * - KNOWLEDGE_NODE (/api/v1/knowledge/nodes/{id}) → the course's knowledge
  *   graph explorer (/knowledge-graph?course=<slug>), when the ask's own
  *   course context resolves to a course that actually ships a graph bundle
- *   (kgHrefForCourseRef / kgHrefForCourseSlug) — otherwise the honest null.
+ *   — otherwise the honest null.
  */
 export interface CoreCitation {
   index?: number;
@@ -40,6 +43,9 @@ export interface CoreCitation {
 export interface CitationSurface {
   /** the course's in-app graph explorer href, when that course has a graph */
   kgHref?: string | null;
+  /** the ask's course slug (no graph gate — the paper-PDF matcher uses it
+   *  purely to scope its corpus lookup) */
+  courseSlug?: string | null;
 }
 
 const KINDS = new Set(["REVISION_NOTE", "QUESTION_PART", "SPEC_POINT", "CONCEPT"]);
@@ -62,7 +68,7 @@ function urlFor(deepLink: string | null | undefined, surface?: CitationSurface):
   if (!deepLink) return null;
   // the translation keys on the LINK (the wire truth), not the sourceType enum
   if (deepLink.startsWith("/api/v1/content/documents/")) {
-    return sourceHref(deepLink);
+    return sourceHref(deepLink, surface?.courseSlug);
   }
   if (deepLink.startsWith("/api/v1/knowledge/nodes/")) {
     return surface?.kgHref ?? null;
@@ -71,38 +77,46 @@ function urlFor(deepLink: string | null | undefined, surface?: CitationSurface):
 }
 
 /**
- * /api/v1/content/documents/{row}?page=N → /sources/{row}?page=N — the F-022
- * reader fetches the same core route with the learner's token. A link that
- * does not match the expected shape stays an honest null — never a
- * fabricated in-app path.
+ * /api/v1/content/documents/{row}?page=N → /sources/{row}?page=N[&course=slug]
+ * — the F-022 reader fetches the same core route with the learner's token;
+ * the course hint scopes its paper-PDF corpus match. A link that does not
+ * match the expected shape stays an honest null — never a fabricated path.
  */
-function sourceHref(deepLink: string): string | null {
+function sourceHref(
+  deepLink: string,
+  courseSlug: string | null | undefined,
+): string | null {
   const match = /^\/api\/v1\/content\/documents\/([^/?]+)(\?page=(\d+))?$/.exec(deepLink);
   if (!match) return null;
-  return `/sources/${match[1]}${match[2] ?? ""}`;
+  const params = new URLSearchParams();
+  if (match[3]) params.set("page", match[3]);
+  if (courseSlug) params.set("course", courseSlug);
+  const qs = params.toString();
+  return `/sources/${match[1]}${qs ? `?${qs}` : ""}`;
 }
 
 /**
- * The ask's KG-explorer href for its own course context — the tutor's
- * courseRef (the registry's curriculumCode) or the CLA's course slug. Null
- * unless the course is registered AND its graph bundle actually ships: the
- * same fs gate the /knowledge-graph page applies, because an explorer link
- * that would render an empty graph is not honest.
+ * The ask's citation surface for its own course context — the tutor's
+ * courseRef (the registry's curriculumCode) or the CLA's course slug.
+ * courseSlug is present for every registered course (the paper-PDF matcher's
+ * scope hint); kgHref is null unless the course is registered AND its graph
+ * bundle actually ships: the same fs gate the /knowledge-graph page applies,
+ * because an explorer link that would render an empty graph is not honest.
  */
-export async function kgHrefForCourseRef(
+export async function surfaceForCourseRef(
   courseRef: string | undefined | null,
-): Promise<string | null> {
-  if (!courseRef) return null;
+): Promise<CitationSurface> {
+  if (!courseRef) return {};
   const courses = await safeCourses();
-  return kgHrefFor(courses.find((c) => c.code === courseRef));
+  return surfaceFor(courses.find((c) => c.code === courseRef));
 }
 
-export async function kgHrefForCourseSlug(
+export async function surfaceForCourseSlug(
   slug: string | undefined | null,
-): Promise<string | null> {
-  if (!slug) return null;
+): Promise<CitationSurface> {
+  if (!slug) return {};
   const courses = await safeCourses();
-  return kgHrefFor(courses.find((c) => c.slug === slug));
+  return surfaceFor(courses.find((c) => c.slug === slug));
 }
 
 async function safeCourses() {
@@ -113,9 +127,14 @@ async function safeCourses() {
   }
 }
 
-function kgHrefFor(course: { slug: string } | undefined): string | null {
-  if (!course) return null;
+function surfaceFor(course: { slug: string } | undefined): CitationSurface {
+  if (!course) return {};
   const dataDir = path.join(process.cwd(), "public", "kg", "data");
-  if (!existsSync(path.join(dataDir, `${course.slug}.json`))) return null;
-  return `/knowledge-graph?course=${encodeURIComponent(course.slug)}`;
+  const hasGraph = existsSync(path.join(dataDir, `${course.slug}.json`));
+  return {
+    kgHref: hasGraph
+      ? `/knowledge-graph?course=${encodeURIComponent(course.slug)}`
+      : null,
+    courseSlug: course.slug,
+  };
 }

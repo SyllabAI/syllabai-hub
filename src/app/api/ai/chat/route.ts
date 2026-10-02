@@ -5,7 +5,12 @@ import {
   coreFetchAuthorized,
   coreErrorDetail,
 } from "@/lib/core-proxy";
-import { kgHrefForCourseRef, mapCitation, type CoreCitation } from "@/lib/citation-map";
+import {
+  surfaceForCourseRef,
+  mapCitation,
+  type CoreCitation,
+  type CitationSurface,
+} from "@/lib/citation-map";
 import { rateLimit, rateLimitKey, rateLimitResponse, type RateLimitRule } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -126,7 +131,7 @@ export async function POST(req: NextRequest) {
   // the per-ask citation surface: when the ask is course-scoped and that
   // course ships a graph, KNOWLEDGE_NODE citations deep-link to its explorer
   // (the bridge in citation-map decides per link — honest nulls otherwise)
-  const kgHref = await kgHrefForCourseRef(parsed.courseRef);
+  const surface = await surfaceForCourseRef(parsed.courseRef);
 
   let result: Awaited<ReturnType<typeof coreStreamAuthorized>>;
   try {
@@ -150,7 +155,7 @@ export async function POST(req: NextRequest) {
     // deploy skew / legacy core: the stream endpoint 404s — retry the
     // blocking ask and keep the tutor up with the re-chunked stream
     if (result.status === 404) {
-      return legacyBlockingFallback(token, coreBody, kgHref);
+      return legacyBlockingFallback(token, coreBody, surface);
     }
     const detail =
       status === 401
@@ -165,10 +170,10 @@ export async function POST(req: NextRequest) {
   if (result.contentType?.includes("application/json")) {
     // legacy core answered the stream path with a JSON body (old build on a
     // warm route) — degrade to the blocking adaptation
-    return legacyFromJsonResponse(upstream, kgHref);
+    return legacyFromJsonResponse(upstream, surface);
   }
 
-  return pipeSse(upstream, kgHref, req.signal);
+  return pipeSse(upstream, surface, req.signal);
 }
 
 // ── streaming passthrough ────────────────────────────────────────────────
@@ -186,7 +191,7 @@ export async function POST(req: NextRequest) {
  * into coreStreamAuthorized's fetch) and the pipe releases core's LLM call
  * instead of streaming into a dead connection.
  */
-function pipeSse(upstream: Response, kgHref: string | null, clientGone: AbortSignal): Response {
+function pipeSse(upstream: Response, surface: CitationSurface, clientGone: AbortSignal): Response {
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
 
@@ -258,7 +263,7 @@ function pipeSse(upstream: Response, kgHref: string | null, clientGone: AbortSig
               // explicit (c, i) — a bare .map(mapCitation) would hand the
               // ARRAY in as the surface argument
               send("citations", {
-                citations: (d.citations ?? []).map((c, i) => mapCitation(c, i, { kgHref })),
+                citations: (d.citations ?? []).map((c, i) => mapCitation(c, i, surface)),
                 sufficient: d.sufficient ?? false,
               });
             } else {
@@ -310,7 +315,7 @@ async function legacyBlockingFallback(
     sessionId?: string;
     courseRef?: string;
   },
-  kgHref: string | null,
+  surface: CitationSurface,
 ): Promise<Response> {
   try {
     const result = await coreFetchAuthorized<CoreTutorAnswer>("/api/v1/tutor/ask", {
@@ -328,7 +333,7 @@ async function legacyBlockingFallback(
             : coreErrorDetail(result.errorBody, "The tutor call failed on the backend.");
       return Response.json({ error: status === 401 ? "unauthorized" : "core_error", detail }, { status });
     }
-    return chunkedStream(result.data, kgHref);
+    return chunkedStream(result.data, surface);
   } catch {
     return Response.json(
       { error: "core_unreachable", detail: "The SyllabAI backend is waking up — try again in a few seconds." },
@@ -338,10 +343,10 @@ async function legacyBlockingFallback(
 }
 
 /** A 200-JSON response from the stream path (legacy core): same adaptation. */
-async function legacyFromJsonResponse(upstream: Response, kgHref: string | null): Promise<Response> {
+async function legacyFromJsonResponse(upstream: Response, surface: CitationSurface): Promise<Response> {
   try {
     const turn = (await upstream.json()) as CoreTutorAnswer;
-    return chunkedStream(turn, kgHref);
+    return chunkedStream(turn, surface);
   } catch {
     return Response.json(
       { error: "core_error", detail: "The tutor call failed on the backend." },
@@ -350,7 +355,7 @@ async function legacyFromJsonResponse(upstream: Response, kgHref: string | null)
   }
 }
 
-function chunkedStream(turn: CoreTutorAnswer, kgHref: string | null): Response {
+function chunkedStream(turn: CoreTutorAnswer, surface: CitationSurface): Response {
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -359,7 +364,7 @@ function chunkedStream(turn: CoreTutorAnswer, kgHref: string | null): Response {
       };
       try {
         send("citations", {
-          citations: turn.citations.map((c, i) => mapCitation(c, i, { kgHref })),
+          citations: turn.citations.map((c, i) => mapCitation(c, i, surface)),
           sufficient: turn.evidenceCount > 0,
         });
         send("meta", {
