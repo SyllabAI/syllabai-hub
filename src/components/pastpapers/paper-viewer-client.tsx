@@ -26,6 +26,7 @@ import {
   ArrowLeft,
   BookOpenCheck,
   CheckCircle2,
+  FileText,
   Hourglass,
   Info,
   ListChecks,
@@ -77,6 +78,10 @@ export interface PaperViewerClientProps {
    *  (?page=N) — applied to the pane matching initialPageDoc */
   initialPage?: number;
   initialPageDoc?: "qp" | "ms";
+  /** F-022: set when the viewer was opened from a citation drill-in
+   *  (?src=<documentId>) — the toolbar then links back to the verbatim
+   *  parsed text of that source document (the reader's ?text=1 mode) */
+  sourceHref?: string;
 }
 
 export function PaperViewerClient({
@@ -89,6 +94,7 @@ export function PaperViewerClient({
   examCode,
   initialPage,
   initialPageDoc,
+  sourceHref,
 }: PaperViewerClientProps) {
   const router = useRouter();
   const isSplitCapable = Boolean(paper.qpBytes && paper.msBytes);
@@ -653,6 +659,17 @@ export function PaperViewerClient({
             Past Papers
           </Link>
         </Button>
+        {sourceHref && (
+          <Button asChild size="sm" variant="ghost" className="h-8">
+            <Link
+              href={sourceHref}
+              title="The verbatim parsed text this paper's evidence is served from"
+            >
+              <FileText className="size-4" aria-hidden />
+              Parsed text
+            </Link>
+          </Button>
+        )}
         <h1 className="font-mono text-sm font-semibold tracking-tight">{paper.ref}</h1>
         <span className="hidden min-w-0 truncate text-xs text-muted-foreground md:inline">
           {paper.title}

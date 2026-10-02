@@ -154,13 +154,42 @@ function SourceReaderInner() {
       ? `${paperLink.href}${page > 1 ? `&page=${page}` : ""}`
       : null;
 
+  // ── the reader is a router when the real paper resolves (user-directed) ──
+  // A citation chip lands here, but nobody asked for the parsed text — they
+  // asked for the paper. When the header carries a complete paper identity
+  // and the matcher resolves it, this component navigates STRAIGHT to the
+  // viewer (src=<documentId> rides along so the viewer can offer the way
+  // back). The parsed view is never demoted, only deferred:
+  //   - every fail-closed fallback (no paper, incomplete identity, no-match,
+  //     resolver error) renders this reader exactly as before
+  //   - ?text=1 disarms the auto-open entirely — the viewer's "Parsed text"
+  //     link and the a11y escape hatch both arrive with it
+  const textOnly = searchParams.get("text") === "1";
+  const identityReady = Boolean(paper?.paperCode && paper.sessionLabel);
+  const autoOpen = !textOnly;
+  // resolution still in flight for THIS document (key not yet stamped) — the
+  // text is withheld meanwhile, so it is never "seen first"
+  const pending = autoOpen && identityReady && paperLink.key !== paperKey;
+  const openingHref =
+    autoOpen && paperLinkHref
+      ? `${paperLinkHref}&src=${encodeURIComponent(documentId)}`
+      : null;
+
+  useEffect(() => {
+    if (!openingHref) return;
+    router.replace(openingHref, { scroll: false });
+  }, [openingHref, router]);
+
   const goTo = (n: number) => {
     // the course hint rides along so a refresh of any page keeps the
-    // paper-PDF matcher's disambiguation scope
+    // paper-PDF matcher's disambiguation scope; ?text=1 stays attached so
+    // paging inside the parsed view can never re-arm the auto-open
     const course = courseHint ? `&course=${encodeURIComponent(courseHint)}` : "";
-    router.replace(`/sources/${encodeURIComponent(documentId)}?page=${n}${course}`, {
-      scroll: false,
-    });
+    const text = textOnly ? "&text=1" : "";
+    router.replace(
+      `/sources/${encodeURIComponent(documentId)}?page=${n}${course}${text}`,
+      { scroll: false },
+    );
   };
 
   return (
@@ -183,7 +212,25 @@ function SourceReaderInner() {
         </div>
       )}
 
-      {state.status === "ready" && (
+      {state.status === "ready" && (pending || openingHref) && (
+        <div
+          className="flex min-h-[40vh] flex-col items-center justify-center gap-3"
+          role="status"
+        >
+          <Loader2 className="size-5 animate-spin text-muted-foreground" aria-hidden />
+          <p className="text-sm text-muted-foreground">Opening the real paper…</p>
+          {openingHref && (
+            <a
+              href={openingHref}
+              className="text-xs font-medium text-primary underline-offset-4 hover:underline"
+            >
+              Open it now
+            </a>
+          )}
+        </div>
+      )}
+
+      {state.status === "ready" && !pending && !openingHref && (
         <>
           <div className="mb-6 space-y-1.5">
             <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
