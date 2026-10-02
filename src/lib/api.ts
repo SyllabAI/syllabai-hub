@@ -34,6 +34,7 @@ import type {
   ClaAnswerView,
   ClaMode,
   FlashcardRatingView,
+  FlashcardReviewScheduleView,
   TeacherAuditRowView,
   AuthResponse,
   AnswerMarkingView,
@@ -521,6 +522,17 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  // Flashcard review-schedule feed (T-C53, core ce0d7eb): the account-level
+  // Ebbinghaus queue derived at READ from the append-only rating trail —
+  // the core half of the deck queues' contract. TIMING ONLY (self-report,
+  // never mastery; ADR-031 — computed at read, persisted nowhere). The
+  // unified queue (lib/flashcard-unified.ts) unions this with the
+  // device-local trail; every failure degrades to the device-local queue.
+  flashcardReviewSchedule: () =>
+    request<FlashcardReviewScheduleView>(
+      "/api/v1/learners/me/flashcard-review-schedule",
+    ),
 
   // Note-vote evidence (V48, ADR-029 tranche 4.9): one append-only vote per
   // call, attributed to the note's subtopic anchor (same structural gate as

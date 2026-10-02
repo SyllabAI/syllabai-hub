@@ -1,17 +1,18 @@
 "use client";
 
 /**
- * Per-deck due chip (tranche 4.6) — reads this browser's rating trail and
- * shows how many cards of the deck are due for review right now (the same
- * Ebbinghaus schedule the drawer's "Flashcards due" section and the deck
- * player's "Review due first" run on — lib/flashcard-review.ts). Renders
- * nothing until the trail says so: decks never rated show no badge rather
- * than an empty promise.
+ * Per-deck due chip (tranche 4.6, unified T-C57) — reads this browser's
+ * rating trail UNIONED with the account's core review-schedule feed (the
+ * pilot course, signed in — lib/flashcard-unified.ts) and shows how many
+ * cards of the deck are due for review right now (the same Ebbinghaus
+ * schedule the drawer's "Flashcards due" section and the deck player's
+ * "Review due first" run on). Renders nothing until the union says so:
+ * decks never rated anywhere show no badge rather than an empty promise.
  */
 import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { useCourseProgress, type Course } from "@/lib/progress";
-import { dueCountBySubtopic } from "@/lib/flashcard-review";
+import { unifiedDueCountBySubtopic, useCoreReviewSchedule } from "@/lib/flashcard-unified";
 
 export function DeckDueBadge({
   course,
@@ -21,16 +22,24 @@ export function DeckDueBadge({
   subtopicCode: string;
 }) {
   const progress = useCourseProgress(course);
+  const core = useCoreReviewSchedule(course);
   const due = useMemo(
-    () => dueCountBySubtopic(progress.flashcards, Date.now()).get(subtopicCode) ?? 0,
-    [progress.flashcards, subtopicCode],
+    () =>
+      unifiedDueCountBySubtopic(progress.flashcards, core.cards, Date.now()).get(
+        subtopicCode,
+      ) ?? 0,
+    [progress.flashcards, core.cards, subtopicCode],
   );
   if (due === 0) return null;
   return (
     <Badge
       variant="outline"
       className="shrink-0 border-warn/40 text-[10px] text-warn"
-      title={`${due} card${due === 1 ? "" : "s"} in this deck are due for review again`}
+      title={
+        core.state === "ready"
+          ? `${due} card${due === 1 ? "" : "s"} in this deck are due for review again (this device ∪ your account)`
+          : `${due} card${due === 1 ? "" : "s"} in this deck are due for review again`
+      }
     >
       {due} due
     </Badge>
