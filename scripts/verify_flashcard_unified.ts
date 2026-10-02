@@ -1,15 +1,20 @@
 /**
  * Verification harness for the unified flashcard review queue (T-C57 —
- * src/lib/flashcard-unified.ts): the device-local trail (lib/flashcard-
- * review.ts, the arithmetic core mirrored bit-for-bit in T-C53) unioned
- * with the core review-schedule feed.
+ * src/lib/flashcard-unified.ts; T-C61 added the true-merge rung): the
+ * device-local trail (lib/flashcard-review.ts, the arithmetic core mirrored
+ * bit-for-bit in T-C53) unioned with the core review-schedule feed, and —
+ * when the bounded raw trail walk completes — TRUE-merged per card from the
+ * raw account events plus this device's receipted entries (ADR-034).
  *
  * Run: bun scripts/verify_flashcard_unified.ts
  * Exits non-zero on the first failed pin; prints ALL GREEN otherwise.
  *
  * Deterministic by construction: the "core feed" is fixture cards shaped
- * exactly like FlashcardReviewScheduleCard (core ce0d7eb wire contract) —
- * no network, no clock dependence (NOW is pinned).
+ * exactly like FlashcardReviewScheduleCard (core ce0d7eb wire contract) and
+ * the "raw trail" is fixture events shaped like FlashcardRatingTrailEvent
+ * (core c4b67e8 wire contract) — no network, no clock dependence (NOW is
+ * pinned). The HOOK's network ladder (trail → feed → device) is exercised
+ * by the mock-mode e2e suite, not here.
  */
 import {
   intervalDaysFor,
@@ -19,11 +24,14 @@ import {
   summarizeCardReviews,
 } from "../src/lib/flashcard-review";
 import {
+  mergeTrailCards,
   unifySchedules,
   unifiedDueCards,
   unifiedDueCountBySubtopic,
+  unifiedQueue,
   unifiedSummarize,
   type CoreScheduleCard,
+  type CoreTrailEvent,
 } from "../src/lib/flashcard-unified";
 import type { CourseProgress } from "../src/lib/progress";
 
@@ -280,6 +288,169 @@ console.log("parity:");
   pin(
     "a streak past the cap still maps to the 32d maintenance interval",
     intervalDaysFor(12) === 32 && intervalDaysFor(6) === 32 && intervalDaysFor(5) === 16,
+  );
+}
+
+// ── 5. the true-merge rung (T-C61): receipts, not timestamps ───────────
+console.log("trail merge (T-C61):");
+{
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const ev = (
+    cardId: string,
+    rating: "know" | "still-learning",
+    at: number,
+    subtopicCode: string | null = null,
+  ): CoreTrailEvent => ({
+    cardId,
+    rating,
+    subtopicCode,
+    nodeId: "00000000-0000-0000-0000-00000000abcd",
+    occurredAt: iso(at),
+  });
+
+  // device: one synced flip (receipted core) + one OFFLINE flip (receipted
+  // local) — the true merge must show both flips exactly once: streak 2,
+  // due NOW-3d+2d = NOW-1d (a double-counted synced copy would make
+  // streak 3 → interval 4d → due NOW+1d — the under-practice bug)
+  const mixedReceipts: LocalRecord = {
+    subtopic: "4CH1-S1-a",
+    rating: "know",
+    at: NOW - 3 * DAY,
+    trail: [
+      { rating: "know", at: NOW - 9 * DAY, sync: "core" },
+      { rating: "know", at: NOW - 3 * DAY, sync: "local" },
+    ],
+  };
+  // historical record: rated before receipts existed (no trail, no sync
+  // field), account silent → the device trail stands alone (parity with
+  // the pre-T-C61 derivation)
+  const historicalNoAccount: LocalRecord = {
+    subtopic: "4CH1-S2-c",
+    rating: "know",
+    at: NOW - 2 * DAY,
+  };
+  // historical record WITH a synced account copy (unreceipted device entry
+  // + account events for the same card): the unmarked entry MUST drop —
+  // it might BE the account copy — conservative due-earlier, never later
+  const historicalDuplicated: LocalRecord = {
+    subtopic: "4CH1-S2-c",
+    rating: "know",
+    at: NOW - 1 * DAY,
+    trail: [{ rating: "know", at: NOW - 1 * DAY }],
+  };
+  const trailCards: Record<string, LocalRecord> = {
+    "fl-merge-mixed": mixedReceipts,
+    "fl-hist-solo": historicalNoAccount,
+    "fl-hist-dup": historicalDuplicated,
+  };
+  const accountEvents: CoreTrailEvent[] = [
+    // the account copy of the offline device's first flip (server-stamped
+    // ~5s after the device clock — timestamps CANNOT match across sides)
+    ev("fl-merge-mixed", "know", NOW - 9 * DAY + 5_000, "4CH1-S1-a"),
+    // the synced copy of the historical duplicate
+    ev("fl-hist-dup", "know", NOW - 1 * DAY + 5_000, "4CH1-S2-c"),
+    // an account-only card (rated on another device, never here): two
+    // knows 2d apart, streak 2 → due NOW-10d+2d = NOW-8d
+    ev("fl-core-only", "know", NOW - 12 * DAY, "4CH1-S3-b"),
+    ev("fl-core-only", "know", NOW - 10 * DAY, "4CH1-S3-b"),
+  ];
+  const malformed: CoreTrailEvent = {
+    cardId: "fl-broken",
+    rating: "know",
+    subtopicCode: null,
+    nodeId: "00000000-0000-0000-0000-00000000abcd",
+    occurredAt: "not-a-date",
+  };
+  const allEvents = [...accountEvents, malformed];
+
+  const merged = mergeTrailCards(trailCards, allEvents, NOW);
+  const byCard = (id: string) => merged.find((c) => c.cardId === id)!;
+
+  pin(
+    "receipted-core entry excluded + local entry kept: the offline flip completes the streak (2 → due NOW-1d, origin merged)",
+    byCard("fl-merge-mixed").streak === 2 &&
+      byCard("fl-merge-mixed").dueAt === NOW - 3 * DAY + 2 * DAY &&
+      byCard("fl-merge-mixed").origin === "merged",
+  );
+  pin(
+    "historical unmarked + account empty: device trail stands alone (pre-T-C61 parity)",
+    byCard("fl-hist-solo").streak === 1 &&
+      byCard("fl-hist-solo").dueAt === NOW - 2 * DAY + 1 * DAY &&
+      byCard("fl-hist-solo").origin === "device" &&
+      byCard("fl-hist-solo").lastAt === NOW - 2 * DAY,
+  );
+  pin(
+    "historical unmarked + account present: the unmarked copy drops (no invented double-count)",
+    byCard("fl-hist-dup").streak === 1 &&
+      byCard("fl-hist-dup").lastAt === NOW - 1 * DAY + 5_000,
+  );
+  pin(
+    "account-only card: derived from raw events through the frozen ladder, anchor filled from the NEWEST event, origin account",
+    byCard("fl-core-only").streak === 2 &&
+      byCard("fl-core-only").dueAt === NOW - 10 * DAY + 2 * DAY &&
+      byCard("fl-core-only").origin === "account" &&
+      byCard("fl-core-only").subtopic === "4CH1-S3-b",
+  );
+  pin(
+    "a malformed instant never enters the merge (no schedule invented for fl-broken)",
+    !merged.some((c) => c.cardId === "fl-broken"),
+  );
+  pin(
+    "chronological interleave is true per card: the merged trail of the mixed card is exactly [account@-9d, local@-3d]",
+    byCard("fl-merge-mixed").streak === 2 &&
+      byCard("fl-merge-mixed").rating === "know",
+  );
+
+  // rung discriminator + coverage words
+  const queue = unifiedQueue(trailCards, { mode: "trail", events: allEvents }, NOW);
+  pin(
+    "unifiedQueue routes the trail rung to the same queue as mergeTrailCards",
+    JSON.stringify(queue.map((c) => [c.cardId, c.dueAt, c.origin])) ===
+      JSON.stringify(merged.map((c) => [c.cardId, c.dueAt, c.origin])),
+  );
+  pin(
+    "unifiedQueue(device mode) == the bare device derivation (rung 3 preserved)",
+    JSON.stringify(unifiedQueue(trailCards, { mode: "device" }, NOW)) ===
+      JSON.stringify(unifySchedules(trailCards, null, NOW)),
+  );
+  pin(
+    "unifiedQueue accepts the bare feed array — the T-C57 call shape routes to the feed rung",
+    JSON.stringify(unifiedQueue(deviceCards, coreFeed, NOW)) ===
+      JSON.stringify(unifySchedules(deviceCards, coreFeed, NOW)),
+  );
+  const trailSummary = unifiedSummarize(trailCards, { mode: "trail", events: allEvents }, NOW)!;
+  pin(
+    "coverage word names the true merge when the trail contributed",
+    trailSummary.coverage === "device+account-merged",
+  );
+  pin(
+    "empty trail events degrade the coverage word to device",
+    unifiedSummarize(trailCards, { mode: "trail", events: [] }, NOW)!.coverage === "device",
+  );
+  pin(
+    "feed rung keeps the T-C57 coverage word",
+    unifiedSummarize(deviceCards, coreFeed, NOW)!.coverage === "device+account",
+  );
+
+  // TRAIL_CAP parity: a merged trail longer than the device window derives
+  // the same interval from its newest-10 as the full trail would (the
+  // ladder cannot overstate beyond its cap — the core full-trail derivation
+  // and the hub capped-window derivation agree)
+  const longTrail: Record<string, LocalRecord> = {
+    "fl-long": {
+      subtopic: "4CH1-S1-a",
+      rating: "know",
+      at: NOW - 1 * DAY,
+      trail: Array.from({ length: 12 }, (_, i) => ({
+        rating: "know" as const,
+        at: NOW - (13 - i) * DAY,
+      })),
+    },
+  };
+  const longMerged = mergeTrailCards(longTrail, null, NOW);
+  pin(
+    "a trail longer than TRAIL_CAP derives the capped interval (12 knows → 32d maintenance, same as the full trail)",
+    longMerged[0].intervalDays === 32 && intervalDaysFor(12) === 32,
   );
 }
 

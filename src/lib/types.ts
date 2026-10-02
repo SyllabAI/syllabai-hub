@@ -376,6 +376,37 @@ export interface FlashcardReviewScheduleCard {
 }
 
 
+/** One raw rating event of the bounded account trail (T-C61, ADR-034 —
+ *  GET /api/v1/learners/me/flashcard-rating-trail): the append-only V47
+ *  row verbatim, the input for a TRUE cross-device merge (each physical
+ *  flip appears exactly once after receipts exclude the device's synced
+ *  copies). TIMING evidence only — never mastery. */
+export interface FlashcardRatingTrailEvent {
+  cardId: string;
+  /** resolved deck anchor code ("4CH1-S1-a"); null when the node row is
+   *  absent (display degrades, the row does not) */
+  subtopicCode: string | null;
+  nodeId: string;
+  /** "still-learning" | "know" (the hub wire vocabulary) */
+  rating: string;
+  /** ISO-8601 instant, server-stamped at the POST (the device clock never
+   *  reaches core — receipts, not timestamps, are the cross-side identity) */
+  occurredAt: string;
+}
+
+/** One keyset page of the raw trail (T-C61). Pages are newest first in
+ *  (occurredAt, id) order; walk by `nextCursor` until `hasMore` is false —
+ *  the walk is gap-free and duplicate-free by the keyset contract. */
+export interface FlashcardRatingTrailView {
+  events: FlashcardRatingTrailEvent[];
+  /** opaque keyset cursor; null when the trail end is reached */
+  nextCursor: string | null;
+  hasMore: boolean;
+  /** ISO-8601 instant of the core-side read */
+  generatedAt: string;
+}
+
+
 /** One note-vote event (V48) — hub note id + the canonical wire vocabulary. */
 export interface NoteVoteView {
   noteId: string;

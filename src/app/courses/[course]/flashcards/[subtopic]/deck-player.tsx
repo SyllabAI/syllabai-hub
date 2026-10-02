@@ -24,7 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Markdown } from "@/components/markdown";
 import { rateFlashcard, useCourseProgress, type Course, type FlashcardRating } from "@/lib/progress";
-import { unifySchedules, useCoreReviewSchedule } from "@/lib/flashcard-unified";
+import { unifiedQueue, useCoreReviewSchedule } from "@/lib/flashcard-unified";
 import { getToken } from "@/lib/api";
 import { PILOT_COURSE_SLUG } from "@/lib/attempt-bridge";
 import { submitFlashcardRating } from "@/lib/flashcard-bridge";
@@ -71,12 +71,13 @@ export function DeckPlayer({
 
   const byId = useMemo(() => new Map(cards.map((c) => [c.id, c])), [cards]);
   const current = order.length > 0 ? byId.get(order[Math.min(pos, order.length - 1)]) : undefined;
-  // T-C57: the rated counts and the schedule read the unified queue (device
-  // trail ∪ account feed), scoped to this deck's cards — the honest counts a
-  // multi-device account sees, still self-report only.
+  // T-C57 + T-C61: the rated counts and the schedule read the unified queue
+  // (true cross-device trail merge when the raw trail walk completes, else
+  // the T-C57 feed union, else this device alone), scoped to this deck's
+  // cards — the honest counts a multi-device account sees, self-report only.
   const schedules = useMemo(
-    () => unifySchedules(progress.flashcards, core.cards, Date.now()),
-    [progress.flashcards, core.cards],
+    () => unifiedQueue(progress.flashcards, core.source, Date.now()),
+    [progress.flashcards, core.source],
   );
   const rated = schedules.filter((s) => s.subtopic === subtopicCode && byId.has(s.cardId));
   const stillLearning = rated.filter((s) => s.rating === "still-learning").length;
@@ -94,10 +95,20 @@ export function DeckPlayer({
   const advance = (rating: FlashcardRating | null) => {
     if (!current) return;
     if (rating) {
-      rateFlashcard(course, current.id, subtopicCode, rating);
+      const ratedAt = rateFlashcard(course, current.id, subtopicCode, rating);
       // best-effort core mirror (pilot + signed in only); never blocks the
-      // deck — the local overlay already holds the rating
-      void submitFlashcardRating(course, current.id, rating, subtopicCode).then(
+      // deck — the local overlay already holds the rating. T-C61: the
+      // bridge persists the outcome as the entry's sync receipt, the one
+      // fact the true cross-device merge uses to exclude the account's
+      // copy of this flip (core stamps occurred_at server-side, so
+      // timestamps cannot recognize the same event across sides)
+      void submitFlashcardRating(
+        course,
+        current.id,
+        rating,
+        subtopicCode,
+        ratedAt,
+      ).then(
         (outcome) => {
           if (outcome.kind === "synced") {
             setSyncMode((m) => (m === "device" ? "account" : m));
