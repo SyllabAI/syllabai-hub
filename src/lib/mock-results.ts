@@ -30,6 +30,19 @@ export interface MockResult {
    * `max` is null when the student left the marks-available cell empty.
    */
   questions?: Array<{ label: string; marks: number; max: number | null }>;
+  /**
+   * Paper Run v3 additive fields (T-C70) — absent on plain mock records.
+   * The strip and the storage tolerate both shapes (design §5.5).
+   */
+  mode?: "run";
+  manifestVersion?: number;
+  integrity?: "practice";
+  durationPolicy?: "OFFICIAL" | "ACCOMMODATED";
+  startedAt?: string;
+  coverageState?: "full" | "partial";
+  marked?: { auto: number; self: number; aiSuggested: number; paperOnly: number };
+  perQuestion?: Array<{ number: string; marks: number; max: number; how: string }>;
+  coreSubmissions?: { attempted: number; recorded: number; failed: number };
 }
 
 const KEY = "syllabai.mockResults.v1";
