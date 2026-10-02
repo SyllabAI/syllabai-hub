@@ -19,6 +19,7 @@ import {
   Network,
   ShieldCheck,
   Users,
+  Waypoints,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useIdentity } from "@/lib/identity";
@@ -28,6 +29,8 @@ const TABS = [
   { href: "/teacher/marking", label: "Marking review", icon: ClipboardCheck },
   { href: "/teacher/classes", label: "Classes", icon: Users },
   { href: "/teacher/class", label: "Class intelligence", icon: Network },
+  // sim-lens port from the demo shell — SAMPLE cohort, disclosed on-page
+  { href: "/teacher/class-graph", label: "Class graph (sim)", icon: Waypoints },
   { href: "/teacher/test-builder", label: "Test Builder", icon: ClipboardList },
   { href: "/teacher/assignments", label: "Assignments", icon: ListChecks },
   { href: "/teacher/validation", label: "Validation", icon: FileCheck2 },

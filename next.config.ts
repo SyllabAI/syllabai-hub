@@ -83,10 +83,10 @@ const nextConfig: NextConfig = {
       { source: "/revision-notes/:noteId", destination: `/courses/${PILOT}/revision-notes/:noteId`, permanent: false },
       { source: "/exam-questions", destination: `/courses/${PILOT}/exam-questions`, permanent: false },
       { source: "/flashcards", destination: `/courses/${PILOT}/flashcards`, permanent: false },
-      // Retired demo surface (teacher-console tranche): the SAMPLE class graph
-      // is superseded by Class intelligence over live core data. URL-level so
-      // it fires for every visitor before the auth layout renders.
-      { source: "/teacher/class-graph", destination: "/teacher/class", permanent: true },
+      // Class graph (sim) returns by operator request (trace 1a0fbffcb431a57d,
+      // 2026-10-02): the SAMPLE-cohort lens is restored alongside Class
+      // intelligence — nav labels it "(sim)" and the page carries the SAMPLE
+      // disclosure, so the two lenses stay distinguishable.
     ];
   },
 };
