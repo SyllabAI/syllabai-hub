@@ -331,19 +331,31 @@ export function NoteCla({
               <Markdown className="text-sm [&_p]:text-sm">{normalizeMathDelimiters(m.content)}</Markdown>
               {m.citations && m.citations.length > 0 && !m.refused && (
                 <div className="flex flex-wrap gap-1.5 pt-0.5">
-                  {m.citations.map((c) => (
-                    <span
-                      key={c.index}
-                      className="inline-flex max-w-full items-center gap-1.5 rounded-full border bg-background px-2.5 py-1 text-[11px]"
-                      title={c.label}
-                    >
-                      <span className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
-                        {c.index}
+                  {m.citations.map((c) => {
+                    // a citation with an in-app surface (the F-022 source
+                    // reader for corpus documents) becomes a link; everything
+                    // else stays the honest read-only badge
+                    const badgeClass =
+                      "inline-flex max-w-full items-center gap-1.5 rounded-full border bg-background px-2.5 py-1 text-[11px]";
+                    const badge = (
+                      <>
+                        <span className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
+                          {c.index}
+                        </span>
+                        <FileText className="size-3 shrink-0 text-muted-foreground" aria-hidden />
+                        <span className="max-w-48 truncate font-medium">{c.label}</span>
+                      </>
+                    );
+                    return c.url ? (
+                      <a key={c.index} href={c.url} className={badgeClass} title={c.label}>
+                        {badge}
+                      </a>
+                    ) : (
+                      <span key={c.index} className={badgeClass} title={c.label}>
+                        {badge}
                       </span>
-                      <FileText className="size-3 shrink-0 text-muted-foreground" aria-hidden />
-                      <span className="max-w-48 truncate font-medium">{c.label}</span>
-                    </span>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
               {/* the §19-style traceability footer — collapsed behind a

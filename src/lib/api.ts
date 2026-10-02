@@ -32,6 +32,7 @@ import { cachedGet, invalidateContentCache, singleFlight } from "./api-cache";
 import type {
   AttemptHistoryView,
   ClaAnswerView,
+  CitationDocumentView,
   ClaMode,
   FlashcardRatingView,
   TeacherAuditRowView,
@@ -785,6 +786,16 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  /** F-022 citation drill-in: the learner-readable citation document —
+   *  header shape without page, verbatim page text with it. Core enforces
+   *  the corpus law (existsCitable): non-citable rows are an honest 404,
+   *  byte-identical to unknown-id — the UI copy must not pretend to know
+   *  which. */
+  citationDocument: (id: string, page?: number) =>
+    request<CitationDocumentView>(
+      `/api/v1/content/documents/${encodeURIComponent(id)}${page ? `?page=${page}` : ""}`,
+    ),
 
   // ── T-029 teacher review surface (route security: TEACHER or ADMIN on the
   // backend; the role check in the UI is an affordance, never authorization) ──

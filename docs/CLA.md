@@ -91,6 +91,9 @@ contains that content — the Tutor answers it; the note-anchored CLA does not).
   "Configuration file not found" error. A provider that throws is never
   credited in the answer footer (`provider: "unavailable"`, rendered as "no AI
   provider answered — structured fallback shown").
-- **Citations are read-only badges.** Each cites a section of the note being
-  read (labels like "Title · §3"). In-page anchor scrolling was considered and
-  dropped — heading ids are not stable in the Markdown renderer.
+- **Citations are badges — and links when a surface exists.** Note-section
+  citations (labels like "Title · §3") stay read-only badges: their target is
+  the note already open, and in-page anchor scrolling was considered and
+  dropped — heading ids are not stable in the Markdown renderer. Corpus
+  citations that carry an in-app url (the F-022 source reader for
+  document-backed evidence, mapped by the citation bridge) render as links.
