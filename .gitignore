@@ -60,7 +60,6 @@ examples/
 mini-services/
 db/
 prisma/
-bun.lock
 scripts/.gh_token
 scripts/recon/
 scripts/github_analysis.py
