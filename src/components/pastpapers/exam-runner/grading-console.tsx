@@ -232,43 +232,6 @@ export function GradingConsole({
     q.parts.every((p) => !!marks[partKeyOf(q.number, p.part)]),
   );
 
-  const finish = useCallback(async () => {
-    if (submittedRef.current) return;
-    submittedRef.current = true;
-    setSubmitting(true);
-    setCoreMsg(null);
-    // core submissions ride the existing bridge contract — grading-time only
-    const core = await submitToCore();
-    if (core && core.attempted > 0) coreEvidenceChanged();
-    const r: PaperRunResult = {
-      id: record.runId,
-      mode: "run",
-      course,
-      ref: manifest.paper.ref,
-      title: paperTitle,
-      sessionId: manifest.paper.session,
-      manifestVersion: manifest.version,
-      integrity: "practice",
-      durationPolicy: record.durationPolicy,
-      startedAt: record.startedAt,
-      finishedAt: new Date().toISOString(),
-      durationMin: record.durationMin,
-      timeUsedSec: record.timeUsedSec,
-      ended: record.timeUpAutoSubmitted ? "time-up" : "self",
-      timeUpAutoSubmitted: record.timeUpAutoSubmitted,
-      marks: totals.m,
-      total: manifest.paper.totalMarks,
-      coverageState,
-      marked: totals.marked,
-      perQuestion: totals.perQuestion,
-      keyCandidates: totals.keyCandidates.length > 0 ? totals.keyCandidates : undefined,
-      coreSubmissions: core,
-    };
-    saveMockResult(r);
-    onDone(r);
-    setSubmitting(false);
-  }, [course, manifest, paperTitle, record, totals, onDone]);
-
   const submitToCore = useCallback(async (): Promise<
     PaperRunResult["coreSubmissions"] | undefined
   > => {
@@ -350,6 +313,44 @@ export function GradingConsole({
     }
     return { attempted, recorded, failed };
   }, [bridge, manifest, marks, record, recon]);
+
+  const finish = useCallback(async () => {
+    if (submittedRef.current) return;
+    submittedRef.current = true;
+    setSubmitting(true);
+    setCoreMsg(null);
+    // core submissions ride the existing bridge contract — grading-time only
+    const core = await submitToCore();
+    void core;
+    if (core && core.attempted > 0) coreEvidenceChanged();
+    const r: PaperRunResult = {
+      id: record.runId,
+      mode: "run",
+      course,
+      ref: manifest.paper.ref,
+      title: paperTitle,
+      sessionId: manifest.paper.session,
+      manifestVersion: manifest.version,
+      integrity: "practice",
+      durationPolicy: record.durationPolicy,
+      startedAt: record.startedAt,
+      finishedAt: new Date().toISOString(),
+      durationMin: record.durationMin,
+      timeUsedSec: record.timeUsedSec,
+      ended: record.timeUpAutoSubmitted ? "time-up" : "self",
+      timeUpAutoSubmitted: record.timeUpAutoSubmitted,
+      marks: totals.m,
+      total: manifest.paper.totalMarks,
+      coverageState,
+      marked: totals.marked,
+      perQuestion: totals.perQuestion,
+      keyCandidates: totals.keyCandidates.length > 0 ? totals.keyCandidates : undefined,
+      coreSubmissions: core,
+    };
+    saveMockResult(r);
+    onDone(r);
+    setSubmitting(false);
+  }, [course, coverageState, manifest, paperTitle, record, submitToCore, totals, onDone]);
 
   // ── done ─────────────────────────────────────────────────────────────────
   if (result) {
