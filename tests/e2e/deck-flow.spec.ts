@@ -164,3 +164,30 @@ test("learner drawer: rated-but-nothing-due shows the honest empty state, never 
   // never mastery (its own words are the pin)
   await expect(section.getByText(/never mastery/)).toBeVisible();
 });
+
+test("KG deep link holds: the pilot graph stays mounted on ?course=, never self-flips to the picker", async ({
+  page,
+}) => {
+  // regression pin (T-C55): the course view once rewrote the address bar
+  // with history.replaceState deleting ?course= for the pilot — Next 16
+  // patches replaceState to sync the router, so useSearchParams() went
+  // empty and the page replaced ITSELF with the landing picker within one
+  // hydration tick (the drawer trigger unmounted under openLearnerDrawer's
+  // click). The graph must stay mounted and the param must stay put.
+  await page.goto("/knowledge-graph?course=igcse-chemistry-19");
+
+  const frame = page.locator('iframe[src*="/kg/openhuman-course-explorer.html"]');
+  await expect(frame).toBeVisible();
+  // well past the destructive window (the old flip landed < 300ms after
+  // hydration): graph still there, param still in the URL, picker absent
+  await page.waitForTimeout(1_500);
+  await expect(frame).toBeVisible();
+  await expect(page).toHaveURL(/knowledge-graph\?course=igcse-chemistry-19/);
+  await expect(page.getByRole("heading", { name: "Knowledge graphs", exact: true })).toHaveCount(0);
+
+  // the other side of the 429e4ad contract stays pinned too: WITHOUT the
+  // param the honest picker is still the entry (never a silent pilot graph)
+  await page.goto("/knowledge-graph");
+  await expect(page.getByRole("heading", { name: "Knowledge graphs", exact: true })).toBeVisible();
+  await expect(page.locator('iframe[src*="openhuman-course-explorer"]')).toHaveCount(0);
+});
