@@ -24,6 +24,8 @@ function PreconnectCorpus() {
  *
  * ?doc=qp|ms|split picks the initial document (view mode);
  * ?mode=mock starts the mock-exam flow (fullscreen QP + official timer).
+ * ?src=<documentId> (F-022) marks a citation drill-in arrival — the toolbar
+ * then links back to the verbatim parsed text of that source document.
  * The paper's identity is resolved strictly from the committed corpus index —
  * no paper exists here that the syllabai-pastpapers repo doesn't hold.
  *
@@ -40,10 +42,10 @@ export default async function CorpusPaperPage({
   searchParams,
 }: {
   params: Promise<{ course: string; session: string; paperDir: string }>;
-  searchParams: Promise<{ doc?: string; mode?: string; page?: string }>;
+  searchParams: Promise<{ doc?: string; mode?: string; page?: string; src?: string }>;
 }) {
   const { course: slug, session, paperDir } = await params;
-  const { doc, mode, page } = await searchParams;
+  const { doc, mode, page, src } = await searchParams;
   const hub = await loadHubCourse(slug);
   if (!hub) notFound();
 
@@ -57,6 +59,17 @@ export default async function CorpusPaperPage({
   // or malformed param just reads page 1 (the default), never throws
   const parsedPage = Number.parseInt(page ?? "", 10);
   const initialPage = Number.isInteger(parsedPage) && parsedPage > 1 ? parsedPage : undefined;
+
+  // The honest way back: the toolbar's "Parsed text" link opens the reader
+  // with ?text=1, which disarms its auto-open — a user who came here for the
+  // real paper can still always reach exactly what the tutor's evidence was
+  // served from, at the cited page.
+  const sourceHref = src
+    ? `/sources/${encodeURIComponent(src)}?${new URLSearchParams({
+        ...(initialPage ? { page: String(initialPage) } : {}),
+        text: "1",
+      }).toString()}`
+    : undefined;
 
   return (
     // No bottom padding: the viewer fills to the fold exactly — any bottom
@@ -75,6 +88,7 @@ export default async function CorpusPaperPage({
         examCode={meta.code}
         initialPage={initialPage}
         initialPageDoc={docParam === "ms" ? "ms" : "qp"}
+        sourceHref={sourceHref}
       />
     </div>
   );
