@@ -37,6 +37,9 @@ jobs:
       - name: Tutor math normalize verify (T-C44 — the s142 drift shapes render as math, not raw LaTeX)
         run: bun scripts/tutor_math_normalize_verify.ts
 
+      - name: Paper-link vocabulary verify (F-022 t2 — the audited SPEC/CODE + session-word matcher contract)
+        run: bun scripts/paper_link_verify.ts
+
       - name: ADR-021 content package selftest (compile + verify + restore + determinism + tamper + KG gate + distribution zip)
         run: bash tools/content-package/selftest.sh
 
