@@ -5,7 +5,9 @@
  *
  * Assistant rows follow the corpus reading experience: the same Markdown
  * renderer the notes/solutions use (KaTeX math, callouts, tables), numbered
- * citation chips with in-app deep links, and a quiet action rail (copy,
+ * citation chips — real in-app deep links where a surface exists (mock-mode
+ * urls, core-mode KG citations via the citation bridge), honest read-only
+ * badges otherwise, matching the CLA islands — and a quiet action rail (copy,
  * regenerate, feedback). User rows are primary bubbles with an inline
  * edit-resend affordance. Refusals / aborts / transport errors keep their
  * distinct, honest states.
@@ -281,23 +283,38 @@ export function MessageItem({
 
           {message.citations && message.citations.length > 0 && (
             <div className="flex flex-wrap gap-1.5 pt-1">
-              {message.citations.map((c) => (
-                <a
-                  key={c.index}
-                  href={c.url ?? "#"}
-                  className="flex max-w-full items-center gap-1.5 rounded-full border bg-background px-2.5 py-1 text-xs transition-colors hover:border-primary/40"
-                  title={c.label}
-                >
-                  <span className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
-                    {c.index}
+              {message.citations.map((c) => {
+                // a citation without an in-app surface renders as the CLA
+                // islands' read-only badge — never a focusable dead link
+                const chip = (
+                  <>
+                    <span className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
+                      {c.index}
+                    </span>
+                    <FileText className="size-3 shrink-0 text-muted-foreground" aria-hidden />
+                    <span className="max-w-52 truncate font-medium">{c.label}</span>
+                    <span className="shrink-0 text-[10px] text-muted-foreground">
+                      · {c.kind.slice(0, 4)}
+                    </span>
+                  </>
+                );
+                const chipClass =
+                  "flex max-w-full items-center gap-1.5 rounded-full border bg-background px-2.5 py-1 text-xs";
+                return c.url ? (
+                  <a
+                    key={c.index}
+                    href={c.url}
+                    className={`${chipClass} transition-colors hover:border-primary/40`}
+                    title={c.label}
+                  >
+                    {chip}
+                  </a>
+                ) : (
+                  <span key={c.index} className={chipClass} title={c.label}>
+                    {chip}
                   </span>
-                  <FileText className="size-3 shrink-0 text-muted-foreground" aria-hidden />
-                  <span className="max-w-52 truncate font-medium">{c.label}</span>
-                  <span className="shrink-0 text-[10px] text-muted-foreground">
-                    · {c.kind.slice(0, 4)}
-                  </span>
-                </a>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
