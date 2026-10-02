@@ -294,7 +294,7 @@ export type ContentManifest = z.infer<typeof ContentManifest>;
 export const TutorCitation = z.object({
   index: z.number(),
   label: z.string(), // human label, e.g. "The Three States of Matter · 4CH1-1.1"
-  kind: z.enum(["REVISION_NOTE", "QUESTION_PART", "SPEC_POINT", "CONCEPT"]),
+  kind: z.enum(["REVISION_NOTE", "NOTE", "QUESTION_PART", "SPEC_POINT", "CONCEPT"]),
   ref: z.string(), // noteId / questionId / spec code
   specPointCode: z.string().nullable(),
   url: z.string().nullable(), // in-app deep link

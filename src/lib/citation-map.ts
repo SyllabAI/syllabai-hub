@@ -48,7 +48,10 @@ export interface CitationSurface {
   courseSlug?: string | null;
 }
 
-const KINDS = new Set(["REVISION_NOTE", "QUESTION_PART", "SPEC_POINT", "CONCEPT"]);
+// NOTE is core's REAL wire value for revision-note evidence
+// (EvidenceSource.NOTE.name(), labeled "Revision notes — p6"); the rest of
+// the set is the defensive vocabulary the contract grew up with.
+const KINDS = new Set(["REVISION_NOTE", "NOTE", "QUESTION_PART", "SPEC_POINT", "CONCEPT"]);
 
 export function mapCitation(c: CoreCitation, i: number, surface?: CitationSurface) {
   const kind =
@@ -56,7 +59,7 @@ export function mapCitation(c: CoreCitation, i: number, surface?: CitationSurfac
   return {
     index: typeof c.index === "number" ? c.index : i + 1,
     label: typeof c.label === "string" && c.label.length > 0 ? c.label : "Source",
-    kind: kind as "REVISION_NOTE" | "QUESTION_PART" | "SPEC_POINT" | "CONCEPT",
+    kind: kind as "REVISION_NOTE" | "NOTE" | "QUESTION_PART" | "SPEC_POINT" | "CONCEPT",
     ref: c.documentId ?? c.nodeId ?? c.label ?? "core",
     specPointCode: null,
     url: urlFor(c.deepLink, surface),

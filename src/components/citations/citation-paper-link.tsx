@@ -16,6 +16,10 @@
  * The never-dead-end matrix (fail-closed everywhere):
  *  - complete paper identity + unique corpus match + that role's document
  *    held → the real PDF, plus a "Parsed text" toggle (the honesty view)
+ *  - a cited revision note (fileName "sme-note-{noteId}.txt" per the corpus
+ *    convention, course hint present) → the full note body joined out of the
+ *    hub's committed bundle, markdown-rendered, with a "Parsed text" toggle
+ *    and an "Open the full note" escape — any join miss falls to parsed text
  *  - everything else (no paper, incomplete identity, matcher no-match, the
  *    role's document missing, core errors) → the verbatim parsed text in
  *    the same dialog — exactly what the tutor's evidence was served from —
@@ -26,7 +30,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import { BookOpen, Loader2, TriangleAlert } from "lucide-react";
+import { BookOpen, ExternalLink, Loader2, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,6 +43,7 @@ import { corpusRawUrl } from "@/lib/pastpapers-shared";
 import { ApiError, api } from "@/lib/api";
 import type { CitationDocumentView } from "@/lib/types";
 import { KIND_LABELS } from "@/app/sources/[documentId]/source-reader";
+import { Markdown } from "@/components/markdown";
 
 // pdf.js is a ~400KB chunk — loaded ONLY when a popup first renders the
 // pane, never on the tutor/notes/questions pages that host the chips
@@ -75,6 +80,20 @@ function parseSourcesHref(href: string): ParsedSourcesHref | null {
   };
 }
 
+/**
+ * The corpus files a revision note's content document as
+ * "sme-note-{noteId}.txt" (core ClaService convention) and the citation view
+ * serves that fileName as the document title — the id-anchored join key from
+ * a cited content row back to the hub's committed note bundle (the hub owns
+ * note identity, "rn_*", kept opaque core-side).
+ */
+const NOTE_FILE = /^sme-note-(.+)\.txt$/;
+
+function noteIdOf(title: string): string | null {
+  const m = NOTE_FILE.exec(title);
+  return m?.[1] ?? null;
+}
+
 type DialogData =
   | {
       kind: "paper";
@@ -90,6 +109,14 @@ type DialogData =
       doc: CitationDocumentView;
       fullReaderHref: string;
       viewerHref: string | null;
+    }
+  | {
+      kind: "note";
+      doc: CitationDocumentView;
+      noteTitle: string;
+      bodyMd: string;
+      noteHref: string;
+      fullReaderHref: string;
     }
   | { kind: "unavailable"; message: string; fullReaderHref: string };
 
@@ -116,7 +143,7 @@ export function CitationPaperLink({
 }) {
   const parsed = useMemo(() => parseSourcesHref(href), [href]);
   const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState<"pdf" | "text">("pdf");
+  const [mode, setMode] = useState<"pdf" | "text" | "note">("pdf");
   const [reloadKey, setReloadKey] = useState(0);
 
   // the keyed-result pattern (same as the /sources reader): the fetch result
@@ -143,6 +170,48 @@ export function CitationPaperLink({
         // the parser honestly emits papers whose printed code/session the
         // OCR lost (null) — no match is possible, so no resolver call either
         if (!paper?.paperCode || !paper.sessionLabel) {
+          // revision notes: a note citation's real artifact is the markdown
+          // body, not a PDF and not the chunked page text. The id-anchored
+          // fileName joins the cited row back to the hub bundle; any miss
+          // (no course hint, bundle drift, fetch error) falls through to the
+          // parsed text — the honesty view stays the floor.
+          const noteId = noteIdOf(doc.title);
+          if (noteId && course) {
+            try {
+              const r = await fetch(
+                `/api/notes/${encodeURIComponent(course)}/${encodeURIComponent(noteId)}`,
+              );
+              if (r.ok) {
+                const n = (await r.json()) as {
+                  title?: string;
+                  bodyMd?: string;
+                  url?: string;
+                };
+                if (typeof n.bodyMd === "string" && n.bodyMd.trim().length > 0) {
+                  if (!alive) return;
+                  setLoaded({
+                    key,
+                    state: {
+                      status: "ready",
+                      data: {
+                        kind: "note",
+                        doc,
+                        noteTitle: n.title?.trim() ? n.title : doc.title,
+                        bodyMd: n.bodyMd,
+                        noteHref: n.url ?? `/courses/${course}/revision-notes/${noteId}`,
+                        fullReaderHref,
+                      },
+                    },
+                  });
+                  setMode("note");
+                  return;
+                }
+              }
+            } catch {
+              /* bundle unreachable — parsed text remains the truth */
+            }
+          }
+          if (!alive) return;
           setLoaded({
             key,
             state: {
@@ -340,6 +409,61 @@ export function CitationPaperLink({
                     : state.data.doc.text}
                 </article>
               </div>
+            </>
+          )}
+
+          {state.status === "ready" && state.data.kind === "note" && (
+            <>
+              <DialogHeader className="flex-row items-center gap-2 space-y-0 border-b px-4 py-3 pr-12 text-left">
+                <DialogTitle className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
+                  <Badge variant="outline" className="shrink-0 text-[10px]">
+                    {KIND_LABELS[state.data.doc.kind] ?? "Source document"}
+                  </Badge>
+                  <span className="min-w-0 truncate">{state.data.noteTitle}</span>
+                </DialogTitle>
+                <div className="ml-auto flex shrink-0 items-center gap-1">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => setMode(mode === "note" ? "text" : "note")}
+                  >
+                    {mode === "note" ? "Parsed text" : "Back to note"}
+                  </Button>
+                  <Button asChild size="sm" variant="ghost" className="h-7 px-2 text-xs">
+                    <a href={state.data.fullReaderHref} title="Open the full source reader">
+                      Full reader
+                    </a>
+                  </Button>
+                </div>
+              </DialogHeader>
+              {mode === "note" ? (
+                <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+                  <p className="mb-2 text-xs text-muted-foreground">
+                    Cited at page {parsed?.page ?? 1} of {state.data.doc.pageCount} · the full
+                    note — the source material the tutor&apos;s evidence was drawn from
+                  </p>
+                  <Markdown className="text-sm [&_p]:text-sm">{state.data.bodyMd}</Markdown>
+                  <a
+                    href={state.data.noteHref}
+                    className="mt-3 inline-flex items-center gap-1 text-[11px] text-muted-foreground underline hover:text-foreground"
+                  >
+                    Open the full note <ExternalLink className="size-3" aria-hidden />
+                  </a>
+                </div>
+              ) : (
+                <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+                  <p className="mb-2 text-xs text-muted-foreground">
+                    Page {parsed?.page ?? 1} of {state.data.doc.pageCount} · verbatim parsed text —
+                    the same text the tutor&apos;s evidence was served from
+                  </p>
+                  <article className="whitespace-pre-wrap text-sm leading-relaxed">
+                    {state.data.doc.text === ""
+                      ? "This page has no extractable text."
+                      : state.data.doc.text}
+                  </article>
+                </div>
+              )}
             </>
           )}
 
