@@ -15,7 +15,17 @@ export default async function FlashcardDeckPage({
 }: {
   params: Promise<{ course: string; subtopic: string }>;
 }) {
-  const { course: slug, subtopic: subtopicCode } = await params;
+  const { course: slug, subtopic: subtopicParam } = await params;
+  // Next 16 hands dynamic segments through percent-encoded, and the corpus's
+  // SME-native subtopic codes contain a colon ("ial-biology-T1:SUB_") — the
+  // raw encoded value misses subtopicByCode and 404s every non-pilot deck.
+  // Decode (tolerantly) before the lookup so both "T1:SUB_" and "T1%3ASUB_" hit.
+  let subtopicCode = subtopicParam;
+  try {
+    subtopicCode = decodeURIComponent(subtopicParam);
+  } catch {
+    // malformed escape sequence — fall back to the raw segment
+  }
   const hub = await loadHubCourse(slug);
   if (!hub) notFound();
 

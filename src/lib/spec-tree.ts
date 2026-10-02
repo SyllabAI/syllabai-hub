@@ -220,8 +220,32 @@ export function subtopicOfQuestionSet(
 }
 
 /**
+ * SME-slug bridge — the upstream corpus keys cards and notes by the SAME SME
+ * topic slugs ("number-toolkit", "characteristics-of-living-organisms"), while
+ * the tree's sub-topic codes are corpus-native ("igcse-maths-a-T1:SUB1.1").
+ * A note carrying a slug also maps that slug onto its anchored sub-topic, so
+ * cards sharing the slug inherit a corpus-derived placement — nothing guessed.
+ * Memoized per index (built once from the course's notes).
+ */
+const slugBridgeCache = new WeakMap<SpecTreeIndex, Map<string, string>>();
+
+function noteSlugBridge(notes: RevisionNote[], index: SpecTreeIndex): Map<string, string> {
+  const cached = slugBridgeCache.get(index);
+  if (cached) return cached;
+  const bridge = new Map<string, string>();
+  for (const n of notes) {
+    if (!n.topicSlug) continue;
+    const s = subtopicOfNote(n, index);
+    if (s && !bridge.has(n.topicSlug)) bridge.set(n.topicSlug, s);
+  }
+  slugBridgeCache.set(index, bridge);
+  return bridge;
+}
+
+/**
  * Placement priority (all corpus-derived): importer-resolved subtopicCode →
- * SME spec anchors → the card's source note → deck topic slug.
+ * SME spec anchors → the card's source note → deck topic slug → SME-slug
+ * bridge via the notes.
  */
 export function subtopicOfFlashcard(
   card: Flashcard,
@@ -243,6 +267,11 @@ export function subtopicOfFlashcard(
   if (note) return subtopicOfNote(note, index);
   if (card.topicSlug && index.subtopicByCode.has(card.topicSlug)) {
     return card.topicSlug;
+  }
+  const slug = card.subtopicCode ?? card.topicSlug;
+  if (slug) {
+    const s = noteSlugBridge(notes, index).get(slug);
+    if (s) return s;
   }
   return null;
 }
