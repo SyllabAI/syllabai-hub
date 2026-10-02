@@ -33,6 +33,7 @@
   /* semantic status hues — theme-aware (SME: emerald/amber/sky/... family;
      Quiet Green: fern/clay/teal/violet/plum). Alpha modifiers work: bg-success/10 */
   --color-success: var(--success);
+  --color-success-ink: var(--success-ink);
   --color-warn: var(--warn);
   --color-warn-ink: var(--warn-ink);
   --color-info: var(--info);
@@ -65,6 +66,7 @@
   /* semantic status raws — SME light (kept identical to the pre-theme
      hardcoded Tailwind shades so the SME theme renders exactly as before) */
   --success: #047857;   /* emerald-700 */
+  --success-ink: #ffffff; /* copy-on-success: white on emerald-700 = 5.5:1 */
   --warn: #b45309;      /* amber-700 */
   --warn-ink: #78350f;  /* amber-900 — body copy on warn washes */
   --info: #0369a1;      /* sky-700 */
@@ -106,6 +108,7 @@
 .dark {
   /* semantic status raws — SME dark (lightened family shades, as before) */
   --success: #34d399;   /* emerald-400 */
+  --success-ink: #064e3b; /* copy-on-success: emerald-900 on emerald-400 = 5.7:1 (white failed dark mode at 1.9:1) */
   --warn: #fbbf24;      /* amber-400 */
   --warn-ink: #fcd34d;  /* amber-300 */
   --info: #38bdf8;      /* sky-400 */
@@ -176,6 +179,7 @@
   --primary-qg: #2e6b4f;  --primary-qg-hover: #245740;  --on-primary-qg: #f1f8f3;
   --danger-qg: #b0432d;
   --success: var(--fern);
+  --success-ink: var(--on-primary-qg); /* copy-on-success on fern ≈ 6:1 */
   --warn: var(--clay);
   --warn-ink: var(--clay-deep);
   --info: var(--teal);
@@ -232,6 +236,9 @@
 /* dark — raw values only */
 [data-theme="quiet-green"].dark {
   --fern: #55b285;   --fern-deep: #6cc298;   --fern-tint: #1b2f25;
+  /* copy-on-success override: dark ink on the lightened fern = 6.3:1
+     (the light block's var(--on-primary-qg) resolves LIGHT here and failed at 2.4:1) */
+  --success-ink: #0f241a;
   --sage: #93b084;   --sage-deep: #a8c299;   --sage-tint: #232b1d;
   --gold: #cfa13e;   --gold-deep: #ddb55f;   --gold-tint: #322b1b;
   --teal: #3fb3a5;   --teal-deep: #64c5b9;   --teal-tint: #16302c;
@@ -445,6 +452,7 @@
   --danger-cs: #d11450;
   --focus-cs: #b2578c;
   --success: var(--mulberry);
+  --success-ink: #ffffff; /* copy-on-success: white on mulberry = 4.5:1 */
   --warn: #d11450;  --warn-ink: #3c0d28;
   --info: #8a3a63;
   --cat: #3c0d28;  --sim: #b2578c;
@@ -518,6 +526,7 @@
   --danger-cs: #e61f5f;
   --focus-cs: #ff5c8d;
   --success: #e3a8cd;
+  --success-ink: #3c0d28; /* copy-on-success: CS ink on pink = 8.4:1 */
   --warn: #ff5c8d;  --warn-ink: #ffe9f2;
   --info: #e3a8cd;
   --cat: #ffe9f2;  --sim: #e3a8cd;
@@ -849,6 +858,7 @@
   --danger-pm: #23132e;
   --focus-pm: #8672a0;
   --success: var(--violet);
+  --success-ink: #ffffff; /* copy-on-success: white on violet = 6:1 */
   --warn: #6e5a96;  --warn-ink: #3d2e58;
   --info: #5f4b7a;
   --cat: #23132e;  --sim: #8672a0;
@@ -922,6 +932,7 @@
   --destructive-foreground: #23132e; /* audit F5: ink on the light voice ≈ 9.6 */
   --focus-pm: #a678ee;
   --success: #a678ee;
+  --success-ink: #23132e; /* copy-on-success: PM ink on lavender = 5.4:1 */
   --warn: #c4b0e8;  --warn-ink: #e8e0f6;
   --info: #b3a3cc;
   --cat: #f4effa;  --sim: #8a76ad;

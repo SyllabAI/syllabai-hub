@@ -548,6 +548,10 @@ export function TutorChat({
     const q = (override ?? input).trim();
     if (!q) return;
     const thread = activeThread ?? createThread("New chat", courseContext);
+    // one in-flight turn per thread: a second ask() while streaming orphans
+    // the first controller (Stop goes blind) and both streams patch the same
+    // last message, interleaving output (audit 2026-10-02, P1-2)
+    if (streamingId === thread.id) return;
     void ask(thread.id, q);
   };
 
