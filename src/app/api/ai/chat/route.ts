@@ -134,6 +134,9 @@ export async function POST(req: NextRequest) {
       method: "POST",
       token,
       body: coreBody,
+      // the learner's own abort (stop button, navigation) releases the
+      // upstream fetch — core stops generating for a gone reader
+      signal: req.signal,
     });
   } catch {
     return Response.json(
@@ -165,7 +168,7 @@ export async function POST(req: NextRequest) {
     return legacyFromJsonResponse(upstream, kgHref);
   }
 
-  return pipeSse(upstream, kgHref);
+  return pipeSse(upstream, kgHref, req.signal);
 }
 
 // ── streaming passthrough ────────────────────────────────────────────────
@@ -177,21 +180,48 @@ export async function POST(req: NextRequest) {
  * connection (core's citations arrive fast, but a Render cold start delays
  * the HEADERS — that window is covered by the fetch's AbortSignal, and a
  * cold start that already returned can still trickle slowly).
+ *
+ * `clientGone` is the request's abort signal: a stop press / navigation /
+ * proxy cut flips it, the upstream fetch aborts (the signal is composed
+ * into coreStreamAuthorized's fetch) and the pipe releases core's LLM call
+ * instead of streaming into a dead connection.
  */
-function pipeSse(upstream: Response, kgHref: string | null): Response {
+function pipeSse(upstream: Response, kgHref: string | null, clientGone: AbortSignal): Response {
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       let closed = false;
-      const heartbeat = setInterval(() => {
-        if (!closed) controller.enqueue(encoder.encode(": ping\n\n"));
-      }, 15_000);
-
+      /** send/ping are guarded: once the consumer is gone (abort, external
+       *  cancel) the controller refuses further enqueues and a bare throw
+       *  here would mask the honest error path */
       const send = (event: string, data: unknown) => {
-        controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+        } catch {
+          closed = true; // consumer vanished mid-frame
+        }
       };
+
+      const ping = () => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(": ping\n\n"));
+        } catch {
+          closed = true;
+        }
+      };
+      const heartbeat = setInterval(ping, 15_000);
+
+      const onClientGone = () => {
+        closed = true;
+        clearInterval(heartbeat);
+        void upstream.body?.cancel().catch(() => {});
+      };
+      if (clientGone.aborted) onClientGone();
+      else clientGone.addEventListener("abort", onClientGone, { once: true });
 
       const reader = upstream.body!.getReader();
       let buffer = "";
@@ -204,6 +234,8 @@ function pipeSse(upstream: Response, kgHref: string | null): Response {
         const value = line.slice(name.length + 1);
         return value.startsWith(" ") ? value.slice(1) : value;
       };
+      /** the terminal handshake — done OR error observed from upstream */
+      let sawTerminal = false;
       try {
         for (;;) {
           const { done, value } = await reader.read();
@@ -231,9 +263,16 @@ function pipeSse(upstream: Response, kgHref: string | null): Response {
               });
             } else {
               // meta / delta / done / error — core's shapes ARE the browser contract
+              if (event === "done" || event === "error") sawTerminal = true;
               send(event, data);
             }
           }
+        }
+        // honesty: an upstream that ends WITHOUT the terminal handshake
+        // (proxy cut, Render idle timeout, core bug) must not pass as a
+        // complete answer — say so on the same channel
+        if (!sawTerminal) {
+          send("error", { message: "The tutor stream ended before completion — please ask again." });
         }
       } catch {
         // upstream died mid-stream — tell the reader honestly
@@ -242,6 +281,7 @@ function pipeSse(upstream: Response, kgHref: string | null): Response {
         }
       } finally {
         clearInterval(heartbeat);
+        clientGone.removeEventListener("abort", onClientGone);
         if (!closed) {
           closed = true;
           controller.close();
@@ -249,7 +289,8 @@ function pipeSse(upstream: Response, kgHref: string | null): Response {
       }
     },
     cancel() {
-      // client went away — release the upstream stream (and core's LLM call)
+      // Next may cancel the response stream without req.signal having fired —
+      // release the upstream stream (and core's LLM call) either way
       void upstream.body?.cancel().catch(() => {});
     },
   });

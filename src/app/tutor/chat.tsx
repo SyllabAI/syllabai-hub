@@ -353,6 +353,8 @@ export function TutorChat({
         const decoder = new TextDecoder();
         let buffer = "";
         let answer = "";
+        // the hub's terminal handshake — a stream that ends without it was cut
+        let sawDone = false;
 
         for (;;) {
           const { done, value } = await reader.read();
@@ -373,7 +375,20 @@ export function TutorChat({
             const event = field("event");
             const dataLine = field("data");
             if (!event || !dataLine) continue;
-            const data = JSON.parse(dataLine);
+            // the hub's SSE data shapes, typed where the loop reads them
+            let data: {
+              citations?: import("@/lib/contracts").TutorCitation[];
+              provider?: string;
+              model?: string | null;
+              refused?: boolean;
+              text?: string;
+              message?: string;
+            };
+            try {
+              data = JSON.parse(dataLine);
+            } catch {
+              continue; // malformed frame — skip it, don't kill the turn
+            }
             if (event === "citations") {
               patchTurn({ citations: data.citations });
             } else if (event === "meta") {
@@ -389,9 +404,15 @@ export function TutorChat({
               }
             } else if (event === "error") {
               throw new Error((data.message as string) || "provider error");
+            } else if (event === "done") {
+              sawDone = true;
             }
           }
         }
+        // honesty handshake: the hub ends every stream with done or an error
+        // event — a silent close (serverless wall, network cut) must not
+        // render as a complete answer
+        if (!sawDone) patchTurn({ error: true });
       } catch (e) {
         // fetch abort surfaces as AbortError across runtimes — check the name
         const aborted = e instanceof Error && e.name === "AbortError";
