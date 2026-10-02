@@ -48,7 +48,12 @@ import {
   type LearnerModel,
 } from "./learner-state";
 import { api, getToken } from "./api";
-import { summarizeCardReviews, type CardReviewSummary } from "./flashcard-review";
+import type { CardReviewSummary } from "./flashcard-review";
+import {
+  unifiedSummarize,
+  useCoreReviewSchedule,
+  type UnifiedCardReviewSummary,
+} from "./flashcard-unified";
 import type {
   LearnerStateView,
   LearnerKnowledgeGraphView,
@@ -166,11 +171,13 @@ export interface LearnerDrawerState {
   upcoming: ReviewItem[];
   /** misconception watch (KG phase 3) — null when the course has no corpus */
   misconceptionWatch: MisconceptionWatch | null;
-  /** tranche 4.6: the Ebbinghaus flashcard review queue, scheduled from the
-   *  device-local rating trail (lib/flashcard-review.ts) — null when no card
-   *  was ever rated on this browser. Self-report feeds SCHEDULING only; the
-   *  attempts reviewQueue above stays the mastery-derived queue. */
-  cardReviews?: CardReviewSummary | null;
+  /** tranche 4.6, unified T-C57: the Ebbinghaus flashcard review queue,
+   *  scheduled from this browser's rating trail UNIONED with the account's
+   *  core review-schedule feed on the pilot course (lib/flashcard-unified.ts)
+   *  — null when no card was ever rated anywhere. Self-report feeds
+   *  SCHEDULING only; the attempts reviewQueue above stays the
+   *  mastery-derived queue. */
+  cardReviews?: UnifiedCardReviewSummary | null;
   /** recorded evidence stream, newest first (capped) */
   events: LearnerEvent[];
   /** number of recorded signals before the display cap */
@@ -868,6 +875,9 @@ function useCoreLearnerModel(course: string): CoreModelData | "off" | "loading" 
 export function useLearnerState(course: string): LearnerStateBundle {
   const progress = useCourseProgress(course);
   const core = useCoreLearnerModel(course);
+  // T-C57: the account feed for the unified card queue (pilot + signed in;
+  // off-pilot / signed-out / unreachable cores degrade to the device trail)
+  const coreFeed = useCoreReviewSchedule(course);
   const [bridge, setBridge] = useState<LearnerBridge | null>(null);
   const [titles, setTitles] = useState<Record<string, string>>({});
   const [failed, setFailed] = useState(false);
@@ -932,13 +942,14 @@ export function useLearnerState(course: string): LearnerStateBundle {
     };
   }, [progress, bridge, titles, failed]);
 
-  // tranche 4.6: the flashcard review queue derives from the device-local
-  // rating trail in BOTH modes (the core mirror is additive — every rating
-  // lands locally first), so it is stamped once here where the paths
-  // converge and neither derivation can drift from the other
+  // tranche 4.6, unified T-C57: the flashcard review queue derives from the
+  // device-local rating trail UNIONED with the account feed (pilot + signed
+  // in) in BOTH modes (the core mirror is additive — every rating lands
+  // locally first), so it is stamped once here where the paths converge and
+  // neither derivation can drift from the other. Self-report: timing only.
   const cardReviews = useMemo(
-    () => summarizeCardReviews(progress.flashcards, Date.now()),
-    [progress],
+    () => unifiedSummarize(progress.flashcards, coreFeed.cards, Date.now()),
+    [progress, coreFeed.cards],
   );
 
   if (coreResult) {

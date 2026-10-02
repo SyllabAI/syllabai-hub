@@ -11,6 +11,10 @@
  * Tranche 4.6: the deck is also where the Ebbinghaus review queue is worked
  * — cards whose rating trail says they are due again carry a badge, and
  * "Review due first" lifts them (stalest due first) to the front of the run.
+ * T-C57: the queue is the UNION of this browser's trail and the account's
+ * core review-schedule feed (pilot + signed in — lib/flashcard-unified.ts),
+ * so a card rated from another device can come due here too. Still timing
+ * only — self-report never touches mastery.
  */
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -20,7 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Markdown } from "@/components/markdown";
 import { rateFlashcard, useCourseProgress, type Course, type FlashcardRating } from "@/lib/progress";
-import { scheduleCards } from "@/lib/flashcard-review";
+import { unifySchedules, useCoreReviewSchedule } from "@/lib/flashcard-unified";
 import { getToken } from "@/lib/api";
 import { PILOT_COURSE_SLUG } from "@/lib/attempt-bridge";
 import { submitFlashcardRating } from "@/lib/flashcard-bridge";
@@ -45,6 +49,7 @@ export function DeckPlayer({
   cards: DeckCard[];
 }) {
   const progress = useCourseProgress(course);
+  const core = useCoreReviewSchedule(course);
   const [order, setOrder] = useState<string[]>(() => cards.map((c) => c.id));
   const [pos, setPos] = useState(0);
   const [flipped, setFlipped] = useState(false);
@@ -66,21 +71,16 @@ export function DeckPlayer({
 
   const byId = useMemo(() => new Map(cards.map((c) => [c.id, c])), [cards]);
   const current = order.length > 0 ? byId.get(order[Math.min(pos, order.length - 1)]) : undefined;
-  const rated = Object.entries(progress.flashcards).filter(
-    ([, v]) => v.subtopic === subtopicCode,
-  );
-  const stillLearning = rated.filter(([, v]) => v.rating === "still-learning").length;
-  const know = rated.filter(([, v]) => v.rating === "know").length;
-
-  // tranche 4.6: the Ebbinghaus schedule over this browser's rating trail —
-  // due cards (stalest first) can be lifted to the front of the run, and the
-  // card being shown carries an honest "due for review" marker while it is
-  // due. Recomputes on every rating, so a just-rated card leaves (or joins)
-  // the queue immediately.
+  // T-C57: the rated counts and the schedule read the unified queue (device
+  // trail ∪ account feed), scoped to this deck's cards — the honest counts a
+  // multi-device account sees, still self-report only.
   const schedules = useMemo(
-    () => scheduleCards(progress.flashcards, Date.now()),
-    [progress.flashcards],
+    () => unifySchedules(progress.flashcards, core.cards, Date.now()),
+    [progress.flashcards, core.cards],
   );
+  const rated = schedules.filter((s) => s.subtopic === subtopicCode && byId.has(s.cardId));
+  const stillLearning = rated.filter((s) => s.rating === "still-learning").length;
+  const know = rated.filter((s) => s.rating === "know").length;
   const scheduleById = useMemo(() => new Map(schedules.map((c) => [c.cardId, c])), [schedules]);
   const dueStalestFirst = useMemo(
     () =>

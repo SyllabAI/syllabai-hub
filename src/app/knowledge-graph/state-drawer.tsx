@@ -434,9 +434,9 @@ export function StateTab({
               </ul>
             )}
             <p className="mt-2 border-t pt-2 text-[10px] leading-relaxed text-muted-foreground">
-              Scheduled from your ratings on this browser: “still learning” resurfaces
-              immediately; “know” returns on an expanding Ebbinghaus ladder
-              (1 · 2 · 4 · 8 · 16 · 32 days) and every re-rate resets its clock.
+              {drawer.cardReviews.coverage === "device+account"
+                ? "Scheduled from your ratings on this browser and on your account (the newest record wins per card): “still learning” resurfaces immediately; “know” returns on an expanding Ebbinghaus ladder (1 · 2 · 4 · 8 · 16 · 32 days) and every re-rate resets its clock."
+                : "Scheduled from your ratings on this browser: “still learning” resurfaces immediately; “know” returns on an expanding Ebbinghaus ladder (1 · 2 · 4 · 8 · 16 · 32 days) and every re-rate resets its clock."}{" "}
               Self-report drives review timing only — never mastery.
             </p>
           </div>

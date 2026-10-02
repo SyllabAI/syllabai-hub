@@ -334,6 +334,48 @@ export interface FlashcardRatingView {
   occurredAt: string;
 }
 
+/**
+ * The flashcard review-schedule feed (T-C53, core ce0d7eb) — GET
+ * /api/v1/learners/me/flashcard-review-schedule: the Ebbinghaus queue
+ * derived at READ from the learner's account-level append-only rating trail
+ * (V47), ladder identical to the hub's lib/flashcard-review.ts (1·2·4·8·16,
+ * capped 32d), persisted nowhere (ADR-031). TIMING ONLY — self-report
+ * evidence; a due card never implies mastery.
+ */
+export interface FlashcardReviewScheduleView {
+  learnerId: string;
+  /** ISO-8601 instant of the derivation */
+  generatedAt: string;
+  summary: FlashcardReviewScheduleSummary;
+  /** ordered by dueAt then cardId — due cards first, stalest first */
+  cards: FlashcardReviewScheduleCard[];
+}
+
+export interface FlashcardReviewScheduleSummary {
+  due: number;
+  scheduled: number;
+  /** ISO-8601 instant; null when nothing is scheduled */
+  nextDueAt: string | null;
+}
+
+export interface FlashcardReviewScheduleCard {
+  cardId: string;
+  /** resolved deck anchor code ("4CH1-S1-a"); null when the node row is absent */
+  subtopicCode: string | null;
+  nodeId: string;
+  /** "still-learning" | "know" (the hub wire vocabulary) */
+  rating: string;
+  streak: number;
+  /** ISO-8601 instant of the latest rating */
+  lastRatedAt: string;
+  /** ISO-8601 instant the card came (or comes) due */
+  dueAt: string;
+  /** due at the core read instant — consumers recompute against their own now */
+  due: boolean;
+  intervalDays: number;
+}
+
+
 /** One note-vote event (V48) — hub note id + the canonical wire vocabulary. */
 export interface NoteVoteView {
   noteId: string;
