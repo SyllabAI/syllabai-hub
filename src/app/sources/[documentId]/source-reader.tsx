@@ -21,7 +21,9 @@ import { RequireAuth } from "@/components/auth/require-auth";
 import { ApiError, api } from "@/lib/api";
 import type { CitationDocumentView } from "@/lib/types";
 
-const KIND_LABELS: Record<string, string> = {
+// shared with the citation popup (CitationPaperLink) — one vocabulary for
+// core's document kinds everywhere a source is surfaced
+export const KIND_LABELS: Record<string, string> = {
   QUESTION_PAPER: "Question paper",
   MARK_SCHEME: "Mark scheme",
   SYLLABUS: "Specification",
