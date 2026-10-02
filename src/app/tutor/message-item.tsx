@@ -6,7 +6,8 @@
  * Assistant rows follow the corpus reading experience: the same Markdown
  * renderer the notes/solutions use (KaTeX math, callouts, tables), numbered
  * citation chips — real in-app deep links where a surface exists (mock-mode
- * urls, core-mode KG citations via the citation bridge), honest read-only
+ * urls, core-mode document citations into the F-022 source reader and KG
+ * citations into the course graph via the citation bridge), honest read-only
  * badges otherwise, matching the CLA islands — and a quiet action rail (copy,
  * regenerate, feedback). User rows are primary bubbles with an inline
  * edit-resend affordance. Refusals / aborts / transport errors keep their

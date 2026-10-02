@@ -1503,7 +1503,10 @@ export interface ClaTopicAnchorView {
 /** POST /api/v1/learners/me/cla/ask response. */
 export interface ClaAnswerView {
   answer: string;
-  citations: ClaCitation[];
+  // the hub's /api/ai/cla relay maps core citations into the client chip
+  // contract (citation-map) — the shape here is the WIRE shape, not core's
+  // raw ClaCitation (which carries deepLink, never url)
+  citations: import("@/lib/contracts").TutorCitation[];
   context: ClaContextView;
   topics: ClaTopicAnchorView[];
   evidenceCount: number;
@@ -1512,6 +1515,25 @@ export interface ClaAnswerView {
   refused: boolean;
   latencyMs: number;
   tools: ClaToolTraceView[];
+}
+
+/**
+ * GET /api/v1/content/documents/{id}?page=N — the learner-readable citation
+ * document (core L5, #59). One route, two shapes: without {@code page} the
+ * document header ({@code page}/{@code text} null); with it, the requested
+ * page's verbatim text in reading order (a text-free page is the empty
+ * string). Core enforces the corpus law server-side (existsCitable) — a
+ * document nothing serves is an honest 404, byte-identical to unknown-id.
+ */
+export interface CitationDocumentView {
+  id: string;
+  documentId: string;
+  docVersion: number;
+  kind: string;
+  title: string;
+  pageCount: number;
+  page: number | null;
+  text: string | null;
 }
 
 // ── Revision notes (SME-style corpus; learner-scoped; authenticated-only) ──
