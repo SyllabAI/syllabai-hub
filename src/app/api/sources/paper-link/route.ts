@@ -16,8 +16,10 @@ import { paperViewerLink } from "@/lib/paper-link";
  * work — no upstream calls, nothing to rate-limit.
  */
 const Query = z.object({
-  paperCode: z.string().min(1).max(40),
-  sessionLabel: z.string().min(1).max(80),
+  /** honestly null in core when the printed cover was lost — the matcher
+   *  fails closed on a missing identity, so both stay optional here */
+  paperCode: z.string().min(1).max(40).optional(),
+  sessionLabel: z.string().min(1).max(80).optional(),
   role: z.enum(["QP", "MS"]),
   course: z.string().min(1).max(80).optional(),
   page: z.coerce.number().int().min(1).max(2000).optional(),
@@ -36,7 +38,10 @@ export async function GET(req: NextRequest) {
     return Response.json({ error: "invalid_query" }, { status: 400 });
   }
   const { paperCode, sessionLabel, role, course, page } = parsed.data;
-  const href = await paperViewerLink({ paperCode, sessionLabel, role, page }, course ?? null);
+  const href = await paperViewerLink(
+    { paperCode: paperCode ?? null, sessionLabel: sessionLabel ?? null, role, page },
+    course ?? null,
+  );
   return Response.json(
     { href },
     { headers: { "Cache-Control": "no-store" } },

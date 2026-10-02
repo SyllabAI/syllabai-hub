@@ -126,13 +126,15 @@ function SourceReaderInner() {
   });
 
   useEffect(() => {
-    if (!paper) return;
+    // the parser honestly emits papers whose printed code/session the OCR
+    // lost (null) — no match is possible, so no resolver call either
+    if (!paper || !paper.paperCode || !paper.sessionLabel) return;
     let alive = true;
     const q = new URLSearchParams({
       paperCode: paper.paperCode,
       role: paper.role,
     });
-    if (paper.sessionLabel) q.set("sessionLabel", paper.sessionLabel);
+    q.set("sessionLabel", paper.sessionLabel);
     if (courseHint) q.set("course", courseHint);
     fetch(`/api/sources/paper-link?${q.toString()}`)
       .then((r) => (r.ok ? r.json() : { href: null }))

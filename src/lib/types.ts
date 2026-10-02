@@ -1543,7 +1543,9 @@ export interface CitationDocumentView {
 
 export interface CitationPaperRef {
   paperId: string;
-  paperCode: string;
+  /** honestly null: the parser never guesses a printed identity that the
+   *  OCR lost (syllabai-parser PaperIdentityResolutionTest discipline) */
+  paperCode: string | null;
   sessionLabel: string | null;
   role: "QP" | "MS";
 }
