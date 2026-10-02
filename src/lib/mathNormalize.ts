@@ -25,6 +25,27 @@
  *     math, list/heading markers and citation [n] markers are barriers; runs
  *     with unbalanced braces are left alone (no worse than raw).
  *
+ * T-C47 residual hardening (post-merge audit, operator trace
+ * 1a0fb4b888cb507d "And are there more issues like this?") — 4 more real
+ * shapes, 2 of which render hard KaTeX red:
+ *  R1  multi-line $$…$$ blocks (PROPER delimiters, no drift) — the
+ *      line-based rule 6 shredded their inner lines into nested $…$
+ *      (KaTeX "Can't use function '$'"); rule 6 now never wraps a line
+ *      inside — or on the boundary of — a display block (same defect
+ *      class the rule-2 line-collapse fixed for \[…\] bodies)
+ *  R2  bare \ce{…}/\pu{…} with NESTED braces (the ion shapes
+ *      \ce{SO4^{2-}}, \ce{Fe^{3+}}) — the old [^}]* cut at the first
+ *      brace and wrapped an unbalanced body ("Unexpected end of input
+ *      in a macro argument") + a stray } literal; the matcher now takes
+ *      one brace level and deeper nests are left alone (no worse than raw)
+ *  R3  multi-line \(…\) bodies — collapsed onto one line like rule 2,
+ *      so the body stays ONE math span instead of fragmenting (raw
+ *      \frac fragments used to leak into the prose)
+ *  R4  emphasis-wrapped partial runs (**\frac{V}{24} = 0.5 mol**) — the
+ *      opening ** used to be swallowed INTO the math (asterisk noise,
+ *      emphasis lost); one-sided markers now move outside the $…$ like
+ *      the whole-run case already did
+ *
  * Applied by ChatMarkdown (Tutor + every CLA surface) and QuestionMarkdown
  * (corpus + Smart Mark explanations + question help) — curated corpus
  * content sails through untouched (it never carries these shapes).
@@ -198,6 +219,25 @@ function wrapLineRuns(line: string): string {
       wrapOpen = "*";
       wrapClose = "*";
       runText = italAll[1].trim();
+    } else if (runText.startsWith("**")) {
+      // one-sided emphasis (R4, T-C47): **\frac{V}{24} = 0.5 mol** — the
+      // run starts inside the bold but ends before the closing marker
+      // (a non-mathish word sat between); move the opening marker out
+      // so it never lands inside the math as literal asterisks
+      wrapOpen = "**";
+      runText = runText.slice(2).trim();
+    } else if (runText.startsWith("*")) {
+      wrapOpen = "*";
+      runText = runText.slice(1).trim();
+    }
+    if (!wrapClose) {
+      if (runText.endsWith("**") && wrapOpen !== "**") {
+        wrapClose = "**";
+        runText = runText.slice(0, -2).trim();
+      } else if (runText.endsWith("*") && wrapOpen !== "*") {
+        wrapClose = "*";
+        runText = runText.slice(0, -1).trim();
+      }
     }
     // sentence punctuation belongs to the prose around the math
     const lead = runText.match(/^[.,;:]+/)?.[0] ?? "";
@@ -215,9 +255,16 @@ function wrapLineRuns(line: string): string {
   return out;
 }
 
-/** rule 6 entry: wrap leaked runs per line, skipping fenced code blocks */
+/** rule 6 entry: wrap leaked runs per line, skipping fenced code blocks AND
+ *  display-block lines (R1, T-C47 — a proper multi-line $$…$$ block used to
+ *  have its inner lines shredded into nested $…$). Display state toggles per
+ *  odd \$\$ occurrence, mirroring remark-math's own delimiter pairing; a
+ *  line inside a block, or opening/closing one, is never re-wrapped. Lines
+ *  with PAIRED \$\$ spans outside any block still wrap normally (the spans
+ *  themselves are barriers in wrapLineRuns). */
 function wrapDanglingMath(answer: string): string {
   let inFence = false;
+  let inDisplay = false;
   return answer
     .split("\n")
     .map((line) => {
@@ -225,7 +272,11 @@ function wrapDanglingMath(answer: string): string {
         inFence = !inFence;
         return line;
       }
-      return inFence ? line : wrapLineRuns(line);
+      if (inFence) return line;
+      const count = (line.match(/\$\$/g) ?? []).length;
+      const wasInside = inDisplay;
+      if (count % 2 === 1) inDisplay = !inDisplay;
+      return wasInside || count % 2 === 1 ? line : wrapLineRuns(line);
     })
     .join("\n");
 }
@@ -238,9 +289,13 @@ function wrapDanglingMath(answer: string): string {
 function bareCe(text: string): string {
   return text
     // 3. bare \ce{…}/\pu{…} → $\ce{…}$  (outside math delimiters; the
-    //    lookbehind/lookahead keep an already-delimited $\ce{…}$ untouched)
+    //    lookbehind/lookahead keep an already-delimited $\ce{…}$ untouched).
+    //    The body matcher takes ONE nesting level (R2, T-C47 — the ion
+    //    shapes \ce{SO4^{2-}} / \ce{Fe^{3+}} used to be cut at the first
+    //    brace and wrapped unbalanced); deeper nests simply don't match
+    //    and stay raw (no worse than raw)
     .replace(
-      /(?<![$\\])\\(ce|pu)\{([^}]*)\}(?!\$)/g,
+      /(?<![$\\])\\(ce|pu)\{((?:[^{}]|\{[^{}]*\})*)\}(?!\$)/g,
       (_m, cmd: string, tex: string) => `$\\${cmd}{${tex}}$`,
     )
     // 4. braceless \ceO2 / \puK → $\ce{O2}$ — only chemistry-ish tokens
@@ -255,8 +310,14 @@ function bareCe(text: string): string {
 
 export function normalizeMathDelimiters(answer: string): string {
   const delimited = answer
-    // 1. \( … \) → $ … $  (inline; \( never occurs in prose)
-    .replace(/\\\(([\s\S]+?)\\\)/g, (_m, tex: string) => `$${tex}$`)
+    // 1. \( … \) → $ … $  (inline; \( never occurs in prose). The body is
+    //    collapsed onto ONE line (R3, T-C47 — same TeX-whitespace reasoning
+    //    as rule 2: a multi-line \(…\) used to fragment into per-line
+    //    wrapped spans and leak raw \frac into the prose)
+    .replace(
+      /\\\(([\s\S]+?)\\\)/g,
+      (_m, tex: string) => `$${tex.replace(/\n[ \t]*/g, " ").trim()}$`,
+    )
     // 2. \[ … \] → $$ … $$  (display; only when the body looks like LaTeX,
     //    so the escaped literal \[1\] stays a literal). The body is
     //    collapsed onto ONE line (newlines → spaces — TeX treats them as

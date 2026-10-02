@@ -143,5 +143,64 @@ check("corpus glued-macro content still repairs (no double-processing damage)",
   hasKatex(corpus) && !hasRedError(corpus) && !visibleText(corpus).includes("\\cap"),
   visibleText(corpus).slice(0, 120));
 
+// ── 11–18. T-C47 residual shapes (post-merge audit, trace
+//    1a0fb4b888cb507d) — R1 multi-line $$, R2 nested-brace \ce, R3
+//    multi-line \(…\), R4 emphasis-wrapped partial runs ──────────────────
+
+// R1: a PROPER multi-line $$…$$ block (no delimiter drift at all) — rule 6
+// used to shred its inner lines into nested $…$ (KaTeX "Can't use
+// function '$'")
+const multilineDisplay = render(
+  "$$\nE = mc^2 + \\frac{1}{2}mv^2\n\\text{kinetic energy}\n$$",
+);
+check("R1 multi-line $$ block renders without nested-$ red error",
+  hasKatex(multilineDisplay) && !hasRedError(multilineDisplay),
+  multilineDisplay.slice(0, 220));
+check("R1 multi-line $$ block: no raw \\frac/\\text leak",
+  rawLeak(multilineDisplay, "\\frac", "\\text").length === 0,
+  "leaked: " + rawLeak(multilineDisplay, "\\frac", "\\text").join(" "));
+
+const multilineChem = render(
+  "$$\n\\ce{2NH3 + 5O2 -> 4NO + 6H2O}\n\\text{catalytic oxidation}\n$$",
+);
+check("R1 multi-line $$ mhchem block renders without red",
+  hasKatex(multilineChem) && !hasRedError(multilineChem),
+  multilineChem.slice(0, 220));
+
+// R2: bare \ce with nested braces — the ion shapes; the old [^}]* body cut
+// at the first brace and wrapped an unbalanced body (red) + stray }
+const ion = render("iron is \\ce{Fe^{3+}} oxidised to \\ce{Fe^{2+}} reduced");
+check("R2 nested-brace \\ce{Fe^{3+}} renders as math", hasKatex(ion) && !hasRedError(ion),
+  ion.slice(0, 220));
+check("R2 nested-brace \\ce: no stray brace or raw command leaks",
+  rawLeak(ion, "\\ce", "}").length === 0,
+  "leaked: " + rawLeak(ion, "\\ce", "}").join(" "));
+
+const tableIon = render("| ion | test |\n|---|---|\n| \\ce{SO4^{2-}} | white ppt |");
+check("R2 nested-brace \\ce{SO4^{2-}} in a table cell renders", hasKatex(tableIon) && !hasRedError(tableIon),
+  visibleText(tableIon).slice(0, 160));
+
+// R3: a multi-line \(…\) body — used to fragment into per-line spans with
+// raw \frac leaking into the prose
+const multilineInline = render("consider\n\\( x = \\frac{a}{b} +\n\\sqrt{c} \\)");
+check("R3 multi-line \\(…\\) body stays ONE math span (no fragments)",
+  hasKatex(multilineInline) && !hasRedError(multilineInline) &&
+    rawLeak(multilineInline, "\\frac", "\\sqrt").length === 0,
+  visibleText(multilineInline).slice(0, 200));
+
+// R4: bold-wrapped partial run — the opening ** used to be swallowed into
+// the math as literal asterisks; emphasis must stay in markdown-land
+const boldRun = render("**\\frac{V}{24} = 0.5 mol** per litre");
+check("R4 bold-wrapped partial run keeps emphasis outside math",
+  hasKatex(boldRun) && !hasRedError(boldRun) && /<strong[ >]/.test(boldRun) &&
+    !/katex[^>]*>[^<]*\*\*/.test(boldRun),
+  boldRun.slice(0, 240));
+
+// R1 control: a PAIRED $$ span with prose around it still wraps the prose
+const paired = render("$$x^2$$ grows as $\\frac{a}{b}$ does");
+check("R1 control: paired $$ span + prose run still both render",
+  (paired.match(/class="katex"/g) ?? []).length >= 2 && !hasRedError(paired),
+  paired.slice(0, 220));
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);
