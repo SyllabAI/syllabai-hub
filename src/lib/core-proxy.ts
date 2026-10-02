@@ -98,10 +98,13 @@ export interface CoreStreamResult {
  *  legacy JSON adaptation. The AbortSignal is a hard wall-clock ceiling (not
  *  an idle timeout) — deliberately matched to this route's Vercel
  *  maxDuration, past which the function dies anyway; it also bounds the
- *  Render cold-start wait before response headers. */
+ *  Render cold-start wait before response headers. An optional `signal`
+ *  (the route's req.signal) composes with that ceiling via AbortSignal.any:
+ *  a client disconnect aborts the upstream fetch immediately instead of
+ *  letting core stream tokens into a dead connection. */
 export async function coreStreamAuthorized(
   path: string,
-  init: { method: "POST"; token: string | null; body?: unknown },
+  init: { method: "POST"; token: string | null; body?: unknown; signal?: AbortSignal },
 ): Promise<CoreStreamResult> {
   const base = coreBaseUrl();
   if (!base) {
@@ -115,7 +118,9 @@ export async function coreStreamAuthorized(
       ...(init.token ? { Authorization: `Bearer ${init.token}` } : {}),
     },
     body: init.body === undefined ? undefined : JSON.stringify(init.body),
-    signal: AbortSignal.timeout(120_000),
+    signal: init.signal
+      ? AbortSignal.any([AbortSignal.timeout(120_000), init.signal])
+      : AbortSignal.timeout(120_000),
     cache: "no-store",
   });
   const contentType = res.headers.get("content-type");
