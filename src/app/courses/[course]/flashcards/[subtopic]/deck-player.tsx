@@ -26,7 +26,7 @@ import { Markdown } from "@/components/markdown";
 import { rateFlashcard, useCourseProgress, type Course, type FlashcardRating } from "@/lib/progress";
 import { unifiedQueue, useCoreReviewSchedule } from "@/lib/flashcard-unified";
 import { getToken } from "@/lib/api";
-import { PILOT_COURSE_SLUG } from "@/lib/attempt-bridge";
+import { isFlashcardSyncCourse } from "@/lib/flashcard-sync-eligibility";
 import { submitFlashcardRating } from "@/lib/flashcard-bridge";
 import { cn } from "@/lib/utils";
 
@@ -59,7 +59,7 @@ export function DeckPlayer({
   // session token doesn't change while a deck is open.
   const [syncMode, setSyncMode] = useState<null | "account" | "device" | "offline">(null);
   useEffect(() => {
-    if (course !== PILOT_COURSE_SLUG) return; // off-pilot: chip stays hidden
+    if (!isFlashcardSyncCourse(course)) return; // not a core-sync course: chip stays hidden (T-C66 — the same predicate the write gate reads, so the chip always tells the truth about where the rating goes)
     let cancelled = false;
     Promise.resolve().then(() => {
       if (!cancelled) setSyncMode(getToken() ? "account" : "device");

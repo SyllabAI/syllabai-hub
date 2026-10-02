@@ -42,12 +42,13 @@
  *
  * ── Scoping (the bridge gate, mirrored) ─────────────────────────────────
  * The account trail is course-agnostic and its cards carry no course
- * slug; the only course that ever syncs ratings to core is the pilot
- * (lib/flashcard-bridge refuses everything else), so the pilot's queue
- * may consume the account whole. Any other course's queue must not: the
- * hook therefore fetches only on the pilot course, exactly the gate the
- * write side uses. If the bridge gate ever widens, this gate widens with
- * it — widen BOTH or neither.
+ * slug, so a course's queue may consume the account ONLY where the write
+ * side would have synced: the registry-derived core-sync eligibility set
+ * (lib/flashcard-sync-eligibility — T-C66; today exactly the pilot, since
+ * core cannot anchor the other courses yet). The hook fetches only on
+ * those courses, the EXACT predicate the write gate and the deck player's
+ * honesty chip read — one predicate, three consumers, so the write and
+ * read sides cannot drift: widen BOTH or neither is structural.
  *
  * ── Honesty pins (inherited, all preserved) ──────────────────────────────
  *   - self-report drives review TIMING only — never the mastery model
@@ -74,7 +75,7 @@ import type {
   FlashcardReviewScheduleCard,
   FlashcardRatingTrailEvent,
 } from "./types";
-import { PILOT_COURSE_SLUG } from "./attempt-bridge";
+import { isFlashcardSyncCourse } from "./flashcard-sync-eligibility";
 
 /** One card of the core feed, shaped for the union (wire vocabulary as the
  *  hub types it; ISO instants parsed to epoch ms at the merge boundary). */
@@ -396,7 +397,8 @@ const TRAIL_MAX_PAGES = 25;
 
 /**
  * The account source for the unified queue, fetched only where the write
- * side (lib/flashcard-bridge) would have synced: the pilot course, signed
+ * side (lib/flashcard-bridge) would have synced: a core-sync course
+ * (lib/flashcard-sync-eligibility), signed
  * in. Resolves the best rung — the raw trail walk (T-C61) when it
  * completes, else the derived feed (T-C57), else "unavailable". Refetches
  * when the bridge fires `syllabai:core-evidence` (a rating just synced —
@@ -412,7 +414,7 @@ export function useCoreReviewSchedule(course: string): {
   const [state, setState] = useState<CoreFeedState>("off");
 
   useEffect(() => {
-    if (!isBrowser || course !== PILOT_COURSE_SLUG || !getToken()) {
+    if (!isBrowser || !isFlashcardSyncCourse(course) || !getToken()) {
       // not the account's surface — drop any state from a prior course.
       // Deferred (deck-player's syncMode dance): effect bodies may not
       // setState synchronously; the defaults are already off/device, so
