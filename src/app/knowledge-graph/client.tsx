@@ -39,7 +39,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLearnerState } from "@/lib/kg-learner-state";
-import { PILOT_COURSE_SLUG } from "@/lib/attempt-bridge";
 import { LearnerStateDrawer } from "./state-drawer";
 
 interface CourseLite {
@@ -59,7 +58,6 @@ interface KgCounts {
   specPoints: number;
 }
 
-const DEFAULT_COURSE = PILOT_COURSE_SLUG; // the 4CH1 pilot — richest cross-checked data
 const PROTO_URL = "/graph-explorer";
 
 /**
@@ -209,13 +207,17 @@ function KnowledgeGraphCourse({
     if (ready) postLearnerOverlay();
   }, [ready, postLearnerOverlay]);
 
-  // keep the address bar deep-linkable (external system, no state here)
-  useEffect(() => {
-    const url = new URL(window.location.href);
-    if (activeCourse === DEFAULT_COURSE) url.searchParams.delete("course");
-    else url.searchParams.set("course", activeCourse);
-    window.history.replaceState(null, "", url);
-  }, [activeCourse]);
+  // NO address-bar rewrite here (T-C55): this component once "cleaned" the
+  // pilot's URL with window.history.replaceState deleting ?course= — but
+  // Next patches history.replaceState to push into the App Router state, so
+  // useSearchParams() re-rendered empty, `requested` became null, and this
+  // page flipped ITSELF onto the landing picker mid-session: the pilot deep
+  // link could never hold (deck-flow e2e: the drawer trigger unmounted under
+  // the click — 2/29 red since 429e4ad made null land on the picker; before
+  // that commit the delete was harmless because null fell back to the pilot).
+  // For non-pilot courses the rewrite was a no-op (it set the same value),
+  // so the effect was pure liability. The param-ful URL IS the canonical
+  // deep-link form — the landing picker links every course with exactly it.
 
   // loader-build handshake: one stable listener; the iframe re-posts on every
   // course switch (key={activeCourse} remounts it), so state updates only
