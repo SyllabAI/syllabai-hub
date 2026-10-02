@@ -126,7 +126,13 @@ function PointChips({ codes, max = 3 }: { codes: string[]; max?: number }) {
   );
 }
 
-function NoteLink({ noteId }: { noteId: string }) {
+/** Course-aware deep link into the mapped revision note. Rendered only when
+ *  the owning course slug is known: the bare /revision-notes/:id path is a
+ *  legacy redirect that lands the pilot course — a 404 chain for the other
+ *  48 courses (UX audit 2026-10-02, P2-4). Same convention as the flashcard
+ *  deck links below: no course, no affordance. */
+function NoteLink({ noteId, course }: { noteId: string; course?: string }) {
+  if (!course) return null;
   return (
     <Button
       asChild
@@ -136,7 +142,9 @@ function NoteLink({ noteId }: { noteId: string }) {
       aria-label="Read the mapped revision note"
       title="Read the mapped revision note"
     >
-      <Link href={`/revision-notes/${encodeURIComponent(noteId)}`}>
+      <Link
+        href={`/courses/${encodeURIComponent(course)}/revision-notes/${encodeURIComponent(noteId)}`}
+      >
         <BookOpen className="size-3.5" aria-hidden />
       </Link>
     </Button>
@@ -358,7 +366,7 @@ export function StateTab({
                     >
                       {formatDue(r.dueAt, Date.now())}
                     </Badge>
-                    {r.noteIds[0] && <NoteLink noteId={r.noteIds[0]} />}
+                    {r.noteIds[0] && <NoteLink noteId={r.noteIds[0]} course={course} />}
                   </div>
                 </li>
               ))}
