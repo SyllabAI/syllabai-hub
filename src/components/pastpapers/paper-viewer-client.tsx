@@ -73,6 +73,10 @@ export interface PaperViewerClientProps {
   metaGeneratedAt: string;
   /** spec exam code pill (e.g. 4CH1) — shown in the compact toolbar row */
   examCode?: string;
+  /** F-022 tranche 2: the deep-linked landing page from a citation drill-in
+   *  (?page=N) — applied to the pane matching initialPageDoc */
+  initialPage?: number;
+  initialPageDoc?: "qp" | "ms";
 }
 
 export function PaperViewerClient({
@@ -83,6 +87,8 @@ export function PaperViewerClient({
   mode,
   metaGeneratedAt,
   examCode,
+  initialPage,
+  initialPageDoc,
 }: PaperViewerClientProps) {
   const router = useRouter();
   const isSplitCapable = Boolean(paper.qpBytes && paper.msBytes);
@@ -358,6 +364,7 @@ export function PaperViewerClient({
             downloadUrl={qpUrl}
             label={`Question paper — ${paper.ref}`}
             active
+            initialPage={initialPageDoc !== "ms" ? initialPage : undefined}
             className="min-h-0 flex-1 rounded-none border-0"
           />
         ) : (
@@ -540,6 +547,7 @@ export function PaperViewerClient({
             downloadUrl={msUrl}
             label={`Mark scheme — ${paper.ref}`}
             active
+            initialPage={initialPageDoc === "ms" ? initialPage : undefined}
             /* NO flex-1 here: in this auto-height column flex-basis 0% +
                min-height:auto lets the document content stretch the pane to
                its full 40k-page height (the page scrolled 43,380px in E2E).
@@ -751,6 +759,7 @@ export function PaperViewerClient({
             downloadUrl={qpUrl}
             label={`Question paper — ${paper.ref}`}
             active={doc === "qp" || doc === "split"}
+            initialPage={initialPageDoc !== "ms" ? initialPage : undefined}
             /* s140 audit: the old split-mode "lg:block" OVERRODE the pane's
                base `flex` at lg → display:block → the flex-1 scroller lost
                its bounds and grew to the full 25k-px document height (the
@@ -770,6 +779,7 @@ export function PaperViewerClient({
             downloadUrl={msUrl}
             label={`Mark scheme — ${paper.ref}`}
             active={doc === "ms" || doc === "split"}
+            initialPage={initialPageDoc === "ms" ? initialPage : undefined}
             className={cn(
               "h-full min-h-0 w-full flex-1",
               doc === "qp" && "hidden",

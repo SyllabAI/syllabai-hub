@@ -148,6 +148,9 @@ export interface PdfPaneProps {
   label: string;
   /** when false (hidden split pane) tracking pauses; the loaded doc stays */
   active: boolean;
+  /** F-022 tranche 2: deep-linked landing page — the pane scrolls there once
+   *  the doc is ready and the page holders exist (one-shot; page 1 = no-op) */
+  initialPage?: number;
   className?: string;
 }
 
@@ -338,7 +341,7 @@ function writePrefs(p: PpPrefs) {
 }
 
 export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
-  { url, downloadUrl, label, active, className },
+  { url, downloadUrl, label, active, initialPage, className },
   ref,
 ) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -403,6 +406,11 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
   // ── react state (kept minimal; layout itself is imperative) ──────────────
   const [reloadKey, setReloadKey] = useState(0);
   const [phase, setPhase] = useState<Phase>("loading");
+
+  // F-022 tranche 2 — one-shot deep-link landing (the effect itself lives
+  // below, after scrollToPage's declaration). Captured once per mount — the
+  // URL param is not expected to change in place.
+  const initialPageRef = useRef(initialPage);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [numPages, setNumPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
@@ -1328,6 +1336,25 @@ export const PdfPane = forwardRef<PdfPaneHandle, PdfPaneProps>(function PdfPane(
     }),
     [extractLines, scrollToPage],
   );
+
+  // F-022 tranche 2 — one-shot deep-link landing: once the doc is ready the
+  // page holders all exist (placeholders render for every page; only canvases
+  // are virtualized), so a rect-based scrollToPage lands reliably. The
+  // double-rAF waits one commit past the ready state change.
+  useEffect(() => {
+    if (phase !== "ready") return;
+    const target = initialPageRef.current;
+    initialPageRef.current = undefined;
+    if (!target || target < 2) return; // page 1 is the default landing — no-op
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => scrollToPage(target));
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [phase, scrollToPage]);
 
   // ── toolbar actions ──────────────────────────────────────────────────────
   /** (maxZoomMult lives up in the geometry section — the ready-kick effect

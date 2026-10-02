@@ -1,7 +1,11 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { coreBaseUrl, coreFetchAuthorized, coreErrorDetail } from "@/lib/core-proxy";
-import { kgHrefForCourseSlug, mapCitation } from "@/lib/citation-map";
+import {
+  surfaceForCourseSlug,
+  mapCitation,
+  type CitationSurface,
+} from "@/lib/citation-map";
 import { listCourses } from "@/lib/courses";
 import { rateLimit, rateLimitKey, rateLimitResponse, type RateLimitRule } from "@/lib/rate-limit";
 
@@ -144,7 +148,7 @@ export async function POST(req: NextRequest) {
   // the per-ask citation surface: when the ask's course ships a graph,
   // KNOWLEDGE_NODE citations deep-link to its explorer (the bridge in
   // citation-map decides per link — honest nulls otherwise)
-  const kgHref = await kgHrefForCourseSlug(parsed.course);
+  const surface = await surfaceForCourseSlug(parsed.course);
 
   const rootId = await rootIdForCourseCode(courseCode, token);
 
@@ -176,7 +180,7 @@ export async function POST(req: NextRequest) {
       token,
       body: { kind: "NOTE_SECTION", rootId, noteId: parsed.noteId, mode: parsed.mode, question: parsed.question },
     });
-    return claResponse(result, parsed.mode, kgHref);
+    return claResponse(result, parsed.mode, surface);
   }
 
   // ── topic context → KG_TOPIC ──
@@ -205,14 +209,14 @@ export async function POST(req: NextRequest) {
     token,
     body: { kind: "KG_TOPIC", rootId, topicNodeId, mode: parsed.mode, question: parsed.question },
   });
-  return claResponse(result, parsed.mode, kgHref);
+  return claResponse(result, parsed.mode, surface);
 }
 
 /** Adapt core's ClaAnswerView → the hub client's expected shape. */
 function claResponse(
   result: Awaited<ReturnType<typeof coreFetchAuthorized<Record<string, unknown>>>>,
   mode: string,
-  kgHref: string | null,
+  surface: CitationSurface,
 ): Response {
   if (!result.ok || !result.data) {
     const status = result.status === 401 || result.status === 403 ? 401 : result.status;
@@ -241,7 +245,7 @@ function claResponse(
   const citations = Array.isArray(d.citations)
     ? // explicit (c, i) — a bare .map(mapCitation) would hand the ARRAY in
       // as the surface argument
-      (d.citations as Parameters<typeof mapCitation>[0][]).map((c, i) => mapCitation(c, i, { kgHref }))
+      (d.citations as Parameters<typeof mapCitation>[0][]).map((c, i) => mapCitation(c, i, surface))
     : [];
   return Response.json({
     answer: typeof d.answer === "string" ? d.answer : "",

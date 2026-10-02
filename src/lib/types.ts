@@ -1534,6 +1534,18 @@ export interface CitationDocumentView {
   pageCount: number;
   page: number | null;
   text: string | null;
+  /** F-022 tranche 2 (core PR #66): the exam-paper identity behind a
+   *  QUESTION_PAPER / MARK_SCHEME row — the key the hub maps onto the real
+   *  paper PDF (the corpus viewer). Null for every other kind and for paper
+   *  rows nothing links; core resolves it behind the same existsCitable gate. */
+  paper: CitationPaperRef | null;
+}
+
+export interface CitationPaperRef {
+  paperId: string;
+  paperCode: string;
+  sessionLabel: string | null;
+  role: "QP" | "MS";
 }
 
 // ── Revision notes (SME-style corpus; learner-scoped; authenticated-only) ──
