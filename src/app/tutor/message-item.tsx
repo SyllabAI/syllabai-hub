@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Markdown } from "@/components/markdown";
+import { normalizeMathDelimiters } from "@/lib/mathNormalize";
 import { cn } from "@/lib/utils";
 import type { Turn } from "./threads";
 import {
@@ -202,7 +203,7 @@ export function MessageItem({
         <div className="space-y-2 text-sm">
           {message.error ? (
             <div className="space-y-2">
-              {message.content && <Markdown className="text-sm [&_p]:text-sm">{message.content}</Markdown>}
+              {message.content && <Markdown className="text-sm [&_p]:text-sm">{normalizeMathDelimiters(message.content)}</Markdown>}
               <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-2.5 py-2 text-xs">
                 <TriangleAlert className="size-3.5 shrink-0 text-destructive" aria-hidden />
                 <span className="min-w-0 flex-1 text-destructive">
@@ -224,7 +225,7 @@ export function MessageItem({
           ) : (
             <>
               {message.content ? (
-                <Markdown className="text-sm [&_p]:text-sm">{message.content}</Markdown>
+                <Markdown className="text-sm [&_p]:text-sm">{normalizeMathDelimiters(message.content)}</Markdown>
               ) : waiting ? (
                 <TypingDots />
               ) : null}

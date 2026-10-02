@@ -32,6 +32,9 @@ jobs:
         env:
           HUB_DATA_MODE: mock
 
+      - name: Tutor math normalize verify (T-C44 — the s142 drift shapes render as math, not raw LaTeX)
+        run: bun scripts/tutor_math_normalize_verify.ts
+
       - name: ADR-021 content package selftest (compile + verify + restore + determinism + tamper + KG gate + distribution zip)
         run: bash tools/content-package/selftest.sh
 

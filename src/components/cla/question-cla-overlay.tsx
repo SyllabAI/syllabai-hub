@@ -68,6 +68,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Markdown } from "@/components/markdown";
+import { normalizeMathDelimiters } from "@/lib/mathNormalize";
 import { ApiError, aiAskErrorMessage, api } from "@/lib/api";
 import type { ClaAnswerView, ClaCitation } from "@/lib/types";
 import type { ExamQuestion } from "@/lib/contracts";
@@ -451,7 +452,7 @@ export function QuestionClaOverlay({
                     Not supported by this question
                   </p>
                 )}
-                <Markdown className="text-sm [&_p]:text-sm">{m.result.answer}</Markdown>
+                <Markdown className="text-sm [&_p]:text-sm">{normalizeMathDelimiters(m.result.answer)}</Markdown>
                 {m.result.citations.length > 0 && !m.result.refused && (
                   <div className="flex flex-wrap gap-1.5 pt-0.5">
                     {m.result.citations.map((c: ClaCitation) => (
