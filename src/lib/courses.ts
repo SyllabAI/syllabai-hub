@@ -91,7 +91,17 @@ let registryCache: CourseMeta[] | null = null;
 
 export async function listCourses(): Promise<CourseMeta[]> {
   if (registryCache) return registryCache;
-  const raw = JSON.parse(await readFile(path.join(CONTENT_DIR, "courses.json"), "utf8"));
+  // audit 2026-10-02 P2-3: an unguarded parse here crashed the whole tree
+  // (no error boundary at the time). Degrade to an empty registry instead —
+  // every consumer renders its honest empty state and the app stays up.
+  let raw: unknown;
+  try {
+    raw = JSON.parse(await readFile(path.join(CONTENT_DIR, "courses.json"), "utf8"));
+  } catch (err) {
+    console.error("[courses] registry unreadable — serving empty registry", err);
+    registryCache = [];
+    return registryCache;
+  }
   const parsed = CourseRegistry.parse(raw);
   registryCache = parsed.courses.map((c) => ({
     ...c,
