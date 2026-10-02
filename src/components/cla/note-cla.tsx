@@ -70,6 +70,7 @@ import { normalizeMathDelimiters } from "@/lib/mathNormalize";
 import type { TutorCitation } from "@/lib/contracts";
 import { getToken } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { CitationPaperLink } from "@/components/citations/citation-paper-link";
 import { useClaPanelForm, useClaDock, useIsDesktop, useIsWide, claHeaderCircleBtn } from "./cla-panel-mode";
 
 type NoteMode = "EXPLAIN" | "SUMMARIZE";
@@ -347,9 +348,9 @@ export function NoteCla({
                       </>
                     );
                     return c.url ? (
-                      <a key={c.index} href={c.url} className={badgeClass} title={c.label}>
+                      <CitationPaperLink key={c.index} href={c.url} className={badgeClass} title={c.label}>
                         {badge}
-                      </a>
+                      </CitationPaperLink>
                     ) : (
                       <span key={c.index} className={badgeClass} title={c.label}>
                         {badge}

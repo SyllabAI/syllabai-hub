@@ -39,6 +39,23 @@ export interface PaperLinkRequest {
 }
 
 /**
+ * What a successful match means for consumers: the viewer page URL (the
+ * original affordance) AND, since the citation popup (F-022), the raw
+ * corpus path of the role-matched document so the same PdfPane the viewer
+ * uses can render it in place. pdfPath is null when this paper doesn't
+ * hold the requested document — the viewer page honestly disables that
+ * tab, and the popup honestly falls back to the parsed text.
+ */
+export interface PaperLinkMatch {
+  href: string;
+  pdfPath: string | null;
+  /** official reference, e.g. "4CH1/1C" */
+  ref: string;
+  /** human title, e.g. "Paper 1C" */
+  title: string | null;
+}
+
+/**
  * The corpus viewer URL for a cited paper, or null when the match is not
  * unique. With a course hint (the ask's own slug, threaded through the
  * citation URL) the lookup is scoped to that course's corpus; without one
@@ -46,10 +63,10 @@ export interface PaperLinkRequest {
  * resolves — two different files matching the same code+session is exactly
  * the ambiguity this matcher must refuse.
  */
-export async function paperViewerLink(
+export async function paperLinkMatch(
   req: PaperLinkRequest,
   courseHint?: string | null,
-): Promise<string | null> {
+): Promise<PaperLinkMatch | null> {
   const sessionId = sessionIdFromLabel(req.sessionLabel);
   const code = normIdentity(req.paperCode ?? "");
   // both identity halves are load-bearing: the whole-form code ("SPEC/CODE",
@@ -75,5 +92,26 @@ export async function paperViewerLink(
   const { slug, entry } = unique.values().next().value!;
   const doc = req.role === "MS" ? "ms" : "qp";
   const page = req.page && req.page >= 1 ? `&page=${req.page}` : "";
-  return `/courses/${encodeURIComponent(slug)}/past-papers/view/${entry.sessionId}/${entry.dir}?doc=${doc}${page}`;
+  return {
+    href: `/courses/${encodeURIComponent(slug)}/past-papers/view/${entry.sessionId}/${entry.dir}?doc=${doc}${page}`,
+    pdfPath: (doc === "ms" ? entry.msPath : entry.qpPath) || null,
+    ref: entry.ref,
+    title: entry.title || null,
+  };
+}
+
+/**
+ * The corpus viewer URL for a cited paper, or null when the match is not
+ * unique. With a course hint (the ask's own slug, threaded through the
+ * citation URL) the lookup is scoped to that course's corpus; without one
+ * every registered course is tried, and only a single distinct corpus FILE
+ * resolves — two different files matching the same code+session is exactly
+ * the ambiguity this matcher must refuse.
+ */
+export async function paperViewerLink(
+  req: PaperLinkRequest,
+  courseHint?: string | null,
+): Promise<string | null> {
+  const match = await paperLinkMatch(req, courseHint);
+  return match?.href ?? null;
 }

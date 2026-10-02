@@ -74,6 +74,7 @@ import type { ClaAnswerView } from "@/lib/types";
 import type { ExamQuestion, TutorCitation } from "@/lib/contracts";
 import type { BridgeQuestion } from "@/lib/attempt-bridge";
 import { cn } from "@/lib/utils";
+import { CitationPaperLink } from "@/components/citations/citation-paper-link";
 import {
   AlertTriangle,
   Compass,
@@ -471,9 +472,9 @@ export function QuestionClaOverlay({
                         </>
                       );
                       return c.url ? (
-                        <a key={c.index} href={c.url} className={badgeClass} title={c.label}>
+                        <CitationPaperLink key={c.index} href={c.url} className={badgeClass} title={c.label}>
                           {badge}
-                        </a>
+                        </CitationPaperLink>
                       ) : (
                         <span key={c.index} className={badgeClass} title={c.label}>
                           {badge}

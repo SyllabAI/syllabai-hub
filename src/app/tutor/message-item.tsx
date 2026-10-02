@@ -25,6 +25,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Markdown } from "@/components/markdown";
 import { normalizeMathDelimiters } from "@/lib/mathNormalize";
 import { cn } from "@/lib/utils";
+import { CitationPaperLink } from "@/components/citations/citation-paper-link";
 import type { Turn } from "./threads";
 import {
   Check,
@@ -302,14 +303,14 @@ export function MessageItem({
                 const chipClass =
                   "flex max-w-full items-center gap-1.5 rounded-full border bg-background px-2.5 py-1 text-xs";
                 return c.url ? (
-                  <a
+                  <CitationPaperLink
                     key={c.index}
                     href={c.url}
                     className={`${chipClass} transition-colors hover:border-primary/40`}
                     title={c.label}
                   >
                     {chip}
-                  </a>
+                  </CitationPaperLink>
                 ) : (
                   <span key={c.index} className={chipClass} title={c.label}>
                     {chip}
