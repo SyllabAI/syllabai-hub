@@ -4,14 +4,22 @@
  * flashcard-bridge — client half of the flashcard rating evidence class
  * (ADR-029 tranche 4.4). Mirrors the attempt-bridge honesty rules:
  *
- *   - every negative (not the pilot / signed out / core down / unknown
- *     anchor) degrades to the local experience — the deck never blocks,
- *     never spins, the rating always lands in the browser-local overlay;
+ *   - every negative (not a core-sync course / signed out / core down /
+ *     unknown anchor) degrades to the local experience — the deck never
+ *     blocks, never spins, the rating always lands in the browser-local
+ *     overlay;
  *   - ratings go to core ONLY as self-report evidence (append-only trail):
  *     they never touch BKT/SkillState/misconceptions — mastery comes from
  *     marked attempts only (the learner-model honesty rule);
  *   - on success the `syllabai:core-evidence` event fires, so the KG / My
  *     State surfaces re-derive from core promptly.
+ *
+ * T-C66: the gate is no longer the pilot slug — it is the registry-derived
+ * core-sync eligibility predicate (lib/flashcard-sync-eligibility), the
+ * SAME predicate the queue hook and the deck player's honesty chip read;
+ * today that set is exactly the pilot, so behavior is unchanged — when a
+ * newly commissioned course becomes core-anchorable, the manifest flips it
+ * on and this side widens with zero code change.
  *
  * No module state: the local overlay (lib/progress.ts) stays the source of
  * truth for rings/queue; this helper is the core-side mirror, best-effort
@@ -29,7 +37,7 @@
  * recorded boundary; a future sync-repair lane must rewrite receipts.
  */
 import { api, getToken } from "./api";
-import { PILOT_COURSE_SLUG } from "./attempt-bridge";
+import { isFlashcardSyncCourse } from "./flashcard-sync-eligibility";
 import { markFlashcardTrailSync } from "./progress";
 
 export type FlashcardRatingSyncOutcome =
@@ -38,7 +46,7 @@ export type FlashcardRatingSyncOutcome =
 
 /**
  * Record one rating to the learner's core account when the full preflight
- * passes (pilot course + signed in + core reachable), then receipt the
+ * passes (a core-sync course + signed in + core reachable), then receipt the
  * device trail entry (`at` — the timestamp `rateFlashcard` returned for
  * this event) with the outcome. Resolves regardless — the caller must
  * never await user-visible consequences from this.
@@ -69,8 +77,8 @@ async function submitOutcome(
   rating: "still-learning" | "know",
   subtopicCode: string,
 ): Promise<FlashcardRatingSyncOutcome> {
-  if (course !== PILOT_COURSE_SLUG) {
-    return { kind: "local-only", reason: "not the pilot course" };
+  if (!isFlashcardSyncCourse(course)) {
+    return { kind: "local-only", reason: "not a core-sync course" };
   }
   if (!getToken()) {
     return { kind: "local-only", reason: "signed out" };

@@ -16,6 +16,7 @@
  * pinned). The HOOK's network ladder (trail → feed → device) is exercised
  * by the mock-mode e2e suite, not here.
  */
+import { readFileSync } from "node:fs";
 import {
   intervalDaysFor,
   scheduleCards,
@@ -34,6 +35,10 @@ import {
   type CoreTrailEvent,
 } from "../src/lib/flashcard-unified";
 import type { CourseProgress } from "../src/lib/progress";
+import {
+  FLASHCARD_SYNC_COURSES,
+  isFlashcardSyncCourse,
+} from "../src/lib/flashcard-sync-eligibility";
 
 let failures = 0;
 function pin(name: string, cond: boolean, detail = "") {
@@ -451,6 +456,59 @@ console.log("trail merge (T-C61):");
   pin(
     "a trail longer than TRAIL_CAP derives the capped interval (12 knows → 32d maintenance, same as the full trail)",
     longMerged[0].intervalDays === 32 && intervalDaysFor(12) === 32,
+  );
+}
+
+// ── core-sync eligibility (T-C66) ────────────────────────────────────────
+// The widened gate: one registry-derived predicate, three consumers (the
+// write bridge, the queue hook, the deck player's honesty chip). The
+// manifest↔registry derivation is pinned by
+// scripts/verify_flashcard_sync_courses.ts (prebuild); these pins cover
+// the predicate behavior the queue surfaces see.
+console.log("core-sync eligibility (T-C66):");
+{
+  // pilot: registered, deck-bearing, curriculumCode, course-prefixed
+  // charset-safe anchors — eligible
+  pin("the pilot course is core-sync eligible", isFlashcardSyncCourse("igcse-chemistry-19"));
+  // deck-bearing but no curriculumCode → core cannot anchor it → not eligible
+  pin(
+    "a deck-bearing course without a core-known curriculum is NOT eligible (igcse-biology-19)",
+    !isFlashcardSyncCourse("igcse-biology-19"),
+  );
+  pin("an unregistered slug is never eligible", !isFlashcardSyncCourse("no-such-course"));
+  pin(
+    "the committed manifest is exactly the registry-derived set (today: the pilot alone)",
+    FLASHCARD_SYNC_COURSES.length === 1 && FLASHCARD_SYNC_COURSES[0] === "igcse-chemistry-19",
+  );
+  // structural widen-both-or-neither: the write gate, the read gate and the
+  // honesty chip must consume the shared predicate — no second copy of the
+  // rule, no pilot slug left in either gate file
+  const bridgeSrc = readFileSync(
+    new URL("../src/lib/flashcard-bridge.ts", import.meta.url),
+    "utf8",
+  );
+  const unifiedSrc = readFileSync(
+    new URL("../src/lib/flashcard-unified.ts", import.meta.url),
+    "utf8",
+  );
+  const chipSrc = readFileSync(
+    new URL("../src/app/courses/[course]/flashcards/[subtopic]/deck-player.tsx", import.meta.url),
+    "utf8",
+  );
+  pin(
+    "the write gate consumes the shared predicate (no pilot-slug copy)",
+    bridgeSrc.includes('from "./flashcard-sync-eligibility"') &&
+      !bridgeSrc.includes("PILOT_COURSE_SLUG"),
+  );
+  pin(
+    "the read gate consumes the shared predicate (no pilot-slug copy)",
+    unifiedSrc.includes('from "./flashcard-sync-eligibility"') &&
+      !unifiedSrc.includes("PILOT_COURSE_SLUG"),
+  );
+  pin(
+    "the deck player's honesty chip consumes the shared predicate (no pilot-slug copy)",
+    chipSrc.includes('from "@/lib/flashcard-sync-eligibility"') &&
+      !chipSrc.includes("PILOT_COURSE_SLUG"),
   );
 }
 

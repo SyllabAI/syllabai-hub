@@ -8,7 +8,8 @@
     "start": "NODE_ENV=production bun .next/standalone/server.js 2>&1 | tee server.log",
     "lint": "eslint .",
     "verify:corpus": "bun scripts/verify_corpus_23a.ts",
-    "prebuild": "bun scripts/verify_corpus_23a.ts",
+    "verify:flashcard-sync": "bun scripts/verify_flashcard_sync_courses.ts",
+    "prebuild": "bun scripts/verify_corpus_23a.ts && bun scripts/verify_flashcard_sync_courses.ts",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui"
   },
