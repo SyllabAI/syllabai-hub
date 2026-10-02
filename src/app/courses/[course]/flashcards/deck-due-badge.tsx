@@ -25,10 +25,10 @@ export function DeckDueBadge({
   const core = useCoreReviewSchedule(course);
   const due = useMemo(
     () =>
-      unifiedDueCountBySubtopic(progress.flashcards, core.cards, Date.now()).get(
+      unifiedDueCountBySubtopic(progress.flashcards, core.source, Date.now()).get(
         subtopicCode,
       ) ?? 0,
-    [progress.flashcards, core.cards, subtopicCode],
+    [progress.flashcards, core.source, subtopicCode],
   );
   if (due === 0) return null;
   return (

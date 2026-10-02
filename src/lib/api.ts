@@ -35,6 +35,7 @@ import type {
   CitationDocumentView,
   ClaMode,
   FlashcardRatingView,
+  FlashcardRatingTrailView,
   FlashcardReviewScheduleView,
   TeacherAuditRowView,
   AuthResponse,
@@ -534,6 +535,21 @@ export const api = {
     request<FlashcardReviewScheduleView>(
       "/api/v1/learners/me/flashcard-review-schedule",
     ),
+
+  // Bounded raw rating trail (T-C61, core ADR-034): the learner's own
+  // append-only V47 rows, newest first in keyset pages — the input for a
+  // TRUE cross-device merge in lib/flashcard-unified.ts (the derived feed
+  // above stays as the degradation rung). TIMING ONLY, never mastery; the
+  // server clamps `limit`; `cursor` is opaque (walk until hasMore=false).
+  flashcardRatingTrail: (params?: { limit?: number; cursor?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.limit != null) qs.set("limit", String(params.limit));
+    if (params?.cursor) qs.set("cursor", params.cursor);
+    const q = qs.toString();
+    return request<FlashcardRatingTrailView>(
+      "/api/v1/learners/me/flashcard-rating-trail" + (q ? `?${q}` : ""),
+    );
+  },
 
   // Note-vote evidence (V48, ADR-029 tranche 4.9): one append-only vote per
   // call, attributed to the note's subtopic anchor (same structural gate as

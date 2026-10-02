@@ -875,8 +875,10 @@ function useCoreLearnerModel(course: string): CoreModelData | "off" | "loading" 
 export function useLearnerState(course: string): LearnerStateBundle {
   const progress = useCourseProgress(course);
   const core = useCoreLearnerModel(course);
-  // T-C57: the account feed for the unified card queue (pilot + signed in;
-  // off-pilot / signed-out / unreachable cores degrade to the device trail)
+  // T-C57 + T-C61: the account source for the unified card queue (pilot +
+  // signed in; the trail merge when the walk completes, else the feed, else
+  // the device trail alone — off-pilot / signed-out / unreachable cores
+  // degrade to the device trail)
   const coreFeed = useCoreReviewSchedule(course);
   const [bridge, setBridge] = useState<LearnerBridge | null>(null);
   const [titles, setTitles] = useState<Record<string, string>>({});
@@ -948,8 +950,8 @@ export function useLearnerState(course: string): LearnerStateBundle {
   // locally first), so it is stamped once here where the paths converge and
   // neither derivation can drift from the other. Self-report: timing only.
   const cardReviews = useMemo(
-    () => unifiedSummarize(progress.flashcards, coreFeed.cards, Date.now()),
-    [progress, coreFeed.cards],
+    () => unifiedSummarize(progress.flashcards, coreFeed.source, Date.now()),
+    [progress, coreFeed.source],
   );
 
   if (coreResult) {

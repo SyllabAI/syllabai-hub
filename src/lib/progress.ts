@@ -24,6 +24,15 @@ import { useCallback, useSyncExternalStore } from "react";
 
 export type FlashcardRating = "still-learning" | "know";
 
+/** T-C61 sync receipt on one trail entry — written by the bridge at the
+ *  only moment the truth is knowable (the sync outcome callback).
+ *  "core" = the POST reached the account trail (2xx); "local" = the POST
+ *  definitively did not (offline / not the pilot / signed out / core
+ *  down). ABSENT = recorded before T-C61 — an unknown that the true merge
+ *  handles conservatively (see lib/flashcard-unified.ts). Additive and
+ *  optional by design: pre-lane records load unchanged. */
+export type FlashcardTrailSync = "core" | "local";
+
 export interface CourseProgress {
   notesRead: Record<string, { subtopic: string | null; at: number; helpful?: "up" | "down" }>;
   /** keyed by questionId — a question counts as attempted once any part is scored */
@@ -38,8 +47,10 @@ export interface CourseProgress {
       /** tranche 4.6: bounded rating trail (newest last) — the feed the
        *  Ebbinghaus review scheduler (lib/flashcard-review.ts) consumes.
        *  Optional so pre-4.6 records keep loading; they schedule
-       *  conservatively from the latest rating alone. */
-      trail?: Array<{ rating: FlashcardRating; at: number }>;
+       *  conservatively from the latest rating alone.
+       *  T-C61: entries may carry a `sync` receipt (see
+       *  FlashcardTrailSync); absence is honest history, not a bug. */
+      trail?: Array<{ rating: FlashcardRating; at: number; sync?: FlashcardTrailSync }>;
     }
   >;
   saved: Record<string, { subtopic: string | null; topicSlug: string | null; at: number }>;
@@ -258,9 +269,9 @@ export function rateFlashcard(
   subtopic: string | null,
   rating: FlashcardRating,
 ) {
+  const at = Date.now();
   mutate(course, (p) => {
     const prev = p.flashcards[cardId];
-    const at = Date.now();
     // tranche 4.6: append to the bounded trail (newest last) — the local
     // overlay stays the COMPLETE per-device trail the scheduler reads;
     // the core mirror (flashcard-bridge) remains the account-side record
@@ -272,6 +283,35 @@ export function rateFlashcard(
       ...p,
       flashcards: { ...p.flashcards, [cardId]: { subtopic, rating, at, trail } },
     };
+  });
+  // T-C61: the event's timestamp, so the caller can attach the sync
+  // receipt to THIS entry once the bridge's outcome resolves
+  return at;
+}
+
+/** T-C61: persist the sync receipt for one trail entry (the event appended
+ *  at `at`). Idempotent, no-op when the entry is gone (a newer re-rate
+ *  already rotated it out of the TRAIL_CAP window — the account copy and
+ *  the newer entries carry their own receipts). Never blocks, never
+ *  throws: a receipt is bookkeeping, the rating already landed. */
+export function markFlashcardTrailSync(
+  course: string,
+  cardId: string,
+  at: number,
+  sync: FlashcardTrailSync,
+): void {
+  mutate(course, (p) => {
+    const record = p.flashcards[cardId];
+    if (!record?.trail) return p;
+    let changed = false;
+    const trail = record.trail.map((entry) => {
+      if (entry.at === at && entry.sync === undefined) {
+        changed = true;
+        return { ...entry, sync };
+      }
+      return entry;
+    });
+    return changed ? { ...p, flashcards: { ...p.flashcards, [cardId]: { ...record, trail } } } : p;
   });
 }
 
