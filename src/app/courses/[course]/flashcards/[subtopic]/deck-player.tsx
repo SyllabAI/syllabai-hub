@@ -305,10 +305,12 @@ export function DeckPlayer({
           Still learning
         </Button>
         {/* Know button: bg-success resolves to the theme's action-green
-            (SME emerald-700 5.5:1 / QG fern) — WCAG AA on white (P1-4 fix) */}
+            (SME emerald-700 5.5:1 / QG fern) — WCAG AA on white (P1-4 fix).
+            text-success-ink is the copy-on-success token: dark themes ship
+            lightened success hues where white text failed AA (audit 2026-10-02). */}
         <Button
           size="lg"
-          className="bg-success text-white hover:bg-success/90"
+          className="bg-success text-success-ink hover:bg-success/90"
           disabled={!flipped}
           onClick={() => advance("know")}
         >

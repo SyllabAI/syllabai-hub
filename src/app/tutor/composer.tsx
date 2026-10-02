@@ -148,7 +148,9 @@ export function Composer({
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
-              onSend();
+              // ignore Enter mid-stream: the chat guards same-thread re-asks,
+              // but a silent no-op here beats racing the composer's own state
+              if (!busy) onSend();
             }
           }}
           maxLength={maxLen}
