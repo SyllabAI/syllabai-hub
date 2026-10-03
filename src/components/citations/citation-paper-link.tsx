@@ -18,8 +18,10 @@
  *    held → the real PDF, plus a "Parsed text" toggle (the honesty view)
  *  - a cited revision note (fileName "sme-note-{noteId}.txt" per the corpus
  *    convention, course hint present) → the full note body joined out of the
- *    hub's committed bundle, markdown-rendered, with a "Parsed text" toggle
- *    and an "Open the full note" escape — any join miss falls to parsed text
+ *    hub's committed bundle, rendered through the SAME sanitize + Markdown
+ *    pipeline as the note reader (headings, spec-point chip repair, images),
+ *    with a "Parsed text" toggle and an "Open the full note" escape — any
+ *    join miss falls to parsed text
  *  - everything else (no paper, incomplete identity, matcher no-match, the
  *    role's document missing, core errors) → the verbatim parsed text in
  *    the same dialog — exactly what the tutor's evidence was served from —
@@ -44,6 +46,7 @@ import { ApiError, api } from "@/lib/api";
 import type { CitationDocumentView } from "@/lib/types";
 import { KIND_LABELS } from "@/app/sources/[documentId]/source-reader";
 import { Markdown } from "@/components/markdown";
+import { sanitizeNoteBody } from "@/lib/note-body-fix";
 
 // pdf.js is a ~400KB chunk — loaded ONLY when a popup first renders the
 // pane, never on the tutor/notes/questions pages that host the chips
@@ -443,7 +446,9 @@ export function CitationPaperLink({
                     Cited at page {parsed?.page ?? 1} of {state.data.doc.pageCount} · the full
                     note — the source material the tutor&apos;s evidence was drawn from
                   </p>
-                  <Markdown className="text-sm [&_p]:text-sm">{state.data.bodyMd}</Markdown>
+                  <Markdown className="text-sm [&_p]:text-sm">
+                    {sanitizeNoteBody(state.data.bodyMd, state.data.noteTitle)}
+                  </Markdown>
                   <a
                     href={state.data.noteHref}
                     className="mt-3 inline-flex items-center gap-1 text-[11px] text-muted-foreground underline hover:text-foreground"
