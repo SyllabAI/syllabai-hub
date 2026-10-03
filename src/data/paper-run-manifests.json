@@ -1,0 +1,1020 @@
+{
+ "meta": {
+  "generatedAt": "2026-10-03",
+  "note": "PaperInteractivityManifest v2 \u2014 curated per PAST_PAPER_RUN_MODE_DESIGN.md (T-C70). Rects are page-fraction UI metadata (top-origin); MCQ keys are attested (parsed-corpus); totals from the build-time PaperBlueprint. Image-layer pages degrade to paper-only honestly. Drafts never go interactive; this file holds confirmed manifests only.",
+  "papers": 1
+ },
+ "papers": {
+  "2019-06:4CH1-1C": {
+   "version": 2,
+   "paper": {
+    "corpusKey": "2019-06:4CH1-1C",
+    "ref": "4CH1/1C",
+    "session": "2019-06",
+    "durationMin": 120,
+    "totalMarks": 110,
+    "blueprintRef": "official (extracted)",
+    "integrity": "practice",
+    "reconKey": "june-2019-ju1c"
+   },
+   "provenance": {
+    "source": "curated",
+    "draftGeneratedAt": "2026-10-03T00:00:00Z",
+    "curatedBy": "agent:T-C70",
+    "status": "confirmed",
+    "verification": "footer marks 14/14 == blueprint (q7 blueprint-inferred); part structure == parsed-corpus joins (kind+order checked); MCQ keys == parsed-corpus choices.isCorrect; geometry from the QP text layer, image-layer pages degrade to paper-only"
+   },
+   "questions": [
+    {
+     "number": "1",
+     "page": 4,
+     "kind": "mcq",
+     "marksTotal": 4,
+     "parts": [
+      {
+       "part": "a",
+       "marks": 1,
+       "kind": "mcq",
+       "mcq": {
+        "options": [
+         "A",
+         "B",
+         "C",
+         "D"
+        ],
+        "zones": [],
+        "key": "B",
+        "keyAttested": true,
+        "keyProvenance": "parsed-corpus"
+       },
+       "note": "answer options print on a page whose content is an image layer \u2014 choose at grading time"
+      },
+      {
+       "part": "b",
+       "marks": 2,
+       "kind": "structured",
+       "answerKind": "paper-only",
+       "answerAreas": [],
+       "note": "PDF prints this as (b)(i)+(b)(ii) checkbox items on an image-layer page \u2014 answer on paper, self-mark against the MS (both marks)"
+      },
+      {
+       "part": "c",
+       "marks": 1,
+       "kind": "mcq",
+       "mcq": {
+        "options": [
+         "A",
+         "B",
+         "C",
+         "D"
+        ],
+        "zones": [
+         {
+          "option": "A",
+          "page": 5,
+          "rect": [
+           0.1012,
+           0.1528,
+           0.727,
+           0.0256
+          ]
+         },
+         {
+          "option": "B",
+          "page": 5,
+          "rect": [
+           0.1012,
+           0.1795,
+           0.727,
+           0.0256
+          ]
+         },
+         {
+          "option": "C",
+          "page": 5,
+          "rect": [
+           0.1012,
+           0.2062,
+           0.727,
+           0.0256
+          ]
+         },
+         {
+          "option": "D",
+          "page": 5,
+          "rect": [
+           0.1012,
+           0.2329,
+           0.727,
+           0.0256
+          ]
+         }
+        ],
+        "key": "A",
+        "keyAttested": true,
+        "keyProvenance": "parsed-corpus"
+       },
+       "note": null
+      }
+     ]
+    },
+    {
+     "number": "2",
+     "page": 6,
+     "kind": "structured",
+     "marksTotal": 4,
+     "parts": [
+      {
+       "part": "a",
+       "marks": 1,
+       "kind": "structured",
+       "answerKind": "text",
+       "answerAreas": [
+        {
+         "page": 6,
+         "rect": [
+          0.1012,
+          0.3676,
+          0.7892,
+          0.0245
+         ]
+        }
+       ],
+       "note": null
+      },
+      {
+       "part": "b",
+       "marks": 1,
+       "kind": "structured",
+       "answerKind": "text",
+       "answerAreas": [
+        {
+         "page": 6,
+         "rect": [
+          0.1012,
+          0.4679,
+          0.7892,
+          0.0558
+         ]
+        }
+       ],
+       "note": null
+      },
+      {
+       "part": "c",
+       "marks": 2,
+       "kind": "structured",
+       "answerKind": "text",
+       "answerAreas": [
+        {
+         "page": 6,
+         "rect": [
+          0.1012,
+          0.6151,
+          0.7892,
+          0.1186
+         ]
+        }
+       ],
+       "note": null
+      }
+     ]
+    },
+    {
+     "number": "3",
+     "page": 7,
+     "kind": "structured",
+     "marksTotal": 6,
+     "parts": [
+      {
+       "part": "a",
+       "marks": 1,
+       "kind": "structured",
+       "answerKind": "text",
+       "answerAreas": [
+        {
+         "page": 7,
+         "rect": [
+          0.1012,
+          0.334,
+          0.7891,
+          0.0245
+         ]
+        }
+       ],
+       "note": null
+      },
+      {
+       "part": "b",
+       "marks": 1,
+       "kind": "structured",
+       "answerKind": "text",
+       "answerAreas": [
+        {
+         "page": 7,
+         "rect": [
+          0.1012,
+          0.4076,
+          0.7891,
+          0.0245
+         ]
+        }
+       ],
+       "note": null
+      },
+      {
+       "part": "c",
+       "marks": 1,
+       "kind": "structured",
+       "answerKind": "text",
+       "answerAreas": [
+        {
+         "page": 7,
+         "rect": [
+          0.1012,
+          0.4812,
+          0.7891,
+          0.0245
+         ]
+        }
+       ],
+       "note": null
+      },
+      {
+       "part": "d",
+       "marks": 3,
+       "kind": "structured",
+       "answerKind": "text",
+       "answerAreas": [
+        {
+         "page": 7,
+         "rect": [
+          0.1012,
+          0.5815,
+          0.7891,
+          0.0558
+         ]
+        }
+       ],
+       "note": null
+      }
+     ]
+    },
+    {
+     "number": "4",
+     "page": 8,
+     "kind": "structured",
+     "marksTotal": 8,
+     "parts": [
+      {
+       "part": "a",
+       "marks": 4,
+       "kind": "structured",
+       "answerKind": "text",
+       "answerAreas": [
+        {
+         "page": 8,
+         "rect": [
+          0.1012,
+          0.3913,
+          0.7892,
+          0.2503
+         ]
+        }
+       ],
+       "note": null
+      },
+      {
+       "part": "b",
+       "marks": 4,
+       "kind": "structured",
+       "answerKind": "text",
+       "answerAreas": [
+        {
+         "page": 9,
+         "rect": [
+          0.1012,
+          0.3993,
+          0.7891,
+          0.0245
+         ]
+        },
+        {
+         "page": 9,
+         "rect": [
+          0.1012,
+          0.473,
+          0.7891,
+          0.0245
+         ]
+        },
+        {
+         "page": 9,
+         "rect": [
+          0.1012,
+          0.5466,
+          0.7891,
+          0.1186
+         ]
+        }
+       ],
+       "note": null
+      }
+     ]
+    },
+    {
+     "number": "5",
+     "page": 10,
+     "kind": "mcq",
+     "marksTotal": 5,
+     "parts": [
+      {
+       "part": "a",
+       "marks": 1,
+       "kind": "mcq",
+       "mcq": {
+        "options": [
+         "A",
+         "B",
+         "C",
+         "D"
+        ],
+        "zones": [
+         {
+          "option": "A",
+          "page": 10,
+          "rect": [
+           0.1012,
+           0.1533,
+           0.727,
+           0.0256
+          ]
+         },
+         {
+          "option": "B",
+          "page": 10,
+          "rect": [
+           0.1012,
+           0.18,
+           0.727,
+           0.0256
+          ]
+         },
+         {
+          "option": "C",
+          "page": 10,
+          "rect": [
+           0.1012,
+           0.2067,
+           0.727,
+           0.0256
+          ]
+         },
+         {
+          "option": "D",
+          "page": 10,
+          "rect": [
+           0.1012,
+           0.2334,
+           0.727,
+           0.0256
+          ]
+         }
+        ],
+        "key": "C",
+        "keyAttested": true,
+        "keyProvenance": "parsed-corpus"
+       },
+       "note": null
+      },
+      {
+       "part": "b",
+       "marks": 2,
+       "kind": "structured",
+       "answerKind": "text",
+       "answerAreas": [
+        {
+         "page": 10,
+         "rect": [
+          0.1012,
+          0.3365,
+          0.7891,
+          0.1186
+         ]
+        }
+       ],
+       "note": null
+      },
+      {
+       "part": "c",
+       "marks": 2,
+       "kind": "structured",
+       "answerKind": "text",
+       "answerAreas": [
+        {
+         "page": 10,
+         "rect": [
+          0.1012,
+          0.5575,
+          0.7891,
+          0.0245
+         ]
+        },
+        {
+         "page": 10,
+         "rect": [
+          0.1012,
+          0.6312,
+          0.7891,
+          0.0558
+         ]
+        }
+       ],
+       "note": null
+      }
+     ]
+    },
+    {
+     "number": "6",
+     "page": 11,
+     "kind": "structured",
+     "marksTotal": 5,
+     "parts": [
+      {
+       "part": "a",
+       "marks": 1,
+       "kind": "structured",
+       "answerKind": "paper-only",
+       "answerAreas": [],
+       "note": "no ruled answer lines detected \u2014 answer on paper, self-mark against the MS"
+      },
+      {
+       "part": "b",
+       "marks": 2,
+       "kind": "structured",
+       "answerKind": "text",
+       "answerAreas": [
+        {
+         "page": 11,
+         "rect": [
+          0.1012,
+          0.5539,
+          0.7891,
+          0.0245
+         ]
+        },
+        {
+         "page": 11,
+         "rect": [
+          0.1012,
+          0.6275,
+          0.7891,
+          0.0245
+         ]
+        }
+       ],
+       "note": null
+      },
+      {
+       "part": "c",
+       "marks": 2,
+       "kind": "structured",
+       "answerKind": "text",
+       "answerAreas": [
+        {
+         "page": 11,
+         "rect": [
+          0.1012,
+          0.737,
+          0.7891,
+          0.1249
+         ]
+        }
+       ],
+       "note": null
+      }
+     ]
+    },
+    {
+     "number": "7",
+     "page": 12,
+     "kind": "structured",
+     "marksTotal": 6,
+     "parts": [
+      {
+       "part": "a",
+       "marks": 2,
+       "kind": "structured",
+       "answerKind": "paper-only",
+       "answerAreas": [],
+       "note": "answer space is inside a diagram/table or on an image-layer page \u2014 answer on paper, self-mark against the MS"
+      },
+      {
+       "part": "b",
+       "marks": 2,
+       "kind": "structured",
+       "answerKind": "paper-only",
+       "answerAreas": [],
+       "note": "answer space is inside a diagram/table or on an image-layer page \u2014 answer on paper, self-mark against the MS"
+      },
+      {
+       "part": "c",
+       "marks": 2,
+       "kind": "structured",
+       "answerKind": "paper-only",
+       "answerAreas": [],
+       "note": "answer space is inside a diagram/table or on an image-layer page \u2014 answer on paper, self-mark against the MS"
+      }
+     ]
+    },
+    {
+     "number": "8",
+     "page": 13,
+     "kind": "structured",
+     "marksTotal": 6,
+     "parts": [
+      {
+       "part": "a",
+       "marks": 1,
+       "kind": "structured",
+       "answerKind": "text",
+       "answerAreas": [
+        {
+         "page": 13,
+         "rect": [
+          0.1012,
+          0.2115,
+          0.7364,
+          0.0245
+         ]
+        }
+       ],
+       "note": null
+      },
+      {
+       "part": "b",
+       "marks": 1,
+       "kind": "structured",
+       "answerKind": "text",
+       "answerAreas": [
+        {
+         "page": 13,
+         "rect": [
+          0.1012,
+          0.382,
+          0.7891,
+          0.0556
+         ]
+        }
+       ],
+       "note": null
+      },
+      {
+       "part": "c",
+       "marks": 3,
+       "kind": "structured",
+       "answerKind": "text",
+       "answerAreas": [
+        {
+         "page": 13,
+         "rect": [
+          0.1012,
+          0.5898,
+          0.7891,
+          0.0556
+         ]
+        },
+        {
+         "page": 13,
+         "rect": [
+          0.1012,
+          0.6922,
+          0.7891,
+          0.118
+         ]
+        }
+       ],
+       "note": null
+      },
+      {
+       "part": "d",
+       "marks": 1,
+       "kind": "structured",
+       "answerKind": "text",
+       "answerAreas": [
+        {
+         "page": 13,
+         "rect": [
+          0.1012,
+          0.8569,
+          0.7891,
+          0.0245
+         ]
+        }
+       ],
+       "note": null
+      }
+     ]
+    },
+    {
+     "number": "9",
+     "page": 14,
+     "kind": "structured",
+     "marksTotal": 6,
+     "parts": [
+      {
+       "part": "a",
+       "marks": 2,
+       "kind": "structured",
+       "answerKind": "paper-only",
+       "answerAreas": [],
+       "note": "no ruled answer lines detected \u2014 answer on paper, self-mark against the MS"
+      },
+      {
+       "part": "b",
+       "marks": 2,
+       "kind": "structured",
+       "answerKind": "paper-only",
+       "answerAreas": [],
+       "note": "no ruled answer lines detected \u2014 answer on paper, self-mark against the MS"
+      },
+      {
+       "part": "c",
+       "marks": 2,
+       "kind": "structured",
+       "answerKind": "text",
+       "answerAreas": [
+        {
+         "page": 14,
+         "rect": [
+          0.1012,
+          0.7455,
+          0.7891,
+          0.1186
+         ]
+        }
+       ],
+       "note": null
+      }
+     ]
+    },
+    {
+     "number": "10",
+     "page": 15,
+     "kind": "structured",
+     "marksTotal": 7,
+     "parts": [
+      {
+       "part": "a",
+       "marks": 4,
+       "kind": "structured",
+       "answerKind": "text",
+       "answerAreas": [
+        {
+         "page": 15,
+         "rect": [
+          0.1012,
+          0.3174,
+          0.7891,
+          0.1186
+         ]
+        }
+       ],
+       "note": null
+      },
+      {
+       "part": "b",
+       "marks": 3,
+       "kind": "structured",
+       "answerKind": "text",
+       "answerAreas": [
+        {
+         "page": 15,
+         "rect": [
+          0.1012,
+          0.711,
+          0.6515,
+          0.0245
+         ]
+        },
+        {
+         "page": 15,
+         "rect": [
+          0.1012,
+          0.7964,
+          0.7891,
+          0.0245
+         ]
+        }
+       ],
+       "note": null
+      }
+     ]
+    },
+    {
+     "number": "11",
+     "page": 16,
+     "kind": "structured",
+     "marksTotal": 9,
+     "parts": [
+      {
+       "part": "a",
+       "marks": 2,
+       "kind": "structured",
+       "answerKind": "paper-only",
+       "answerAreas": [],
+       "note": "answer space is inside a diagram/table or on an image-layer page \u2014 answer on paper, self-mark against the MS"
+      },
+      {
+       "part": "b",
+       "marks": 7,
+       "kind": "structured",
+       "answerKind": "paper-only",
+       "answerAreas": [],
+       "note": "answer space is inside a diagram/table or on an image-layer page \u2014 answer on paper, self-mark against the MS"
+      }
+     ]
+    },
+    {
+     "number": "12",
+     "page": 18,
+     "kind": "structured",
+     "marksTotal": 9,
+     "parts": [
+      {
+       "part": "a",
+       "marks": 2,
+       "kind": "structured",
+       "answerKind": "paper-only",
+       "answerAreas": [],
+       "note": "no ruled answer lines detected \u2014 answer on paper, self-mark against the MS"
+      },
+      {
+       "part": "b",
+       "marks": 3,
+       "kind": "structured",
+       "answerKind": "text",
+       "answerAreas": [
+        {
+         "page": 19,
+         "rect": [
+          0.1012,
+          0.3316,
+          0.7901,
+          0.0245
+         ]
+        }
+       ],
+       "note": null
+      },
+      {
+       "part": "c",
+       "marks": 4,
+       "kind": "structured",
+       "answerKind": "text",
+       "answerAreas": [
+        {
+         "page": 19,
+         "rect": [
+          0.1012,
+          0.7612,
+          0.7901,
+          0.0245
+         ]
+        }
+       ],
+       "note": null
+      }
+     ]
+    },
+    {
+     "number": "13",
+     "page": 20,
+     "kind": "structured",
+     "marksTotal": 12,
+     "parts": [
+      {
+       "part": "a",
+       "marks": 2,
+       "kind": "structured",
+       "answerKind": "paper-only",
+       "answerAreas": [],
+       "note": "no ruled answer lines detected \u2014 answer on paper, self-mark against the MS"
+      },
+      {
+       "part": "b",
+       "marks": 4,
+       "kind": "structured",
+       "answerKind": "paper-only",
+       "answerAreas": [],
+       "note": "no ruled answer lines detected \u2014 answer on paper, self-mark against the MS"
+      },
+      {
+       "part": "c",
+       "marks": 1,
+       "kind": "structured",
+       "answerKind": "text",
+       "answerAreas": [
+        {
+         "page": 22,
+         "rect": [
+          0.1012,
+          0.1693,
+          0.7891,
+          0.0558
+         ]
+        }
+       ],
+       "note": null
+      },
+      {
+       "part": "d",
+       "marks": 2,
+       "kind": "structured",
+       "answerKind": "text",
+       "answerAreas": [
+        {
+         "page": 22,
+         "rect": [
+          0.1012,
+          0.301,
+          0.7891,
+          0.1186
+         ]
+        }
+       ],
+       "note": null
+      },
+      {
+       "part": "e",
+       "marks": 3,
+       "kind": "structured",
+       "answerKind": "text",
+       "answerAreas": [
+        {
+         "page": 22,
+         "rect": [
+          0.1012,
+          0.5474,
+          0.7891,
+          0.2126
+         ]
+        }
+       ],
+       "note": null
+      }
+     ]
+    },
+    {
+     "number": "14",
+     "page": 23,
+     "kind": "structured",
+     "marksTotal": 14,
+     "parts": [
+      {
+       "part": "a",
+       "marks": 1,
+       "kind": "structured",
+       "answerKind": "text",
+       "answerAreas": [
+        {
+         "page": 23,
+         "rect": [
+          0.1012,
+          0.3616,
+          0.7891,
+          0.0558
+         ]
+        }
+       ],
+       "note": null
+      },
+      {
+       "part": "b",
+       "marks": 1,
+       "kind": "structured",
+       "answerKind": "text",
+       "answerAreas": [
+        {
+         "page": 23,
+         "rect": [
+          0.1012,
+          0.4666,
+          0.7891,
+          0.0558
+         ]
+        }
+       ],
+       "note": null
+      },
+      {
+       "part": "c",
+       "marks": 1,
+       "kind": "structured",
+       "answerKind": "text",
+       "answerAreas": [
+        {
+         "page": 23,
+         "rect": [
+          0.1012,
+          0.5715,
+          0.7891,
+          0.0558
+         ]
+        }
+       ],
+       "note": null
+      },
+      {
+       "part": "d",
+       "marks": 1,
+       "kind": "structured",
+       "answerKind": "text",
+       "answerAreas": [
+        {
+         "page": 23,
+         "rect": [
+          0.1012,
+          0.6765,
+          0.7891,
+          0.0245
+         ]
+        }
+       ],
+       "note": null
+      },
+      {
+       "part": "e",
+       "marks": 5,
+       "kind": "structured",
+       "answerKind": "text",
+       "answerAreas": [
+        {
+         "page": 24,
+         "rect": [
+          0.1012,
+          0.1582,
+          0.7891,
+          0.4635
+         ]
+        }
+       ],
+       "note": null
+      },
+      {
+       "part": "f",
+       "marks": 5,
+       "kind": "structured",
+       "answerKind": "text",
+       "answerAreas": [
+        {
+         "page": 25,
+         "rect": [
+          0.1012,
+          0.4903,
+          0.7901,
+          0.0245
+         ]
+        },
+        {
+         "page": 25,
+         "rect": [
+          0.1012,
+          0.8087,
+          0.7901,
+          0.0245
+         ]
+        }
+       ],
+       "note": null
+      }
+     ]
+    },
+    {
+     "number": "15",
+     "page": 26,
+     "kind": "structured",
+     "marksTotal": 9,
+     "parts": [
+      {
+       "part": "a",
+       "marks": 3,
+       "kind": "structured",
+       "answerKind": "paper-only",
+       "answerAreas": [],
+       "note": "answer space is inside a diagram/table or on an image-layer page \u2014 answer on paper, self-mark against the MS"
+      },
+      {
+       "part": "b",
+       "marks": 6,
+       "kind": "structured",
+       "answerKind": "paper-only",
+       "answerAreas": [],
+       "note": "answer space is inside a diagram/table or on an image-layer page \u2014 answer on paper, self-mark against the MS"
+      }
+     ]
+    }
+   ]
+  }
+ }
+}
