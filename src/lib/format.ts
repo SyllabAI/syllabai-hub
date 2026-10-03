@@ -23,3 +23,18 @@ export function humanizeCode(code: string): string {
     .filter(Boolean)
     .join(" ");
 }
+
+/** Future-facing compact relative time (ported from syllabai-web's
+ *  lib/format.ts): "due in 2 d" / "due in 3 h" / "due in 45 min", or
+ *  "overdue · 2 d" once the instant has passed. */
+export function formatDue(iso: string): string {
+  const ms = new Date(iso).getTime() - Date.now();
+  const absDays = Math.abs(ms) / 86_400_000;
+  const unit =
+    absDays >= 1
+      ? `${Math.floor(absDays)} d`
+      : absDays * 24 >= 1
+        ? `${Math.floor(absDays * 24)} h`
+        : `${Math.max(1, Math.floor(absDays * 60))} min`;
+  return ms < 0 ? `overdue · ${unit}` : `due in ${unit}`;
+}
