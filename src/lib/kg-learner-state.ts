@@ -246,6 +246,10 @@ function buildDrawerState(
   model: LearnerModel,
   titles: Record<string, string>,
   now: number,
+  /** owning course slug — note deep links must be course-aware: the bare
+   *  /revision-notes/:id path is a legacy redirect that lands the pilot,
+   *  i.e. a 404 for the other 48 courses (UX audit 2026-10-02, P2-4) */
+  course: string,
 ): LearnerDrawerState {
   const codeSet = new Set(bridge.pointIds);
   const normalize = (raw: string) => normalizeCode(raw, bridge.codePrefix);
@@ -389,7 +393,7 @@ function buildDrawerState(
       value: null,
       detail: ev.helpful === "up" ? "rated helpful" : ev.helpful === "down" ? "rated not helpful" : "exposure only — never mastery",
       points: toPointIds(bridge.noteCodes[noteId]),
-      href: `/revision-notes/${encodeURIComponent(noteId)}`,
+      href: `/courses/${encodeURIComponent(course)}/revision-notes/${encodeURIComponent(noteId)}`,
     });
   }
 
@@ -939,10 +943,10 @@ export function useLearnerState(course: string): LearnerStateBundle {
     const model = buildOverlay(progress, bridge, now);
     return {
       overlay: { entries: model.entries, stats: model.stats, bridgeError: false },
-      drawer: buildDrawerState(progress, bridge, model, titles, now),
+      drawer: buildDrawerState(progress, bridge, model, titles, now, course),
       source: "simulated" as const,
     };
-  }, [progress, bridge, titles, failed]);
+  }, [progress, bridge, titles, failed, course]);
 
   // tranche 4.6, unified T-C57: the flashcard review queue derives from the
   // device-local rating trail UNIONED with the account feed (pilot + signed
