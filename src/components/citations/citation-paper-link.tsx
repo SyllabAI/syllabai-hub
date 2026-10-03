@@ -17,11 +17,13 @@
  *  - complete paper identity + unique corpus match + that role's document
  *    held → the real PDF, plus a "Parsed text" toggle (the honesty view)
  *  - a cited revision note (fileName "sme-note-{noteId}.txt" per the corpus
- *    convention, course hint present) → the full note body joined out of the
- *    hub's committed bundle, rendered through the SAME sanitize + Markdown
- *    pipeline as the note reader (headings, spec-point chip repair, images),
- *    with a "Parsed text" toggle and an "Open the full note" escape — any
- *    join miss falls to parsed text
+ *    convention) → the full note body joined out of the hub's committed
+ *    bundle — through the chip's course hint when it carries one, through
+ *    the registry scan (/api/notes/by-id) when it doesn't (the legacy
+ *    /tutor entry, old bookmarks) — rendered through the SAME sanitize +
+ *    Markdown pipeline as the note reader (headings, spec-point chip
+ *    repair, images), with a "Parsed text" toggle and an "Open the full
+ *    note" escape — any join miss falls to parsed text
  *  - everything else (no paper, incomplete identity, matcher no-match, the
  *    role's document missing, core errors) → the verbatim parsed text in
  *    the same dialog — exactly what the tutor's evidence was served from —
@@ -118,7 +120,10 @@ type DialogData =
       doc: CitationDocumentView;
       noteTitle: string;
       bodyMd: string;
-      noteHref: string;
+      /** the note reader href — null only when the join returned neither a
+       *  url nor a course hint to build one from (the anchor then renders
+       *  honestly absent instead of pointing somewhere wrong) */
+      noteHref: string | null;
       fullReaderHref: string;
     }
   | { kind: "unavailable"; message: string; fullReaderHref: string };
@@ -176,14 +181,18 @@ export function CitationPaperLink({
           // revision notes: a note citation's real artifact is the markdown
           // body, not a PDF and not the chunked page text. The id-anchored
           // fileName joins the cited row back to the hub bundle; any miss
-          // (no course hint, bundle drift, fetch error) falls through to the
-          // parsed text — the honesty view stays the floor.
+          // (bundle drift, fetch error) falls through to the parsed text —
+          // the honesty view stays the floor.
           const noteId = noteIdOf(doc.title);
-          if (noteId && course) {
+          if (noteId) {
+            // course hint first (the chip's own scope); a chip without one
+            // joins through the registry scan — same body, same learner
+            // face, from every surface that can cite a note
+            const joinHref = course
+              ? `/api/notes/${encodeURIComponent(course)}/${encodeURIComponent(noteId)}`
+              : `/api/notes/by-id/${encodeURIComponent(noteId)}`;
             try {
-              const r = await fetch(
-                `/api/notes/${encodeURIComponent(course)}/${encodeURIComponent(noteId)}`,
-              );
+              const r = await fetch(joinHref);
               if (r.ok) {
                 const n = (await r.json()) as {
                   title?: string;
@@ -201,7 +210,9 @@ export function CitationPaperLink({
                         doc,
                         noteTitle: n.title?.trim() ? n.title : doc.title,
                         bodyMd: n.bodyMd,
-                        noteHref: n.url ?? `/courses/${course}/revision-notes/${noteId}`,
+                        noteHref:
+                          n.url ??
+                          (course ? `/courses/${course}/revision-notes/${noteId}` : null),
                         fullReaderHref,
                       },
                     },
@@ -449,12 +460,14 @@ export function CitationPaperLink({
                   <Markdown className="text-sm [&_p]:text-sm">
                     {sanitizeNoteBody(state.data.bodyMd, state.data.noteTitle)}
                   </Markdown>
-                  <a
-                    href={state.data.noteHref}
-                    className="mt-3 inline-flex items-center gap-1 text-[11px] text-muted-foreground underline hover:text-foreground"
-                  >
-                    Open the full note <ExternalLink className="size-3" aria-hidden />
-                  </a>
+                  {state.data.noteHref && (
+                    <a
+                      href={state.data.noteHref}
+                      className="mt-3 inline-flex items-center gap-1 text-[11px] text-muted-foreground underline hover:text-foreground"
+                    >
+                      Open the full note <ExternalLink className="size-3" aria-hidden />
+                    </a>
+                  )}
                 </div>
               ) : (
                 <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
