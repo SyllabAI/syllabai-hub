@@ -58,6 +58,7 @@ import { fetchBridge, type LearnerBridge } from "@/lib/learner-state";
 import { daysAgo, subtopicSetFor } from "@/lib/next-best-actions";
 import { NextBestActionsCard } from "./next-best-actions-card";
 import { ReviewDueStrip } from "./review-due-strip";
+import { SetWorkCard } from "./set-work-card";
 import { AddCourseOverlay } from "./add-course-overlay";
 import type { CourseMeta } from "@/lib/courses";
 import type { CourseStatsView } from "@/lib/types";
@@ -570,6 +571,15 @@ export function DashboardClient({ courses }: { courses: CourseMeta[] }) {
             </button>
           </div>
         )}
+      </section>
+
+      {/* ---- Set work (T-C78, Spec §22 agenda): the server-composed
+          "what is due" facts — teacher-set assignments with the learner's
+          own hand-in trail, due-soonest first. The agenda's other blocks
+          live where they belong: reviews headline in the strip above,
+          advice in the NBA card below. Signed out, it renders nothing. ---- */}
+      <section aria-label="Set work">
+        <SetWorkCard />
       </section>
 
       {/* ---- Next best actions (recommendation output — advice, not facts) ---- */}

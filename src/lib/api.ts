@@ -30,6 +30,7 @@
  */
 import { cachedGet, invalidateContentCache, singleFlight } from "./api-cache";
 import type {
+  AgendaView,
   AttemptHistoryView,
   ClaAnswerView,
   CitationDocumentView,
@@ -610,6 +611,13 @@ export const api = {
   // Learner: newest-first assignments with my hand-in beside each.
   learnerAssignments: () =>
     request<LearnerAssignmentView[]>("/api/v1/learners/me/assignments"),
+
+  // T-C78: the server-composed agenda read model (Spec §22 route) — the
+  // "what is on my plate" view, due-soonest first. Called WITHOUT a rootId
+  // here: actions stays null (the recommendations surface owns advice) and
+  // due reviews already headline in the review-due strip — the dashboard
+  // renders each block where it belongs, no second feed of either.
+  learnerAgenda: () => request<AgendaView>("/api/v1/learners/me/agenda"),
 
   // Learner: append a hand-in (re-hand-in = new evidence, latest wins).
   submitAssignmentSubmission: (

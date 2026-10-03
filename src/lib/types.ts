@@ -480,6 +480,25 @@ export interface LearnerAssignmentView {
 }
 
 /**
+ * The server-composed learner agenda (T-C76 endpoint, T-C78 hub consumer —
+ * Spec §22 GET /api/v1/learners/me/agenda): "what is on my plate" in one
+ * call — due spaced reviews, visible assignments with the learner's own
+ * hand-in trail (both reuse the shapes above), and the NBA block when a
+ * rootId is supplied (null when omitted — the dashboard calls it without
+ * one; the recommendations surface owns advice). The server derives nothing
+ * beyond ordering; presentation flags (overdue/done) stay client-side over
+ * the same facts. Every assignment row is dated — due_at is NOT NULL (V49).
+ */
+export interface AgendaView {
+  learnerId: string;
+  /** ISO-8601 instant of the composition */
+  asOf: string;
+  dueReviews: ReviewView[];
+  assignments: LearnerAssignmentView[];
+  actions: NextBestActionsView | null;
+}
+
+/**
  * Course-wide coverage aggregates (course-stats contract, ADR-029 tranche
  * 4.11): the learner's account trail computed server-side over the FULL
  * evidence tables — the state view's 50-event windows and the windowed
