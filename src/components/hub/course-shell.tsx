@@ -52,6 +52,8 @@ export function CourseShell({
 
   const [open, setOpen] = useState(false); // mobile drawer
   const [hidden, setHidden] = useState(false); // desktop collapse ("Hide menu")
+  const menuBtnRef = useRef<HTMLButtonElement>(null);
+  const drawerPanelRef = useRef<HTMLDivElement>(null);
 
   // Document-focus routes (past-paper viewer / interactive player) collapse
   // the sidebar to the 44px rail automatically — on those screens the PDF is
@@ -75,6 +77,52 @@ export function CourseShell({
       setHidden(false);
     }
   }, [focusRoute]);
+
+  // Mobile drawer focus management (UX audit 2026-10-02, P2-8): the dialog
+  // had role/aria-modal but keyboard users could Tab straight through into
+  // the page behind it, Escape did nothing, and focus never moved in or back
+  // out. While open: focus lands on the panel, Tab cycles inside it, Escape
+  // closes, background scroll locks; on close, focus returns to the trigger.
+  useEffect(() => {
+    if (!open) return;
+    const panel = drawerPanelRef.current;
+    if (!panel) return;
+
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    panel.focus();
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setOpen(false);
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const focusables = panel.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === first || document.activeElement === panel) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = prevOverflow;
+      menuBtnRef.current?.focus();
+    };
+  }, [open]);
 
   const variant: SidebarVariant = useMemo(() => {
     if (pathname.includes("/revision-notes")) return "notes";
@@ -221,9 +269,13 @@ export function CourseShell({
       <div className="course-shell-row flex min-h-[calc(100dvh-3.5rem-1px)]">
         {/* mobile drawer: nav groups + the resource topic tree */}
         {open && (
-          <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true">
+          <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true" aria-label="Course menu">
             <button className="absolute inset-0 bg-black/40" aria-label="Close menu" onClick={() => setOpen(false)} />
-            <div className="absolute inset-y-14 left-0 w-80 max-w-[85vw] border-r bg-background">
+            <div
+              ref={drawerPanelRef}
+              tabIndex={-1}
+              className="absolute inset-y-14 left-0 w-80 max-w-[85vw] border-r bg-background outline-none"
+            >
               <MobileDrawerInner
                 data={data}
                 variant={variant}
@@ -253,7 +305,15 @@ export function CourseShell({
           {/* mobile-only drawer trigger bar; the desktop sidebar is toggled
               by the rail icon when collapsed */}
           <div className="sticky top-14 z-30 flex items-center gap-2 border-b bg-background px-3 py-2 lg:hidden">
-            <Button variant="outline" size="sm" className="h-8 gap-1.5 px-2.5" onClick={() => setOpen(true)}>
+            <Button
+              ref={menuBtnRef}
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 px-2.5"
+              aria-haspopup="dialog"
+              aria-expanded={open}
+              onClick={() => setOpen(true)}
+            >
               <Menu className="size-4" aria-hidden /> Menu
             </Button>
             <span className="truncate text-sm font-medium">{data.course.label ?? data.course.subject}</span>
