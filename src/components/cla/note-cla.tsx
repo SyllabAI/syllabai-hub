@@ -202,7 +202,10 @@ export function NoteCla({
         },
         body: JSON.stringify({ course, noteId, mode, question: question.trim(), history, isQuickAction }),
       });
-      const data = await res.json();
+      // UX audit 2026-10-02 #11: parse defensively — a non-JSON error page
+      // (502 from a proxy) used to throw here and surface as a generic
+      // network error instead of the honest verdict below.
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         // fail-closed server verdicts render as guidance, never as noise
         setError(

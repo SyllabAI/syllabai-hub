@@ -14,6 +14,7 @@ import { ArrowRight } from "lucide-react";
 import { ChevronGlyph, NumberedLabel } from "@/components/hub/chrome";
 import { ProgressRing } from "@/components/hub/progress-ring";
 import { topicRing, useCourseProgress, type Course } from "@/lib/progress";
+import { formatPercent } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
   useCourseData,
@@ -155,7 +156,7 @@ export function TopicTree({
                 <NumberedLabel number={topic.number} title={topic.title} />
                 <span className="block text-[11px] text-foreground/70">
                   {subCount} Topics · {metaRight}
-                  {ring.percent > 0 ? ` · ${ring.percent}%` : ""}
+                  {ring.percent > 0 ? ` · ${formatPercent(ring.percent)}` : ""}
                 </span>
               </span>
               <ChevronGlyph open={isOpen} />
@@ -285,6 +286,10 @@ export function TopicTree({
                                         )}
                                       />
                                     )}
+                                    {/* UX audit 2026-10-02 #16: the read/unread
+                                        dot was color-only (1.4.1) — name the
+                                        non-default state for screen readers */}
+                                    {it.read === false && <span className="sr-only">Unread</span>}
                                     <span className="min-w-0 flex-1 truncate">{it.title}</span>
                                     {it.count !== undefined && it.count > 0 && (
                                       <span className="shrink-0 text-[10.5px] tabular-nums text-foreground/70">

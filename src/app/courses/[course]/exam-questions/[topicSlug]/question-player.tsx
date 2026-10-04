@@ -880,7 +880,10 @@ function TypedAnswerWorkspace({
           answer: text.slice(0, 4000),
         }),
       });
-      const j = (await res.json()) as {
+      // UX audit 2026-10-02 #11: parse defensively — a non-JSON 502 page
+      // used to throw here and read as a network error; the !res.ok branch
+      // below then gives the honest self-mark fallback.
+      const j = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
         score?: number;
         max?: number;

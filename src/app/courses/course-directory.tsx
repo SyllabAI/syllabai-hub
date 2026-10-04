@@ -52,8 +52,8 @@ export function CourseDirectory({ courses }: { courses: CourseMeta[] }) {
                 <Card
                   className={
                     c.hasBundle
-                      ? "h-full border-primary/30 transition-colors group-hover:border-primary/60"
-                      : "h-full transition-colors group-hover:border-primary/40"
+                      ? "h-full border-primary/30 transition-colors group-hover:border-primary/60 group-focus-visible:border-primary/60"
+                      : "h-full transition-colors group-hover:border-primary/40 group-focus-visible:border-primary/60"
                   }
                 >
                   <CardContent className="flex items-start gap-3 p-4">

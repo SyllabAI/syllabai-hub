@@ -266,15 +266,23 @@ export function DeckPlayer({
               </Badge>
             )}
             <span>{flipped ? "Back" : "Front"}</span>
-            {current.sourceTitle && (
-              <Link
-                href={current.sourceNoteId ? `/courses/${course}/revision-notes/${current.sourceNoteId}` : "#"}
-                className="ml-auto truncate text-primary underline-offset-2 hover:underline"
-                onClick={(e) => e.stopPropagation()}
-              >
-                from “{current.sourceTitle}”
-              </Link>
-            )}
+            {current.sourceTitle &&
+              (current.sourceNoteId ? (
+                <Link
+                  href={`/courses/${course}/revision-notes/${current.sourceNoteId}`}
+                  className="ml-auto truncate text-primary underline-offset-2 hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  from “{current.sourceTitle}”
+                </Link>
+              ) : (
+                // UX audit 2026-10-02 #12: no source note → the "from …" used
+                // to render as a dead href="#" link (scroll-to-top). A plain
+                // span keeps the provenance, drops the dead affordance.
+                <span className="ml-auto truncate text-muted-foreground">
+                  from “{current.sourceTitle}”
+                </span>
+              ))}
           </div>
           <div className="flex flex-1 items-center justify-center py-4">
             {flipped ? (
