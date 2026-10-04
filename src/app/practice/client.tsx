@@ -9,6 +9,7 @@
  * learner overlay (session state only) — never canonical learner state.
  */
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -78,7 +79,19 @@ export function PracticeClient({ topics }: Props) {
   };
 
   if (!item) {
-    return <p className="text-sm text-muted-foreground">No practice parts available.</p>;
+    // UX audit 2026-10-02 #18: dead-end one-liner — offer the next action
+    return (
+      <div className="space-y-2">
+        <p className="text-sm text-muted-foreground">No practice parts available.</p>
+        <Link
+          href="/courses"
+          className="inline-flex items-center gap-1 text-sm text-primary underline-offset-2 hover:underline"
+        >
+          Pick a course to practice its question bank
+          <ChevronRight className="size-3.5" aria-hidden />
+        </Link>
+      </div>
+    );
   }
 
   return (

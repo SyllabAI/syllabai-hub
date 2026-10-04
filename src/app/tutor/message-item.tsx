@@ -65,7 +65,7 @@ function TypingDots() {
       {[0, 1, 2].map((d) => (
         <span
           key={d}
-          className="size-1.5 animate-bounce rounded-full bg-muted-foreground/60"
+          className="size-1.5 animate-bounce motion-reduce:animate-none rounded-full bg-muted-foreground/60"
           style={{ animationDelay: `${d * 140 - 420}ms` }}
         />
       ))}

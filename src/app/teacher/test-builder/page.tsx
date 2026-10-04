@@ -5,7 +5,7 @@ import { TestBuilderClient } from "./test-builder-client";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Test Builder — SyllabAI Hub teacher workspace",
+  title: "Test Builder · Teacher workspace",
   description:
     "Teacher Test Builder (TEACHER_ARCHITECTURE §6): assemble a printable, marks-aware test from the committed question bank, with class-weakness targeting and an optional answer key.",
 };

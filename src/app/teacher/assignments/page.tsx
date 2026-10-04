@@ -5,7 +5,7 @@ import { AssignmentsClient } from "./assignments-client";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Assignments — SyllabAI Hub teacher workspace",
+  title: "Assignments · Teacher workspace",
   description:
     "Teacher assignments (core-backed): build from the question bank, assign to your cohort, track real learner hand-ins — completion evidence recorded on core.",
 };

@@ -51,6 +51,9 @@ import { useMySubjects } from "@/lib/my-subjects";
 import { useIdentity } from "@/lib/identity";
 import { useLastOpened, resourceLabel } from "@/lib/last-opened";
 import { useCourseProgress } from "@/lib/progress";
+// UX audit 2026-10-02 #17: the dashboard's sub-1%-decimal formatting is now
+// the shared contract (progress-ring and strengths-panel had rounded to 0%)
+import { formatPercent } from "@/lib/format";
 import { api, getToken } from "@/lib/api";
 import { fetchPilotInfo, PILOT_COURSE_SLUG } from "@/lib/attempt-bridge";
 import { useDashboardCore } from "@/lib/dashboard-core";
@@ -91,11 +94,6 @@ function percentOf(done: number, total: number | undefined): number | undefined 
   // formatted with a decimal at display time, so the first answered
   // question is visible immediately instead of rounding to 0%
   return Math.min(100, (done / total) * 100);
-}
-
-function formatPercent(percent: number): string {
-  if (percent <= 0) return "0%";
-  return percent >= 1 ? `${Math.round(percent)}%` : `${percent.toFixed(1)}%`;
 }
 
 function plural(n: number, unit: string): string {

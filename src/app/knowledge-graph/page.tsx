@@ -6,7 +6,7 @@ import { listCourses } from "@/lib/courses";
 import { KnowledgeGraphClient } from "./client";
 
 export const metadata: Metadata = {
-  title: "Knowledge Graph — SyllabAI Hub",
+  title: "Knowledge Graph",
   description:
     "The selected course's specification graph (OpenHuman visualizer): Subject → Sections → SubTopics → SpecificationPoints, rendered from curriculum truth with the GRAPH_CONTRACT v1.0 data path. One graph per course — open it from the course's page, or pick one on the landing state.",
 };

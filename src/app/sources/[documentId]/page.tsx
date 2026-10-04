@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { SourceReader } from "./source-reader";
 
 export const metadata: Metadata = {
-  title: "Source — SyllabAI Hub",
+  title: "Source",
   description:
     "The verbatim source a citation points at — the question paper, mark scheme or specification page behind a tutor or assistant answer.",
 };

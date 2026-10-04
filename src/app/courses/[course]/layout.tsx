@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import { listCourses, loadHubCourse } from "@/lib/courses";
 import { hasPastPapers } from "@/lib/past-papers";
 import { courseHasCorpusPapers } from "@/lib/pastpapers-corpus";
@@ -33,6 +34,21 @@ export async function generateStaticParams() {
   const courses = await listCourses();
   return courses.filter((c) => c.hasBundle).map((c) => ({ course: c.slug }));
 }
+
+// UX audit 2026-10-02 #14: every /courses/[course]/* page shared the root
+// <title> — the tab read the same on the dashboard and 40 levels deep in a
+// chemistry deck. The course label flows through the root template.
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ course: string }>;
+}): Promise<Metadata> {
+  const { course: slug } = await params;
+  const hub = await loadHubCourse(slug);
+  if (!hub) return {};
+  return { title: hub.meta.label };
+}
+
 export default async function CourseLayout({
   children,
   params,

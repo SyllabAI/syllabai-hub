@@ -5,7 +5,7 @@ import { ClassGeographyClient } from "./geography-client";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Class geography progress — SyllabAI Hub teacher workspace",
+  title: "Class geography progress · Teacher workspace",
   description:
     "My Class Geography Progress: the class's curriculum geography — every subject's spec tree with the corpus coverage per subtopic (notes, exam questions, flashcards). Corpus coverage, not learner mastery.",
 };

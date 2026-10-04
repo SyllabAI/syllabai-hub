@@ -114,7 +114,12 @@ d.style.colorScheme=dark?"dark":"light";
 }catch(e){}})();`;
 
 export const metadata: Metadata = {
-  title: "SyllabAI Hub — IGCSE & IAL revision",
+  // UX audit 2026-10-02 #14: a template brands every nested title (pages
+  // export the bare page name; the suffix is appended exactly once here).
+  title: {
+    default: "SyllabAI Hub — IGCSE & IAL revision",
+    template: "%s — SyllabAI Hub",
+  },
   description:
     "Spec-anchored revision for Edexcel IGCSE & IAL: notes, exam questions, flashcards, past papers and a grounded AI tutor — mapped to your syllabus.",
 };

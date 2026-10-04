@@ -4,7 +4,7 @@ import { MarkingConsoleClient } from "./marking-client";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Marking review — SyllabAI Hub teacher workspace",
+  title: "Marking review · Teacher workspace",
   description:
     "The teacher marking console: the Smart Mark review queue, human-mark overrides and the κ agreement gate — live cohort data from the SyllabAI backend.",
 };

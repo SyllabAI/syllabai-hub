@@ -1,5 +1,8 @@
+import type { Metadata } from "next";
 import { listCourses } from "@/lib/courses";
 import { CourseDirectory } from "./course-directory";
+
+export const metadata: Metadata = { title: "Browse courses" };
 
 export default async function CoursesIndexPage() {
   const courses = await listCourses();

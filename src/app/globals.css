@@ -1345,6 +1345,14 @@
   .course-shell-row {
     transition: none;
   }
+  /* UX audit 2026-10-02 #15: blanket-guard the decorative Tailwind motion —
+     pulse skeletons, bounce typing dots, spinners — engine-level loops are
+     gated in kg-explorer/engine.ts (reducedMotion). */
+  .animate-pulse,
+  .animate-bounce,
+  .animate-spin {
+    animation: none;
+  }
 }
 @media (min-width: 1400px) {
   html[data-cla-sidebar="open"] .course-shell-row {
