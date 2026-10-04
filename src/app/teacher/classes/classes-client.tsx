@@ -31,6 +31,7 @@ import {
 import { ApiError, api } from "@/lib/api";
 import type { TeacherClassView } from "@/lib/types";
 import type { CourseMeta } from "@/lib/courses";
+import { useMyClasses } from "@/lib/teacher/my-classes";
 import { cn } from "@/lib/utils";
 
 function apiMessage(err: unknown, fallback: string): string {
@@ -48,6 +49,11 @@ export function TeacherClassesClient({
 }) {
   const [classes, setClasses] = useState<TeacherClassView[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Audit P2-6: the Classes tab showed only core rosters while the dashboard
+  // showed only browser-local containers — neither surface knew the other
+  // existed. Local containers are listed here too, honestly badged as
+  // this-device-only (never impersonating a live roster).
+  const { classes: localClasses } = useMyClasses();
 
   // create form
   const [showCreate, setShowCreate] = useState(false);
@@ -189,11 +195,13 @@ export function TeacherClassesClient({
         </div>
       ) : classes.length === 0 ? (
         <div className="rounded-lg border border-dashed px-6 py-12 text-center">
-          <p className="text-sm font-medium">No classes yet</p>
+          <p className="text-sm font-medium">
+            {localClasses.length > 0 ? "No live classes yet" : "No classes yet"}
+          </p>
           <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
-            Create your first class, enroll registered students by email, and publish
-            announcements. A class-targeted assignment is visible to exactly its members;
-            assignments without a class still reach every student.
+            {localClasses.length > 0
+              ? "Your browser-local class containers are listed below — they live in this device only. Live rosters, announcements and class-targeted assignments start here: create a class, enroll registered students by email."
+              : "Create your first class, enroll registered students by email, and publish announcements. A class-targeted assignment is visible to exactly its members; assignments without a class still reach every student."}
           </p>
         </div>
       ) : (
@@ -236,6 +244,43 @@ export function TeacherClassesClient({
             </Card>
           ))}
         </div>
+      )}
+
+      {/* Browser-local class containers (audit P2-6) — visible here, honestly
+          labelled: they are device-local dashboards, NOT live rosters, and
+          they render even when core is unreachable. */}
+      {localClasses.length > 0 && (
+        <section aria-labelledby="local-class-containers" className="space-y-2 border-t pt-5">
+          <h2 id="local-class-containers" className="text-sm font-semibold">
+            Browser-local class containers{" "}
+            <span className="text-xs font-normal text-muted-foreground">
+              · {localClasses.length} · this device only
+            </span>
+          </h2>
+          <ul className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {localClasses.map((c) => (
+              <li key={c.id}>
+                <Link
+                  href={`/teacher/classes/${c.id}`}
+                  className="flex items-center gap-2.5 rounded-lg border border-dashed px-3 py-2.5 transition-colors hover:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <span className="shrink-0 rounded-full border bg-background px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    This browser
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium">{c.name}</span>
+                  <span className="shrink-0 text-[11px] text-muted-foreground">
+                    {c.subjectSlugs.length} {c.subjectSlugs.length === 1 ? "subject" : "subjects"}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            Created on the teacher dashboard and stored in this browser only — the tools and
+            course resources inside them work from the local corpus, and enrolled-student rosters
+            are a live-Classes-surface concept they never impersonate.
+          </p>
+        </section>
       )}
     </div>
   );

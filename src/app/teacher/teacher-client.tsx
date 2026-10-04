@@ -49,6 +49,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { TeacherNav } from "@/components/teacher/teacher-nav";
 import { useIdentity } from "@/lib/identity";
 import { useMyClasses, type TeacherClass } from "@/lib/teacher/my-classes";
+import { ApiError, api } from "@/lib/api";
+import type { TeacherClassView } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import { AddClassOverlay } from "./add-class-overlay";
 
 /** The page passes the registry subset this dashboard renders. */
@@ -128,6 +131,48 @@ function SubjectRow({
         <ChevronRight className="size-4 shrink-0 text-muted-foreground/60" aria-hidden />
       </Link>
     </li>
+  );
+}
+
+function apiMessage(err: unknown, fallback: string): string {
+  if (err instanceof ApiError) return err.message;
+  if (err instanceof Error && err.message) return err.message;
+  return fallback;
+}
+
+/** A LIVE core class on the dashboard (audit P2-6) — same compact card as the
+ *  local ClassCard, but with the provenance badge it can never shed: live,
+ *  database-backed, roster-managed on the Classes surface. */
+function CoreClassCard({ cls }: { cls: TeacherClassView }) {
+  return (
+    <Card className={cn("relative h-full", cls.status === "archived" && "opacity-70")}>
+      <CardContent className="flex h-full flex-col gap-1 p-4">
+        <div className="flex items-center justify-between gap-2">
+          <p className="min-w-0 truncate text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            {cls.courseLabel}
+          </p>
+          <span className="shrink-0 rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-success">
+            Live · core
+          </span>
+        </div>
+        <Link href={`/teacher/classes/${cls.id}`} className="group mt-1 min-w-0">
+          <span className="block truncate text-base font-bold group-hover:text-primary">
+            {cls.name}
+          </span>
+        </Link>
+        <p className="text-xs text-muted-foreground">
+          {cls.memberCount} {cls.memberCount === 1 ? "student" : "students"} enrolled
+          {cls.status === "archived" ? " · archived" : ""}
+        </p>
+        <Link
+          href={`/teacher/classes/${cls.id}`}
+          className="mt-auto inline-flex w-fit items-center gap-1 pt-2 text-xs font-semibold text-primary hover:underline"
+        >
+          Open workspace
+          <ChevronRight className="size-3.5" aria-hidden />
+        </Link>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -224,6 +269,38 @@ export function TeacherClient({ courses }: { courses: TeacherCourseLite[] }) {
   const [editClass, setEditClass] = useState<TeacherClass | null>(null);
   const [stats, setStats] = useState<Record<string, CourseStat>>({});
 
+  // Audit P2-6: the Overview showed ONLY browser-local containers while the
+  // Classes tab showed only core rosters — neither surface knew the other
+  // existed. The dashboard now lists both, badged by provenance; creation
+  // flows stay where they were (the overlay grows local containers, the
+  // Classes tab grows live rosters).
+  const [coreClasses, setCoreClasses] = useState<TeacherClassView[] | null>(null);
+  const [coreError, setCoreError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!identity) return; // no account — there is no core roster to fetch
+    let cancelled = false;
+    api
+      .teacherClasses()
+      .then((rows) => {
+        if (!cancelled) {
+          setCoreClasses(rows);
+          setCoreError(null);
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setCoreClasses([]);
+          setCoreError(
+            apiMessage(err, "Live classes are unavailable right now — core did not answer."),
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [identity]);
+
   const bySlug = useMemo(() => {
     const m = new Map<string, TeacherCourseLite>();
     for (const c of courses) m.set(c.slug, c);
@@ -274,7 +351,13 @@ export function TeacherClient({ courses }: { courses: TeacherCourseLite[] }) {
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">
             My classes{" "}
-            <span className="text-sm font-normal text-muted-foreground">· {classes.length}</span>
+            <span className="text-sm font-normal text-muted-foreground">
+              {identity && coreClasses === null
+                ? "· loading live classes…"
+                : identity
+                  ? `· ${coreClasses?.length ?? 0} live · ${classes.length} this browser`
+                  : `· ${classes.length} this browser`}
+            </span>
           </h2>
           <Button
             size="sm"
@@ -290,7 +373,16 @@ export function TeacherClient({ courses }: { courses: TeacherCourseLite[] }) {
           </Button>
         </div>
 
-        {classes.length === 0 ? (
+        {coreError && (
+          <p
+            role="note"
+            className="rounded-md border border-warn/30 bg-warn/10 px-3 py-2 text-xs leading-relaxed text-warn-ink"
+          >
+            {coreError} Your browser-local containers are unaffected and still listed below.
+          </p>
+        )}
+
+        {classes.length === 0 && !coreError && (coreClasses?.length ?? 0) === 0 && !(identity && coreClasses === null) ? (
           <Card className="border-dashed">
             <CardContent className="flex flex-col items-start gap-3 p-6">
               <p className="flex items-center gap-2 text-sm font-medium">
@@ -299,7 +391,12 @@ export function TeacherClient({ courses }: { courses: TeacherCourseLite[] }) {
               </p>
               <p className="text-sm text-muted-foreground">
                 Name the class, then select the subjects it covers. The tools and course resources
-                for those subjects live inside the class workspace.
+                for those subjects live inside the class workspace. For a live, database-backed
+                roster, create a class on the{" "}
+                <Link href="/teacher/classes" className="font-medium underline underline-offset-2">
+                  Classes
+                </Link>{" "}
+                surface.
               </p>
               <Button size="sm" className="gap-1.5" onClick={() => setAddOpen(true)}>
                 <Plus className="size-3.5" aria-hidden />
@@ -307,20 +404,39 @@ export function TeacherClient({ courses }: { courses: TeacherCourseLite[] }) {
               </Button>
             </CardContent>
           </Card>
+        ) : classes.length === 0 && identity && coreClasses === null ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {[0, 1, 2].map((i) => (
+              <Card key={i}>
+                <CardContent className="space-y-2 p-4">
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="h-5 w-36" />
+                  <Skeleton className="h-3 w-28" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {(coreClasses ?? []).map((c) => (
+              <CoreClassCard key={c.id} cls={c} />
+            ))}
             {classes.map((cls) => (
-              <ClassCard
-                key={cls.id}
-                cls={cls}
-                bySlug={bySlug}
-                stats={stats}
-                onRemove={remove}
-                onEdit={(c) => {
-                  setEditClass(c);
-                  setAddOpen(true);
-                }}
-              />
+              <div key={cls.id} className="relative">
+                <span className="absolute top-2 left-2 z-10 rounded-full border bg-background/90 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  This browser
+                </span>
+                <ClassCard
+                  cls={cls}
+                  bySlug={bySlug}
+                  stats={stats}
+                  onRemove={remove}
+                  onEdit={(c) => {
+                    setEditClass(c);
+                    setAddOpen(true);
+                  }}
+                />
+              </div>
             ))}
             {/* the student dashboard's trailing slot cell, class edition */}
             <button
@@ -365,13 +481,14 @@ export function TeacherClient({ courses }: { courses: TeacherCourseLite[] }) {
         <div className="mt-4 flex items-start gap-2 rounded-md border border-dashed bg-muted/40 p-3 text-xs leading-relaxed text-muted-foreground">
           <Database className="mt-0.5 size-3.5 shrink-0" aria-hidden />
           <span>
-            Classes on this dashboard are browser-local containers (the student roster works the
-            same way); the live core roster with enrolled students is the{" "}
+            Every class card carries its provenance: <strong>Live · core</strong> cards are
+            database-backed rosters managed on the{" "}
             <Link href="/teacher/classes" className="font-medium text-foreground underline underline-offset-2">
               Classes
             </Link>{" "}
-            surface — marking review and class intelligence read live backend data (core RBAC on
-            every call).{" "}
+            surface; <strong>This browser</strong> cards are local containers (the student roster
+            works the same way). Marking review and class intelligence read live backend data (core
+            RBAC on every call).{" "}
             {!identity && (
               <>
                 Sign in from{" "}
