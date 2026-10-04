@@ -123,6 +123,9 @@ export function AssignmentsClient({
   // the V49 default: every enabled student, independent students included.
   const [teacherClasses, setTeacherClasses] = useState<TeacherClassView[]>([]);
   const [targetClass, setTargetClass] = useState<string>("cohort");
+  // audit P2-7: a failed class-list load is a DIFFERENT state from the teacher
+  // owning no classes — it is surfaced, never silently swallowed
+  const [classesLoadFailed, setClassesLoadFailed] = useState(false);
 
   const loadList = useCallback(async () => {
     setListLoading(true);
@@ -151,7 +154,10 @@ export function AssignmentsClient({
         if (!cancelled) setTeacherClasses(rows);
       })
       .catch(() => {
-        if (!cancelled) setTeacherClasses([]);
+        if (!cancelled) {
+          setTeacherClasses([]);
+          setClassesLoadFailed(true);
+        }
       });
     return () => {
       cancelled = true;
@@ -163,12 +169,23 @@ export function AssignmentsClient({
     () => teacherClasses.filter((c) => c.courseSlug === course && c.status === "active"),
     [teacherClasses, course],
   );
-  // if the selected course has no class, silently fall back to the cohort
+  // if the selected course has no live class, the target resets to the cohort
+  // — and the fallback is NEVER silent (audit P2-7): the builder states the
+  // resulting audience explicitly, with the reason the selector is absent
   useEffect(() => {
     if (targetClass !== "cohort" && !courseClasses.some((c) => c.id === targetClass)) {
       setTargetClass("cohort");
     }
   }, [courseClasses, targetClass]);
+
+  const audienceNote: string | null = useMemo(() => {
+    if (courseClasses.length > 0) return null; // selector visible — audience already explicit
+    if (classesLoadFailed)
+      return "The class list is unavailable right now (core did not answer), so this assignment will go to the whole cohort: every enabled student account.";
+    if (teacherClasses.length > 0)
+      return "No active class matches this course, so this assignment will go to the whole cohort — every enabled student account, not a single class.";
+    return "This assignment will go to the whole cohort: every enabled student account on core.";
+  }, [courseClasses.length, classesLoadFailed, teacherClasses.length]);
 
 
   // lazily pull the real roster for the selected assignment
@@ -408,7 +425,9 @@ export function AssignmentsClient({
         )}
         <span className="text-[11px] text-muted-foreground">
           {targetClass === "cohort"
-            ? "Cohort: every enabled student account on core"
+            ? courseClasses.length === 0 && classesLoadFailed
+              ? "Cohort: every enabled student (class list unavailable right now)"
+              : "Cohort: every enabled student account on core"
             : `Class only: ${courseClasses.find((c) => c.id === targetClass)?.name ?? ""}`}
         </span>
         {courseClasses.length > 0 && (
@@ -563,6 +582,17 @@ export function AssignmentsClient({
               {createError && (
                 <p className="text-xs font-medium text-destructive" role="alert">
                   {createError}
+                </p>
+              )}
+
+              {audienceNote && (
+                <p
+                  role="note"
+                  aria-label="Assignment audience"
+                  className="flex items-start gap-2 rounded-md border border-warn/30 bg-warn/10 px-3 py-2 text-xs leading-relaxed text-warn-ink"
+                >
+                  <CircleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                  {audienceNote}
                 </p>
               )}
 
