@@ -86,6 +86,9 @@ export function CourseShell({
   useEffect(() => {
     if (!open) return;
     const panel = drawerPanelRef.current;
+    // capture the trigger element now — reading menuBtnRef.current inside the
+    // cleanup would race React's ref reassignment (exhaustive-deps rule)
+    const menuBtn = menuBtnRef.current;
     if (!panel) return;
 
     const prevOverflow = document.body.style.overflow;
@@ -120,7 +123,7 @@ export function CourseShell({
     return () => {
       document.removeEventListener("keydown", onKeyDown);
       document.body.style.overflow = prevOverflow;
-      menuBtnRef.current?.focus();
+      menuBtn?.focus();
     };
   }, [open]);
 
