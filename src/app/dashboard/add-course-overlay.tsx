@@ -29,7 +29,9 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { duplicateVariants } from "@/lib/course-variant";
+import { useExamTargets } from "@/lib/exam-series";
 import type { CourseMeta } from "@/lib/courses";
+import { ExamSeriesPicker } from "./exam-series-picker";
 
 /** The demo registry is Edexcel-only (see content/courses.json note). */
 const BOARD = "Edexcel";
@@ -61,6 +63,12 @@ export function AddCourseOverlay({
 }) {
   const [level, setLevel] = useState<string | null>(null);
   const [q, setQ] = useState("");
+
+  // T-C79: the optional exam-series declaration rides the enrolment —
+  // declared targets render as the picker's current value on added lanes.
+  // Signed out / core behind the contract → null → the picker row renders
+  // nothing (the declaration is account data; there is no fake fallback).
+  const examTargets = useExamTargets();
 
   const subtitles = useMemo(() => duplicateVariants(courses), [courses]);
 
@@ -109,7 +117,8 @@ export function AddCourseOverlay({
           </DialogTitle>
           <DialogDescription id="add-course-desc">
             Choose the exam board, then the level, then the subject lane. Added courses appear in
-            My subjects instantly.
+            My subjects instantly. Signed in? You can also set an optional exam series per
+            course — it powers your exam countdown and the future study planner.
           </DialogDescription>
         </DialogHeader>
 
@@ -185,38 +194,49 @@ export function AddCourseOverlay({
               ) : (
                 list.map((c) => {
                   const added = has(c.slug);
+                  const laneTarget =
+                    examTargets === null ? undefined : examTargets.get(c.slug) ?? null;
                   return (
                     <div
                       key={c.slug}
-                      className="flex items-center gap-3 rounded-md border px-3 py-2"
+                      className="flex flex-col gap-1.5 rounded-md border px-3 py-2"
                     >
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold">{c.label}</p>
-                        {subtitles.get(c.slug) && (
-                          <p className="truncate text-xs text-muted-foreground">
-                            {subtitles.get(c.slug)}
+                      <div className="flex items-center gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold">{c.label}</p>
+                          {subtitles.get(c.slug) && (
+                            <p className="truncate text-xs text-muted-foreground">
+                              {subtitles.get(c.slug)}
+                            </p>
+                          )}
+                          <p className="mt-0.5 font-mono text-xs text-muted-foreground">
+                            {c.code || "code pending"}
                           </p>
+                        </div>
+                        {added ? (
+                          <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground">
+                            <Check className="size-3.5" aria-hidden />
+                            Added
+                          </span>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 shrink-0 gap-1.5"
+                            onClick={() => onAdd(c.slug)}
+                            aria-label={`Add ${c.label} to my subjects`}
+                          >
+                            <Plus className="size-3.5" aria-hidden />
+                            Add
+                          </Button>
                         )}
-                        <p className="mt-0.5 font-mono text-xs text-muted-foreground">
-                          {c.code || "code pending"}
-                        </p>
                       </div>
-                      {added ? (
-                        <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground">
-                          <Check className="size-3.5" aria-hidden />
-                          Added
-                        </span>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 shrink-0 gap-1.5"
-                          onClick={() => onAdd(c.slug)}
-                          aria-label={`Add ${c.label} to my subjects`}
-                        >
-                          <Plus className="size-3.5" aria-hidden />
-                          Add
-                        </Button>
+                      {added && laneTarget !== undefined && (
+                        <ExamSeriesPicker
+                          slug={c.slug}
+                          level={c.level}
+                          target={laneTarget}
+                        />
                       )}
                     </div>
                   );

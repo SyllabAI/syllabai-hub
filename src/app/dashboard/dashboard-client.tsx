@@ -58,13 +58,15 @@ import { api, getToken } from "@/lib/api";
 import { fetchPilotInfo, PILOT_COURSE_SLUG } from "@/lib/attempt-bridge";
 import { useDashboardCore } from "@/lib/dashboard-core";
 import { fetchBridge, type LearnerBridge } from "@/lib/learner-state";
+import { useExamTargets } from "@/lib/exam-series";
 import { daysAgo, subtopicSetFor } from "@/lib/next-best-actions";
 import { NextBestActionsCard } from "./next-best-actions-card";
 import { ReviewDueStrip } from "./review-due-strip";
 import { SetWorkCard } from "./set-work-card";
+import { ExamSeriesPicker } from "./exam-series-picker";
 import { AddCourseOverlay } from "./add-course-overlay";
 import type { CourseMeta } from "@/lib/courses";
-import type { CourseStatsView } from "@/lib/types";
+import type { CourseExamTargetView, CourseStatsView } from "@/lib/types";
 
 interface CourseStat {
   slug: string;
@@ -224,6 +226,7 @@ function SubjectCard({
   isLastViewed,
   onRemove,
   accountStats,
+  examTarget,
 }: {
   meta: CourseMeta;
   stat: CourseStat | undefined;
@@ -233,6 +236,10 @@ function SubjectCard({
    *  signed in / not the pilot / core unreachable; the card is identical
    *  to every other card in that case */
   accountStats?: CourseStatsView | null;
+  /** T-C79: the declared exam target with its derived countdown —
+   *  undefined = unavailable (signed out / core behind the contract; no
+   *  surface at all), null = nothing declared (the honest picker state) */
+  examTarget?: CourseExamTargetView | null;
 }) {
   const base = `/courses/${meta.slug}`;
   const counts =
@@ -288,6 +295,14 @@ function SubjectCard({
           )}
         </div>
         <p className="font-mono text-xs text-muted-foreground">{meta.code || "code pending"}</p>
+
+        {/* T-C79: the exam-series declaration + its derived countdown —
+            a picker over the IMPORTED calendar, never a typed date; the
+            chip renders "≈" for estimated sittings and the entries-closed
+            fact; unavailable states render nothing at all */}
+        <div className="pt-0.5">
+          <ExamSeriesPicker slug={meta.slug} level={meta.level} target={examTarget} compact />
+        </div>
 
         <Link
           href={base}
@@ -426,6 +441,11 @@ export function DashboardClient({ courses }: { courses: CourseMeta[] }) {
   const pilotInRoster = mySubjects.some((c) => c.slug === PILOT_COURSE_SLUG);
   const accountStats = usePilotAccountStats(pilotInRoster);
 
+  // T-C79: the learner's declared exam targets keyed by course slug —
+  // undefined per card = unavailable (signed out / core behind the V62
+  // contract); a missing key = nothing declared (the honest picker state)
+  const examTargets = useExamTargets();
+
   // P1-7 — cross-device jump back in (HUB-DASH-CORE, trace 1a0ec29c8c8cfb71):
   // when THIS device has no navigation history, the account's most recent
   // measured topic takes the slot — the account trail is real evidence of
@@ -549,6 +569,9 @@ export function DashboardClient({ courses }: { courses: CourseMeta[] }) {
                 isLastViewed={lastOpened?.slug === c.slug}
                 onRemove={remove}
                 accountStats={c.slug === PILOT_COURSE_SLUG ? accountStats : null}
+                examTarget={
+                  examTargets === null ? undefined : examTargets.get(c.slug) ?? null
+                }
               />
             ))}
             {/* SME's trailing slot cell: "Got another course?" — opens the

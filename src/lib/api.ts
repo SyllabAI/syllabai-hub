@@ -31,6 +31,8 @@
 import { cachedGet, invalidateContentCache, singleFlight } from "./api-cache";
 import type {
   AgendaView,
+  CourseExamTargetView,
+  ExamSeriesView,
   AttemptHistoryView,
   ClaAnswerView,
   CitationDocumentView,
@@ -618,6 +620,31 @@ export const api = {
   // due reviews already headline in the review-due strip — the dashboard
   // renders each block where it belongs, no second feed of either.
   learnerAgenda: () => request<AgendaView>("/api/v1/learners/me/agenda"),
+
+  // ── Exam-series calendar (T-C79, ADR-035 D1 ruling): the IMPORTED
+  // reference calendar + the learner's one bounded, optional target per
+  // course. The learner picks a row id — they never type a date (the
+  // rejected learner-entered-timetable option stays rejected). Cores older
+  // than V62 404 these routes; consumers degrade to "no exam surface",
+  // silently. Countdowns are derived at read on core (ADR-031) — nothing
+  // here stores or recomputes them.
+  learnerExamSeries: (qualification?: string) =>
+    request<ExamSeriesView[]>(
+      "/api/v1/learners/me/exam-series" +
+        (qualification ? `?qualification=${encodeURIComponent(qualification)}` : ""),
+    ),
+
+  setExamSeriesTarget: (courseSlug: string, seriesId: string) =>
+    request<CourseExamTargetView>(
+      `/api/v1/learners/me/courses/${encodeURIComponent(courseSlug)}/target-series`,
+      { method: "PUT", body: JSON.stringify({ seriesId }) },
+    ),
+
+  clearExamSeriesTarget: (courseSlug: string) =>
+    request<void>(
+      `/api/v1/learners/me/courses/${encodeURIComponent(courseSlug)}/target-series`,
+      { method: "DELETE" },
+    ),
 
   // Learner: append a hand-in (re-hand-in = new evidence, latest wins).
   submitAssignmentSubmission: (
