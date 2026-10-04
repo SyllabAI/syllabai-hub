@@ -161,7 +161,7 @@ function GeographyView({
           container here has no students and no graded evidence. Cohort mastery is the core
           heatmap&apos;s surface —{" "}
           <Link href="/teacher/class" className="font-medium text-foreground underline underline-offset-2">
-            Class intelligence
+            Class insights
           </Link>{" "}
           reads it from graded BKT evidence.
         </span>

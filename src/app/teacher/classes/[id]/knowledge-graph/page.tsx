@@ -4,7 +4,7 @@ import { ClassKGClient } from "./client";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Class KG heatmap — SyllabAI Hub teacher workspace",
+  title: "Class KG heatmap · Teacher workspace",
   description:
     "The class knowledge-graph heatmap: which topics the whole class struggles with, and which curriculum is simply not taught yet — the taught/not-taught × understanding matrix over the class's enrolled students.",
 };

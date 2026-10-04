@@ -41,7 +41,7 @@ export default async function FlashcardsIndexPage({
         meta={meta}
         title={`Edexcel ${meta.level} ${meta.label} Flashcards`}
         crumb="Flashcards"
-        description={`Per-sub-topic recall decks — ${stats.flashcards} cards. Rating a card (Still learning / Know) feeds your sub-topic rings in the local overlay; rated cards return on an expanding review schedule, and on the pilot course signed-in learners also record ratings to their account as self-report evidence (never mastery).`}
+        description={`Per-subtopic recall decks — ${stats.flashcards} cards. Rating a card (Still learning / Know) feeds your subtopic rings in the local overlay; rated cards return on an expanding review schedule, and on the pilot course signed-in learners also record ratings to their account as self-report evidence (never mastery).`}
       />
 
       <div className="mt-6 space-y-2">
@@ -51,7 +51,7 @@ export default async function FlashcardsIndexPage({
         <p className="max-w-3xl text-xs leading-relaxed text-muted-foreground">
           Cards are imported verbatim from the operator-licensed pilot deck corpus
           (front/back markdown, card types preserved). Their spec-point anchors are kept on
-          every card and drive the sub-topic placement — nothing here is fabricated. Courses the
+          every card and drive the subtopic placement — nothing here is fabricated. Courses the
           upstream corpus has no decks for show honestly empty.
         </p>
       </div>
@@ -82,7 +82,19 @@ export default async function FlashcardsIndexPage({
       {decks.length === 0 && (
         <Card className="mt-6">
           <CardContent className="p-6 text-sm text-muted-foreground">
-            No flashcard decks imported for this course yet.
+            <p>No flashcard decks imported for this course yet.</p>
+            {/* UX audit 2026-10-02 #18: the empty state was a dead end —
+                one sentence, no next action. Point at the course's question
+                bank (same sub-topic tree, fully populated for bundled courses). */}
+            <p className="mt-2">
+              <Link
+                href={`/courses/${meta.slug}/exam-questions`}
+                className="inline-flex items-center gap-1 text-primary underline-offset-2 hover:underline"
+              >
+                Work exam questions for this course instead
+                <ArrowRight className="size-3.5" aria-hidden />
+              </Link>
+            </p>
           </CardContent>
         </Card>
       )}

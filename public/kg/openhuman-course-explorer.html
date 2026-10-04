@@ -3165,6 +3165,19 @@ function kgApplicabilityChips(a){
   let done=null;
   window.addEventListener('message',ev=>{
     if(ev&&ev.data&&ev.data.type==='syllabai-kg:host-ready'&&done) post(done.type,done.payload);
+    else if(ev&&ev.data&&ev.data.type==='syllabai-kg:focus-node'&&ev.data.course===slug&&ev.data.node){
+      // syllabai-kg:focus-node (host -> renderer, UX audit 2026-10-02 #20):
+      // the host forwards a ?node= deep link from search results — select and
+      // center it. Additive to the syllabai protocol block; selectNode no-ops
+      // on an unknown id, and the short retry covers late graph layout.
+      const focusId=String(ev.data.node);
+      let focusTries=8;
+      const tryFocus=()=>{
+        if(nodeBy().get(focusId)){selectNode(focusId);}
+        else if(--focusTries>0){setTimeout(tryFocus,250);}
+      };
+      tryFocus();
+    }
     else if(ev&&ev.data&&ev.data.type==='syllabai-kg:learner'&&ev.data.course===slug){
       // KG phase 1 + tranche 4.1: the host pushes the live learner overlay
       // (core-measured on the pilot, browser-local elsewhere) plus a

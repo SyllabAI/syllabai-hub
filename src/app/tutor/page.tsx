@@ -4,7 +4,7 @@ import { RequireAuth } from "@/components/auth/require-auth";
 import { getCourseMeta } from "@/lib/courses";
 import { TutorChat, TutorCourseGate } from "./chat";
 
-export const metadata: Metadata = { title: "Tutor — SyllabAI" };
+export const metadata: Metadata = { title: "Tutor" };
 
 /**
  * V53 (ADR-030) — the tutor becomes course-aware through the hub's OWN

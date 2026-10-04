@@ -148,7 +148,7 @@ export default async function CourseHubPage({
         {
           icon: CircleHelp,
           title: "Flashcards",
-          desc: "Interactive digital flashcards that reinforce facts and definitions, imported per sub-topic.",
+          desc: "Interactive digital flashcards that reinforce facts and definitions, imported per subtopic.",
           tags: ["Study", "Practice"],
           href: `${base}/flashcards`,
           countLabel: `${stats.flashcards} card${stats.flashcards === 1 ? "" : "s"}`,

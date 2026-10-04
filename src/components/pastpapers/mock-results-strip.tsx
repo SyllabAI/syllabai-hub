@@ -71,6 +71,8 @@ export function MockResultsStrip({ course }: { course: string }) {
                 }`}
               >
                 {pct(r)}%
+                {/* UX audit 2026-10-02 #16: pass/fail was color-only (1.4.1) */}
+                <span className="sr-only">{pct(r) >= 50 ? " — pass" : " — not yet passed"}</span>
               </span>
             </p>
           </li>

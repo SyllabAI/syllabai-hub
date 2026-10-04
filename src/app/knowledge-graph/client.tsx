@@ -69,12 +69,22 @@ const PROTO_URL = "/graph-explorer";
 export function KnowledgeGraphClient({ courses }: { courses: CourseLite[] }) {
   const searchParams = useSearchParams();
   const requested = searchParams.get("course");
+  // UX audit 2026-10-02 #20: search results emit /knowledge-graph?course=X&node=Y
+  // deep links — the node param used to be dropped silently at this boundary.
+  const requestedNode = searchParams.get("node");
   const course =
     requested && courses.some((c) => c.slug === requested) ? requested : null;
   if (!course) {
     return <CourseGraphLanding courses={courses} requested={requested} />;
   }
-  return <KnowledgeGraphCourse key={course} course={course} courses={courses} />;
+  return (
+    <KnowledgeGraphCourse
+      key={course}
+      course={course}
+      courses={courses}
+      node={requestedNode}
+    />
+  );
 }
 
 /**
@@ -163,9 +173,12 @@ function CourseGraphLanding({
 function KnowledgeGraphCourse({
   course,
   courses,
+  node,
 }: {
   course: string;
   courses: CourseLite[];
+  /** ?node= deep link (audit #20) — focused in the renderer once it reports ready */
+  node: string | null;
 }) {
   const [ready, setReady] = useState(false);
   const [counts, setCounts] = useState<KgCounts | null>(null);
@@ -204,8 +217,19 @@ function KnowledgeGraphCourse({
 
   // (re-)post whenever the iframe (re)becomes ready or the derivation changes
   useEffect(() => {
-    if (ready) postLearnerOverlay();
-  }, [ready, postLearnerOverlay]);
+    if (ready) {
+      postLearnerOverlay();
+      // audit #20: focus the ?node= target — only meaningful after the
+      // renderer reports ready (its node map exists by then). The renderer
+      // no-ops on an unknown id, so a stale/foreign code is silently safe.
+      if (node) {
+        frameRef.current?.contentWindow?.postMessage(
+          { type: "syllabai-kg:focus-node", course: activeCourse, node },
+          "*",
+        );
+      }
+    }
+  }, [ready, postLearnerOverlay, activeCourse, node]);
 
   // NO address-bar rewrite here (T-C55): this component once "cleaned" the
   // pilot's URL with window.history.replaceState deleting ?course= — but

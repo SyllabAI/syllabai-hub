@@ -14,6 +14,7 @@ import { BarChart3, Compass } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useCourseProgress, subtopicRing, type Course } from "@/lib/progress";
+import { formatPercent, roundPercent } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export interface StrengthsDatum {
@@ -52,7 +53,9 @@ export function StrengthsPanel({ course, data }: { course: Course; data: Strengt
         ...mcq.map((m) => (m.correct ? 1 : 0)),
       ];
       const accuracy = scored.length
-        ? Math.round((scored.reduce((a, b) => a + b, 0) / scored.length) * 100)
+        ? // UX audit 2026-10-02 #17: one-decimal — a single 1/2-mark hit must
+          // not display as "0% accuracy" next to the ring's 0.4% engaged
+          roundPercent((scored.reduce((a, b) => a + b, 0) / scored.length) * 100)
         : null;
       return { ...d, ring, accuracy, attempts: selfScores.length + mcq.length };
     })
@@ -97,7 +100,7 @@ export function StrengthsPanel({ course, data }: { course: Course; data: Strengt
     <div className="mt-8 space-y-4">
       <div className="flex items-center gap-2">
         <Compass className="size-4 text-primary" aria-hidden />
-        <h2 className="text-base font-semibold">Strengths &amp; weaknesses by sub-topic</h2>
+        <h2 className="text-base font-semibold">Strengths &amp; weaknesses by subtopic</h2>
         <Badge variant="outline" className="border-sim/30 text-[10px] text-sim">
           SIMULATED overlay
         </Badge>
@@ -133,7 +136,9 @@ export function StrengthsPanel({ course, data }: { course: Course; data: Strengt
                   {band === "strength" ? "strength" : band === "developing" ? "developing" : "weak spot"}
                 </Badge>
                 <span className="ml-auto text-xs tabular-nums text-muted-foreground">
-                  {r.accuracy !== null ? `${r.accuracy}% accuracy` : `${r.ring.percent}% engaged`}
+                  {r.accuracy !== null
+                    ? `${formatPercent(r.accuracy)} accuracy`
+                    : `${formatPercent(r.ring.percent)} engaged`}
                   {r.attempts > 0 ? ` · ${r.attempts} attempt${r.attempts === 1 ? "" : "s"}` : ""}
                 </span>
               </div>

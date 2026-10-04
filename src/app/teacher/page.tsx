@@ -5,7 +5,7 @@ import { TeacherClient } from "./teacher-client";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Teacher workspace — SyllabAI Hub",
+  title: "Teacher workspace",
   description:
     "The teacher mode of SyllabAI: add a class, select its subjects, and find every tool and course resource inside it — plus the marking console and class intelligence over live cohort data.",
 };

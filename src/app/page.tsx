@@ -158,7 +158,7 @@ export default async function HubPage() {
           },
         ].map((s) => (
           <Link key={s.step} href={s.href} className="group focus-visible:outline-none">
-            <Card className="h-full transition-colors group-hover:border-primary/40">
+            <Card className="h-full transition-colors group-hover:border-primary/40 group-focus-visible:border-primary/60">
               <CardContent className="flex h-full items-start gap-3 p-4">
                 <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
                   {s.step}

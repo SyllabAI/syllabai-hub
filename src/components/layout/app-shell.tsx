@@ -160,10 +160,27 @@ export function AppShell({
   const inTutor = pathname.startsWith("/tutor");
   const bare = inCourse || inExplorer || inTutor;
 
+  // UX audit 2026-10-02 #22: Experiments is the developer area — it sat next
+  // to Tutor/Assistant for every signed-out visitor and student. Staff-only;
+  // the route itself stays reachable by URL for those who need it.
+  const moreTools =
+    identity?.role === "teacher"
+      ? MORE_TOOLS
+      : MORE_TOOLS.filter((t) => t.href !== "/experiments");
+
   return (
     <div className="min-h-dvh bg-background">
       {/* solid header (SME parity): a translucent bar lets large H1 text bleed
           through on scroll and reads as a rendering glitch (UX audit 2026-09-19) */}
+      {/* UX audit 2026-10-02 #10: keyboard users had to re-traverse the whole
+          header on every page — one skip link, first in tab order, targeting
+          the (focusable) main landmark below. */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:border focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:shadow-md"
+      >
+        Skip to content
+      </a>
       <header className="sticky top-0 z-40 border-b bg-background print:hidden">
         <div className="flex h-14 items-center gap-3 px-4 sm:px-6">
           <Link href="/" className="flex items-center gap-2">
@@ -209,7 +226,7 @@ export function AppShell({
               ))}
               <DropdownMenuSeparator />
               <DropdownMenuLabel>More tools</DropdownMenuLabel>
-              {MORE_TOOLS.map((t) => (
+              {moreTools.map((t) => (
                 <DropdownMenuItem key={t.href} asChild>
                   <Link
                     href={
@@ -310,7 +327,11 @@ export function AppShell({
       </header>
 
       {/* content */}
-      <main className={cn("min-w-0 flex-1", !bare && "px-4 py-6 sm:px-6 lg:px-8")}>
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className={cn("min-w-0 flex-1 focus-visible:outline-none", !bare && "px-4 py-6 sm:px-6 lg:px-8")}
+      >
         {bare ? children : <div className="mx-auto w-full max-w-6xl">{children}</div>}
       </main>
 

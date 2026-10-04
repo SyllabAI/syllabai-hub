@@ -235,14 +235,20 @@ export function Markdown({
               );
             }
             // corpus images are hotlinked from the public resources repo
-            if (s.startsWith("https://")) {
+            if (s.startsWith("https")) {
+              // UX audit 2026-10-02 #21: bare <img> without dimensions — every
+              // hotlinked note image reflowed the page while loading (CLS).
+              // A fixed 16:9 box with object-contain reserves the layout: any
+              // intrinsic ratio letterboxes inside, nothing shifts.
               return (
-                <img
-                  src={s}
-                  alt={alt ?? ""}
-                  loading="lazy"
-                  className="mx-auto block h-auto max-w-full rounded-md border md:max-w-md"
-                />
+                <span className="mx-auto my-1 block aspect-video w-full max-w-[448px] overflow-hidden rounded-md border bg-muted/40 md:max-w-md">
+                  <img
+                    src={s}
+                    alt={alt ?? ""}
+                    loading="lazy"
+                    className="size-full object-contain"
+                  />
+                </span>
               );
             }
             return <span className="text-sm italic text-muted-foreground">{alt}</span>;

@@ -1,6 +1,9 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import { RequireAuth } from "@/components/auth/require-auth";
 import { LearnerClient } from "./client";
+
+export const metadata: Metadata = { title: "My progress" };
 
 export const dynamic = "force-dynamic";
 

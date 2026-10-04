@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { LoginClient } from "./login-client";
 
 export const metadata: Metadata = {
-  title: "Sign in — SyllabAI Hub",
+  title: "Sign in",
   description:
     "Sign in or create your SyllabAI account — your tutor, assistant and progress live on your account. Browsing the course hubs stays open to everyone.",
 };

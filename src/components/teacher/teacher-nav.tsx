@@ -4,7 +4,7 @@
  * Teacher sub-navigation (teacher-console tranche, 2026-09-28) — the teacher
  * workspace keeps the demo's no-global-sidebar chrome: one compact tab strip
  * shared by the teacher routes. The two LIVE console surfaces ported from
- * syllabai-web (Marking review, Class intelligence — real core data, RBAC on
+ * syllabai-web (Marking review, Class insights — real core data, RBAC on
  * every call) come first; the corpus-local tools follow, honestly labeled.
  */
 import { useEffect, useRef, useState } from "react";
@@ -28,9 +28,12 @@ const TABS = [
   { href: "/teacher", label: "Overview", icon: LayoutDashboard },
   { href: "/teacher/marking", label: "Marking review", icon: ClipboardCheck },
   { href: "/teacher/classes", label: "Classes", icon: Users },
-  { href: "/teacher/class", label: "Class intelligence", icon: Network },
-  // sim-lens port from the demo shell — SAMPLE cohort, disclosed on-page
-  { href: "/teacher/class-graph", label: "Class graph (sim)", icon: Waypoints },
+  // UX audit 2026-10-02 #19: "Classes" / "Class intelligence" / "Class graph
+  // (sim)" read as three near-identical tabs over two data models — distinct
+  // names now: the roster, its evidence views, and the demo-cohort lens.
+  { href: "/teacher/class", label: "Class insights", icon: Network },
+  // demo-lens port from the demo shell — SAMPLE cohort, disclosed on-page
+  { href: "/teacher/class-graph", label: "Class graph (demo)", icon: Waypoints },
   { href: "/teacher/test-builder", label: "Test Builder", icon: ClipboardList },
   { href: "/teacher/assignments", label: "Assignments", icon: ListChecks },
   { href: "/teacher/validation", label: "Validation", icon: FileCheck2 },

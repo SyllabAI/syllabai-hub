@@ -36,7 +36,9 @@ export function CourseSwitcher({
   current: string;
   courses: SwitcherCourse[];
 }) {
-  const { slugs } = useMySubjects();
+  // UX audit 2026-10-02 #18: the hook exposes add() but nothing ever called
+  // it — "pick from the registry below" was a promise the rows couldn't keep.
+  const { slugs, add } = useMySubjects();
   const bySlug = new Map(courses.map((c) => [c.slug, c]));
 
   // roster order first (registry-validated), then the remaining registry
@@ -52,6 +54,9 @@ export function CourseSwitcher({
           href={`/courses/${c.slug}`}
           className={cn("cursor-pointer", active && "font-semibold text-primary")}
           aria-current={active ? "page" : undefined}
+          // picking a subject from the registry adds it to My subjects
+          // (audit #18 — the copy promised this; the row now delivers)
+          onClick={() => add(c.slug)}
         >
           <Check className={cn("size-4", active ? "opacity-100" : "opacity-0")} aria-hidden />
           <span className="min-w-0 flex-1 truncate">{c.label}</span>

@@ -212,9 +212,14 @@ export function CourseShell({
                 </p>
                 <ul className="space-y-0.5">
                   {g.items.map((item) => {
+                    // UX audit 2026-10-02 #13: a sibling row that claims the
+                    // current path via `exact` (e.g. Saved questions under
+                    // /exam-questions/saved) suppresses prefix rows — without
+                    // this, both rows highlighted at once.
                     const active = item.disabled
                       ? false
-                      : (item.exact ?? pathname.startsWith(item.href));
+                      : (item.exact ??
+                        (pathname.startsWith(item.href) && !g.items.some((s) => s.exact === true)));
                     const inner = (
                       <>
                         <item.icon className="size-4 shrink-0" aria-hidden />
@@ -363,7 +368,12 @@ function MobileDrawerInner({
               </p>
               <ul className="space-y-0.5">
                 {g.items.map((item) => {
-                  const active = item.disabled ? false : (item.exact ?? pathname.startsWith(item.href));
+                  // UX audit 2026-10-02 #13: see the drawer's identical check —
+                  // an exact-matching sibling suppresses prefix rows.
+                  const active = item.disabled
+                    ? false
+                    : (item.exact ??
+                      (pathname.startsWith(item.href) && !g.items.some((s) => s.exact === true)));
                   const inner = (
                     <>
                       <item.icon className="size-4 shrink-0" aria-hidden />

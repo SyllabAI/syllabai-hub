@@ -5,7 +5,7 @@ import { ClassWorkspaceDispatcher } from "./class-workspace-dispatcher";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Class workspace — SyllabAI Hub teacher workspace",
+  title: "Class workspace · Teacher workspace",
   description:
     "One class's workspace: the tools and course resources for every subject it covers, plus the live core roster — enroll students, publish notices, read cohort analytics.",
 };

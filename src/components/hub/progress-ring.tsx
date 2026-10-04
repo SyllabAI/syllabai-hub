@@ -6,6 +6,7 @@
  * the browser-local SIMULATED progress overlay only.
  */
 import { useCourseProgress, type Course } from "@/lib/progress";
+import { formatPercent, roundPercent } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export function ProgressRing({
@@ -38,7 +39,9 @@ export function ProgressRing({
       const cards = Object.values(progress.flashcards).filter((v) => v.subtopic === subtopic).length;
       const done =
         Math.min(notes, k.notes) + Math.min(questions, k.questions) + Math.min(cards, k.flashcards);
-      percent = Math.round((done / total) * 100);
+      // UX audit 2026-10-02 #17: one-decimal precision — Math.round made the
+      // first completed item read as "0%" in the aria label and tooltip
+      percent = roundPercent((done / total) * 100);
     }
   }
 
@@ -49,8 +52,8 @@ export function ProgressRing({
     <span
       className={cn("inline-flex shrink-0 items-center justify-center", className)}
       role="img"
-      aria-label={`Progress: ${percent}%`}
-      title={complete ? "Complete" : started ? `${percent}%` : "Not started"}
+      aria-label={`Progress: ${formatPercent(percent)}`}
+      title={complete ? "Complete" : started ? formatPercent(percent) : "Not started"}
     >
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
         <circle

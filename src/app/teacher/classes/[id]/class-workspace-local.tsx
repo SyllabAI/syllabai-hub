@@ -269,7 +269,7 @@ export function LocalClassWorkspace({
                   live
                 </Badge>
               </div>
-              <h3 className="mt-3 text-sm font-semibold">Class intelligence</h3>
+              <h3 className="mt-3 text-sm font-semibold">Class insights</h3>
               <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
                 Topic heatmap, weak prerequisites, drill-down to affected learners, remediation
                 assembly and the class knowledge graph — mastery from graded BKT evidence.
@@ -459,7 +459,7 @@ export function LocalClassWorkspace({
             </Link>{" "}
             and{" "}
             <Link href="/teacher/class" className="font-medium text-foreground underline underline-offset-2">
-              Class intelligence
+              Class insights
             </Link>
             .
           </span>

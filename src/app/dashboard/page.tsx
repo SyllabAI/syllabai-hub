@@ -2,7 +2,7 @@ import { listCourses } from "@/lib/courses";
 import { DashboardClient } from "./dashboard-client";
 
 export const metadata = {
-  title: "Dashboard — SyllabAI",
+  title: "Dashboard",
   description: "Your subjects and their spec-anchored resources.",
 };
 

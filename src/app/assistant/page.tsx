@@ -8,7 +8,7 @@ import { AssistantClient } from "./assistant-client";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Assistant — SyllabAI",
+  title: "Assistant",
   description:
     "The standalone Contextual Learning Assistant: explicit context (spec topic or exam question) + mode, grounded in the bundled corpus with citations and honest refusals.",
 };

@@ -203,6 +203,13 @@ export class KGExplorerEngine {
   private alpha = 0;
   private raf = 0;
   private simRunning = false;
+  // UX audit 2026-10-02 #15: honour prefers-reduced-motion — the physics
+  // layout settles synchronously (same end state, no animated drift) and
+  // reveal glides complete in one frame. Read once at construction; a
+  // mid-session setting change takes effect on the next explorer mount.
+  private readonly reducedMotion: boolean =
+    typeof window !== "undefined" &&
+    !!window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
 
   private selected: string | null = null;
   private selectedEdge: EFE | null = null;
@@ -760,6 +767,11 @@ export class KGExplorerEngine {
     this.alpha = 0.9;
     if (!this.simRunning) {
       this.simRunning = true;
+      if (this.reducedMotion) {
+        // settle the layout immediately — identical end state, zero motion
+        while (this.simRunning && !this.destroyed) this.simTick();
+        return;
+      }
       this.raf = requestAnimationFrame(() => this.simTick());
     }
   }
@@ -772,6 +784,11 @@ export class KGExplorerEngine {
     this.alpha = Math.max(this.alpha || 0, a);
     if (!this.simRunning) {
       this.simRunning = true;
+      if (this.reducedMotion) {
+        // same policy as bootSim — settle now, never animate the drag settle
+        while (this.simRunning && !this.destroyed) this.simTick();
+        return;
+      }
       this.raf = requestAnimationFrame(() => this.simTick());
     }
   }
@@ -883,7 +900,10 @@ export class KGExplorerEngine {
     a *= 0.94;
     this.alpha = a;
     if (a > 0.012) {
-      this.raf = requestAnimationFrame(() => this.simTick());
+      // reduced motion drains synchronously from bootSim — never re-schedule
+      if (!this.reducedMotion) {
+        this.raf = requestAnimationFrame(() => this.simTick());
+      }
     } else {
       this.simRunning = false;
       this.updatePositions();
@@ -1673,7 +1693,14 @@ export class KGExplorerEngine {
       n.y = en.fy;
       n.vx = 0;
       n.vy = 0;
-      this.appearing.set(en.id, { fx: en.fx, fy: en.fy, tx: en.tx, ty: en.ty, t0: now, dur: 820 });
+      this.appearing.set(en.id, {
+        fx: en.fx,
+        fy: en.fy,
+        tx: en.tx,
+        ty: en.ty,
+        t0: now,
+        dur: this.reducedMotion ? 0 : 820,
+      });
     }
     if (this.appearing.size && !this.appearRaf) {
       this.appearRaf = requestAnimationFrame(() => this.appearTick());

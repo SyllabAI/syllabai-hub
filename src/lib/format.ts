@@ -38,3 +38,30 @@ export function formatDue(iso: string): string {
         : `${Math.max(1, Math.floor(absDays * 60))} min`;
   return ms < 0 ? `overdue · ${unit}` : `due in ${unit}`;
 }
+
+/**
+ * Percent display helpers (UX audit 2026-10-02 #17).
+ *
+ * Before these the dashboard formatted sub-1% values with a decimal
+ * ("0.4%") while progress-ring / strengths-panel Math.rounded the same
+ * signal — a learner's first engagement read as "0%" everywhere but the
+ * dashboard. Every percent display now goes through one function.
+ */
+
+/**
+ * Percent for display: whole numbers round; fractions below 1% keep one
+ * decimal so the first completed item is visible immediately instead of
+ * reading as "0%".
+ */
+export function formatPercent(percent: number): string {
+  if (percent <= 0) return "0%";
+  return percent >= 1 ? `${Math.round(percent)}%` : `${percent.toFixed(1)}%`;
+}
+
+/**
+ * Percent for storage/computation: one-decimal precision — enough for the
+ * display contract above, immune to float drift (0.30000000000000004).
+ */
+export function roundPercent(percent: number): number {
+  return Math.round(percent * 10) / 10;
+}
