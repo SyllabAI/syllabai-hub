@@ -30,13 +30,26 @@ export default async function ExamQuestionsIndexPage({
   searchParams,
 }: {
   params: Promise<{ course: string }>;
-  searchParams: Promise<{ spec?: string; paper?: string }>;
+  searchParams: Promise<{ spec?: string; paper?: string; q?: string }>;
 }) {
   const { course: slug } = await params;
-  const { spec, paper } = await searchParams;
+  const { spec, paper, q } = await searchParams;
   const hub = await loadHubCourse(slug);
   if (!hub) notFound();
   const { meta, stats } = hub;
+
+  // UX audit 2026-10-02 #20: search results (lib/ai/retrieval.ts) emit
+  // /exam-questions?q=<partId> deep links — the index ignored ?q= entirely,
+  // landing every search hit on the unfiltered bank. Resolve the part to its
+  // question set and redirect there; an unresolvable q renders the index.
+  if (q) {
+    const topicWithPart = hub.questionTopics.find((t) =>
+      t.questions.some((x) => x.parts.some((p) => p.id === q)),
+    );
+    if (topicWithPart) {
+      redirect(`/courses/${meta.slug}/exam-questions/${topicWithPart.slug}`);
+    }
+  }
 
   // spec-point → papers (+ coursework pseudo-tag) for the part-level join
   const bundle = await getCourseBundle(slug);

@@ -137,7 +137,7 @@ export function ClassGraphClient({
           </Badge>
         </div>
         <h1 className="font-display text-2xl font-bold tracking-tight sm:text-3xl">
-          Class knowledge graph
+          Class graph (demo)
         </h1>
         <p className="max-w-3xl text-sm leading-relaxed text-muted-foreground">
           A different lens over the same subject graph the students use. Teaching coverage

@@ -36,7 +36,7 @@ export default async function CourseRevisionNotesPage({
         meta={meta}
         title={`Edexcel ${meta.level} ${meta.label} Revision Notes`}
         crumb="Revision Notes"
-        description={`Revision notes mapped to the official ${meta.code} specification — ${stats.notes} note${stats.notes === 1 ? "" : "s"} across ${Object.keys(hub.counts).filter((c) => (hub.counts[c]?.notes ?? 0) > 0).length} sub-topics, with examiner tips and worked examples.`}
+        description={`Revision notes mapped to the official ${meta.code} specification — ${stats.notes} note${stats.notes === 1 ? "" : "s"} across ${Object.keys(hub.counts).filter((c) => (hub.counts[c]?.notes ?? 0) > 0).length} subtopics, with examiner tips and worked examples.`}
       />
       <div className="mt-6">
         <NotesIndex

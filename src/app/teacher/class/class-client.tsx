@@ -177,7 +177,7 @@ export function ClassIntelligenceClient() {
       <div className="space-y-6">
         <div className="min-w-0">
           <h1 className="font-display text-2xl font-bold tracking-tight sm:text-3xl">
-            Class intelligence
+            Class insights
           </h1>
         </div>
         <TeacherNav />
@@ -194,7 +194,7 @@ export function ClassIntelligenceClient() {
       <div className="space-y-6">
         <div className="min-w-0">
           <h1 className="font-display text-2xl font-bold tracking-tight sm:text-3xl">
-            Class intelligence
+            Class insights
           </h1>
         </div>
         <TeacherNav />
@@ -211,7 +211,7 @@ export function ClassIntelligenceClient() {
       {/* header */}
       <div className="min-w-0">
         <h1 className="font-display text-2xl font-bold tracking-tight sm:text-3xl">
-          Class intelligence
+          Class insights
         </h1>
         <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-muted-foreground">
           Live from the SyllabAI backend — class-level facts over the whole pilot cohort, separated
@@ -224,7 +224,7 @@ export function ClassIntelligenceClient() {
       {/* ── evidence semantics banner (§4) ───────────────────────────── */}
       <Alert>
         <Radar className="size-4" aria-hidden="true" />
-        <AlertTitle>Class intelligence — evidence, separated by kind</AlertTitle>
+        <AlertTitle>Class insights — evidence, separated by kind</AlertTitle>
         <AlertDescription>
           Mastery means graded practice (BKT); misconception signals are BDT estimates; asking the
           Tutor is engagement — interest or doubt, <strong>never</strong> weakness. Topics and
@@ -305,7 +305,7 @@ export function ClassIntelligenceClient() {
               type="single"
               value={showGraph ? "graph" : "tables"}
               onValueChange={(v) => setShowGraph(v === "graph")}
-              aria-label="Class intelligence view"
+              aria-label="Class insights view"
             >
               <ToggleGroupItem value="tables" className="gap-1.5 text-xs">
                 <ClipboardCheck className="size-3.5" aria-hidden="true" />
