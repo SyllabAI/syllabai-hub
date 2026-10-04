@@ -321,6 +321,11 @@ export interface LearnerStateView {
    * than V48 serve the state view without it.
    */
   noteVotes?: NoteVoteView[];
+  /**
+   * T-C79 (ADR-035): declared exam targets with derived countdowns.
+   * Optional: cores older than V62 serve the state view without it.
+   */
+  examTargets?: CourseExamTargetView[];
 }
 
 /** One flashcard rating event (V47) — hub card id + the hub wire vocabulary. */
@@ -496,6 +501,56 @@ export interface AgendaView {
   dueReviews: ReviewView[];
   assignments: LearnerAssignmentView[];
   actions: NextBestActionsView | null;
+  /**
+   * T-C79 (ADR-035): the courses this learner declared an exam series for,
+   * with the countdown derived at read on the server clock (never stored).
+   * Optional: cores older than V62 serve the agenda without it. Empty =
+   * the honest "no series declared" state — never an invented countdown.
+   */
+  examTargets?: CourseExamTargetView[];
+}
+
+/**
+ * T-C79 (ADR-035 D1 ruling 2026-10-04): one sitting in the IMPORTED
+ * exam-series reference calendar. Every row is a citation — sourceUrl +
+ * retrievedAt travel with it (the CORE_MEASURED provenance posture);
+ * estimated rows must render with "≈", never as fact. There is no
+ * learner-entered date anywhere: the learner only ever picks a row.
+ */
+export interface ExamSeriesView {
+  id: string;
+  board: string;
+  qualification: string;
+  seriesCode: string;
+  label: string;
+  windowStart: string;
+  windowEnd: string;
+  entryDeadline: string | null;
+  resultsDate: string | null;
+  estimated: boolean;
+  sourceUrl: string;
+  retrievedAt: string;
+}
+
+/**
+ * T-C79: one declared exam target with its derived countdown
+ * (daysToWindowStart/daysToWindowEnd computed at read; entryDeadlinePassed
+ * is the honest "entries closed" fact). Optional everywhere — cores older
+ * than V62 serve nothing and the UI degrades to no chip, silently.
+ */
+export interface CourseExamTargetView {
+  courseSlug: string;
+  seriesId: string;
+  seriesCode: string;
+  label: string;
+  windowStart: string;
+  windowEnd: string;
+  entryDeadline: string | null;
+  resultsDate: string | null;
+  estimated: boolean;
+  daysToWindowStart: number;
+  daysToWindowEnd: number;
+  entryDeadlinePassed: boolean;
 }
 
 /**
