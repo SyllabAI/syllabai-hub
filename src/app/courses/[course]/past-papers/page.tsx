@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronRight, FileText, Puzzle, ScrollText } from "lucide-react";
+import { ChevronRight, FileText, PenLine, Puzzle, ScrollText } from "lucide-react";
 import { loadHubCourse } from "@/lib/courses";
 import { collectPastPapers, paperEstTime, type PastPaper } from "@/lib/past-papers";
 import {
@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { InteractiveChip } from "@/components/pastpapers/interactive-chip";
 import { MockResultsStrip } from "@/components/pastpapers/mock-results-strip";
+import { paperRunManifestFor } from "@/lib/paper-run/manifests";
 import { allCourseParams } from "@/lib/static-params";
 
 /** PDFs stream from raw.githubusercontent.com — warm the connection early. */
@@ -267,6 +268,17 @@ export default async function PastPapersPage({
                               aria-label={`${p.ref} — start timed mock`}
                             >
                               Mock
+                            </Link>
+                          </Button>
+                        )}
+                        {paperRunManifestFor(`${p.sessionId}:${p.dir}`) && (
+                          <Button asChild size="sm" className="h-7 gap-1 text-xs">
+                            <Link
+                              href={`${base}/past-papers/run/${p.sessionId}/${p.dir}`}
+                              aria-label={`${p.ref} — start interactive paper run (typed answers, clickable MCQs, official timer)`}
+                            >
+                              <PenLine className="size-3.5" aria-hidden />
+                              Run
                             </Link>
                           </Button>
                         )}
